@@ -1,8 +1,8 @@
 # Gradle / Loom
-build/
-.gradle/
-run/
-out/
+/build/
+/.gradle/
+/run/
+/out/
 *.class
 
 # Rust launcher
@@ -26,15 +26,15 @@ tokens.json
 .env.*
 
 # Mondes, replays, données de run
-world/
-worlds/
-saves/
-replay_recordings/
-replays/
+/world/
+/worlds/
+/saves/
+/replay_recordings/
+/replays/
 *.mcpr
 config/classroomrun/runs/
-logs/
-crash-reports/
+/logs/
+/crash-reports/
 
 # Python
 __pycache__/
