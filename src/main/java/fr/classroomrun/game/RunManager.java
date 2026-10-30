@@ -5,6 +5,7 @@ import fr.classroomrun.command.RunCommand;
 import fr.classroomrun.config.ModConfig;
 import fr.classroomrun.http.StatsHttpServer;
 import fr.classroomrun.http.StatsSnapshot;
+import fr.classroomrun.journal.JournalService;
 import fr.classroomrun.mixin.EnderDragonFightAccessor;
 import fr.classroomrun.net.DeathPayload;
 import fr.classroomrun.net.RunStatePayload;
@@ -65,6 +66,7 @@ public final class RunManager {
 	private final RunStats stats;
 	private final RunClock clock;
 	private final TeamSync team = new TeamSync();
+	private final JournalService journal;
 	private final List<ServerPlayer> joined = new ArrayList<>();
 	private @Nullable StatsHttpServer http;
 	private @Nullable RunWorlds worlds;
@@ -86,6 +88,7 @@ public final class RunManager {
 		this.statsFile = dir.resolve("stats.json");
 		this.stats = StatsStore.load(this.statsFile, ClassroomRun.LOGGER);
 		this.clock = new RunClock(this.stats.totalTimeMs);
+		this.journal = new JournalService(server, dir.resolve("runs"), this.clock::totalTimeMs);
 	}
 
 	public static @Nullable RunManager get() {
@@ -130,6 +133,10 @@ public final class RunManager {
 		return this.worlds;
 	}
 
+	public JournalService journal() {
+		return this.journal;
+	}
+
 	public RunStats stats() {
 		return this.stats;
 	}
@@ -157,6 +164,7 @@ public final class RunManager {
 		this.classroom = Classroom.build(this.server, this.worlds.overworld());
 		refreshBoard();
 		save();
+		this.journal.onRunPrepared(this.stats.runNumber, false);
 		startHttp();
 		publishSnapshot();
 		ClassroomRun.LOGGER.info("Run #{} ready, waiting for /run start", this.stats.runNumber);
@@ -174,6 +182,7 @@ public final class RunManager {
 		try {
 			this.http = new StatsHttpServer(this.config.httpBind, port);
 			this.http.start();
+			this.journal.attachHttp(this.http, port);
 			ClassroomRun.LOGGER.info("Stats endpoint listening on {}:{}", this.config.httpBind, port);
 		} catch (IOException | RuntimeException e) {
 			this.http = null;
@@ -182,6 +191,7 @@ public final class RunManager {
 	}
 
 	private void stop() {
+		this.journal.shutdown();
 		this.stats.totalTimeMs = this.clock.totalTimeMs();
 		save();
 		if (this.http != null) {
@@ -207,6 +217,7 @@ public final class RunManager {
 				moveToClassroom(player);
 			}
 		}
+		this.journal.onGo();
 		broadcastState();
 		return true;
 	}
@@ -228,6 +239,7 @@ public final class RunManager {
 				source.typeHolder().unwrapKey().map(k -> k.identifier().toString()).orElse(source.getMsgId()),
 				victim.getCombatTracker().getDeathMessage().getString(), attacker, victim.blockPosition(),
 				victim.level().dimension());
+		this.journal.onDeath(victim, source, payload);
 		sendAll(payload);
 		refreshBoard();
 		broadcastState();
@@ -246,6 +258,7 @@ public final class RunManager {
 			fresh.delete();
 			throw e;
 		}
+		this.journal.closeRun(); // saves the replays before anything of the old run is deleted
 		this.worlds = fresh;
 		this.classroom = placed;
 		this.resetCountdown = -1;
@@ -258,6 +271,7 @@ public final class RunManager {
 		for (ServerPlayer player : List.copyOf(this.server.getPlayerList().getPlayers())) {
 			resetPlayer(player);
 		}
+		this.journal.onRunPrepared(this.stats.runNumber, this.started);
 		if (old != null) {
 			detachDragonBar(old);
 			old.delete();
@@ -360,6 +374,7 @@ public final class RunManager {
 			}
 		} else if (anyPlayer) {
 			this.team.tick(this.server);
+			this.journal.sample(players);
 			if (this.active && this.tickCount % 10 == 0) {
 				probeSplits(players.stream().filter(TeamSync::isMember).toList());
 			}
@@ -401,11 +416,13 @@ public final class RunManager {
 			if ((found & split.bit()) != 0 && this.stats.markSplit(split)) {
 				any = true;
 				ClassroomRun.LOGGER.info("Split reached: {}", split);
+				this.journal.onSplit(split);
 			}
 		}
 		if (any) {
 			if (this.stats.finished()) {
 				this.active = false; // KILL_DRAGON reached, even if an earlier split was skipped
+				this.journal.onEnd("dragon");
 			}
 			this.dirty = true;
 			refreshBoard();

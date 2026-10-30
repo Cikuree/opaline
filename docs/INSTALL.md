@@ -22,6 +22,14 @@ Serveur Fabric 26.3, loader 0.20.1, Java 25. Dans `mods/` :
 
 Ne pas installer ReplayMod côté serveur (client uniquement).
 
+### Sécurité de l'endpoint HTTP
+
+`GET /stats` et `GET /replay?path=...` n'ont **aucune authentification**. Un fichier `.mcpr` contient tout ce que le joueur a reçu, **y compris le chat**. Seuls les chemins écrits dans un journal sont servis (liste blanche), mais quiconque peut joindre le port peut les télécharger.
+
+- Dans `config/classroomrun/config.json`, mets `httpBind` sur l'interface LAN voulue (pas `0.0.0.0` si le serveur est exposé sur Internet), ou `httpPort` à `0` pour désactiver l'endpoint (l'historique reste visible, le bouton « Voir le replay » disparaît).
+- Derrière un proxy TCP ou un tunnel, le client joint l'hôte du proxy : le port HTTP doit y être redirigé aussi.
+- Les replays sont dans `recordings/classroomrun/run_<n>/<uuid>/` ; pense à les purger.
+
 ## Pour les mainteneurs
 
 `pack/` est un manifeste packwiz (source de vérité des mods). Le jar `classroomrun` n'est pas sur Modrinth : la CI l'ajoute au zip Prism (`scripts/build-prism-instance.py`). Tag `v*` → release GitHub privée avec le jar et le zip.
