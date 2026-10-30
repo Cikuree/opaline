@@ -14,6 +14,9 @@ import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.util.Mth;
 import net.minecraft.util.Util;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -24,6 +27,7 @@ public final class HudRenderer {
 	private static final int CELL = 20;
 	private static final int PAD = 3;
 	private static final int TOP = 3;
+	private static final int LEFT = 3;
 	private static final int PINK = 0xFFFF69B4;
 	private static final int CYAN = 0xFF55FFFF;
 	private static final int PANEL = 0x90000000;
@@ -74,7 +78,8 @@ public final class HudRenderer {
 		long now = Util.getMillis();
 		int n = splitStacks.length;
 		int rowW = n * CELL;
-		int left = g.guiWidth() / 2 - rowW / 2;
+		// Top-left corner: the boss bars are centered at the top and their count is not exposed.
+		int left = LEFT + PAD;
 		int right = left + rowW;
 		int iconY = TOP + PAD;
 		int rowY = iconY + CELL + 4;
@@ -119,6 +124,20 @@ public final class HudRenderer {
 		g.text(font, deaths, right - 18 - deathsWidth, textY, 0xFFFFFFFF);
 	}
 
+	/** Top y of the highest heart/armor row, mirroring Hud.extractPlayerHealth and extractArmor (26.3). */
+	private static int topOfStatusRows(Minecraft mc, int guiHeight) {
+		int base = guiHeight - 39;
+		Player player = mc.player;
+		if (player == null) {
+			return base;
+		}
+		float maxHealth = (float) player.getAttributeValue(Attributes.MAX_HEALTH);
+		int rows = Mth.ceil((Math.max(maxHealth, player.getHealth()) + Mth.ceil(player.getAbsorptionAmount())) / 20.0F);
+		int rowHeight = Math.max(10 - (rows - 2), 3);
+		int top = base - (rows - 1) * rowHeight;
+		return player.getArmorValue() > 0 ? top - 10 : top;
+	}
+
 	private static void extractFeed(GuiGraphicsExtractor g, DeltaTracker delta) {
 		DamageFeed feed = ClientState.FEED;
 		long now = Util.getMillis();
@@ -130,8 +149,7 @@ public final class HudRenderer {
 		Minecraft mc = Minecraft.getInstance();
 		Font font = mc.font;
 		ClientPacketListener conn = mc.getConnection();
-		// Above the armor row (health at guiHeight - 39, armor 10 px higher).
-		int baseY = g.guiHeight() - 64;
+		int baseY = topOfStatusRows(mc, g.guiHeight()) - 12;
 		int x = g.guiWidth() / 2 - 91;
 		for (int i = 0; i < count; i++) {
 			Entry e = ORDERED[i];

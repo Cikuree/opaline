@@ -14,7 +14,7 @@ public class ClassroomRunClient implements ClientModInitializer {
 		ClientHandlers.register();
 		HudElementRegistry.attachElementAfter(VanillaHudElements.HEALTH_BAR,
 				Identifier.fromNamespaceAndPath("classroomrun", "damage_feed"), HudRenderer.feedElement());
-		HudElementRegistry.attachElementAfter(VanillaHudElements.BOSS_BAR,
+		HudElementRegistry.attachElementAfter(VanillaHudElements.MISC_OVERLAYS,
 				Identifier.fromNamespaceAndPath("classroomrun", "splits"), HudRenderer.splitsElement());
 		ClientCommandRegistrationCallback.EVENT.register((dispatcher, access) -> DebugCommand.register(dispatcher));
 	}
