@@ -113,4 +113,7 @@ Détail d'une run :
 - Le serveur ne sert que des chemins présents dans un journal, et répond `404` pour tout le reste.
 - `replay.offsetMs` est la position dans ce fichier.
 - `health[].samples` contient des paires `[ms relatif à la mort (≤ 0), vie]` sur les 10 s précédentes.
-- `fatalBy` est le joueur dont le coup a tué l'équipe.
+- `fatalBy` vaut le nom du joueur attaquant s'il y en a un, sinon celui de la victime.
+- `health` contient tous les joueurs de l'équipe, chacun avec un dernier échantillon `[0, 0.0]`. Les valeurs sont en points de vie (20.0 = vie pleine).
+- `bestSplit` vaut `null` quand aucun split n'a été atteint.
+- `finished` est vrai quand la run s'est terminée par la mort du dragon.
