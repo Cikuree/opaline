@@ -39,3 +39,4 @@ crash-reports/
 # Python
 __pycache__/
 .venv/
+dist/
