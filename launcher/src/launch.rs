@@ -1,0 +1,192 @@
+//! Construction de la ligne de commande Java et lancement du jeu.
+use crate::auth::Session;
+use crate::config::Dirs;
+use crate::fabric::{FabricProfile, maven_path};
+use crate::mojang::{Env, VersionJson, applicable_libraries, expand_args};
+use crate::safe::safe_join;
+use anyhow::{Context, Result};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+
+pub const LAUNCHER_NAME: &str = "ClassroomRunLauncher";
+
+pub struct LaunchInput<'a> {
+    pub java: &'a Path,
+    pub version: &'a VersionJson,
+    pub fabric: &'a FabricProfile,
+    pub dirs: &'a Dirs,
+    pub session: &'a Session,
+    /// `hôte[:port]` ; Some => --quickPlayMultiplayer.
+    pub server: Option<&'a str>,
+    pub memory_mb: u32,
+    pub env: &'a Env,
+}
+
+/// Clé de dédoublonnage : `groupe:artefact[:classifieur]` (sans version).
+fn lib_key(name: &str) -> String {
+    let p: Vec<&str> = name.split(':').collect();
+    match p.as_slice() {
+        [g, a, _v, rest @ ..] => format!("{g}:{a}:{}", rest.join(":")),
+        _ => name.to_string(),
+    }
+}
+
+/// Classpath : libraries Mojang applicables, puis Fabric (une version Fabric remplace la Mojang du même
+/// artefact), puis le client.jar.
+pub fn classpath(i: &LaunchInput) -> Result<Vec<PathBuf>> {
+    let libs = i.dirs.libraries();
+    let mut entries: Vec<(String, PathBuf)> = Vec::new();
+    let mut push = |key: String, path: PathBuf| {
+        entries.retain(|(k, _)| *k != key);
+        entries.push((key, path));
+    };
+    for (l, a) in applicable_libraries(&i.version.libraries, i.env) {
+        push(lib_key(&l.name), safe_join(&libs, &a.path)?);
+    }
+    for l in &i.fabric.libraries {
+        push(lib_key(&l.name), safe_join(&libs, &maven_path(&l.name)?)?);
+    }
+    let mut cp: Vec<PathBuf> = entries.into_iter().map(|(_, p)| p).collect();
+    cp.push(i.dirs.client_jar(&i.version.id));
+    Ok(cp)
+}
+
+/// Retourne `[java, args...]`. Fonction pure (aucun accès disque ni réseau).
+pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
+    let sep = if i.env.os == "windows" { ";" } else { ":" };
+    let cp = classpath(i)?.iter().map(|p| p.to_string_lossy().into_owned()).collect::<Vec<_>>().join(sep);
+    let vars: HashMap<&str, String> = HashMap::from([
+        ("auth_player_name", i.session.username.clone()),
+        ("auth_uuid", i.session.uuid.clone()),
+        ("auth_access_token", i.session.access_token().to_string()),
+        ("auth_xuid", String::new()),
+        ("clientid", String::new()),
+        ("version_name", i.version.id.clone()),
+        ("version_type", "release".into()),
+        ("game_directory", i.dirs.instance().to_string_lossy().into_owned()),
+        ("assets_root", i.dirs.assets().to_string_lossy().into_owned()),
+        ("assets_index_name", i.version.asset_index.id.clone()),
+        ("natives_directory", i.dirs.natives().to_string_lossy().into_owned()),
+        ("launcher_name", LAUNCHER_NAME.into()),
+        ("launcher_version", env!("CARGO_PKG_VERSION").into()),
+        ("classpath", cp),
+        ("quickPlayMultiplayer", i.server.unwrap_or_default().to_string()),
+    ]);
+    let mut cmd = vec![
+        i.java.to_string_lossy().into_owned(),
+        "-Xms512M".into(),
+        format!("-Xmx{}M", i.memory_mb),
+    ];
+    cmd.extend(expand_args(&i.version.arguments.jvm, i.env, &vars));
+    cmd.extend(expand_args(&i.fabric.arguments.jvm, i.env, &vars));
+    cmd.push(i.fabric.main_class.clone());
+    cmd.extend(expand_args(&i.version.arguments.game, i.env, &vars));
+    cmd.extend(expand_args(&i.fabric.arguments.game, i.env, &vars));
+    Ok(cmd)
+}
+
+/// Pour les logs : masque la valeur qui suit `--accessToken`.
+pub fn redact(cmd: &[String]) -> String {
+    let mut out = Vec::with_capacity(cmd.len());
+    let mut hide = false;
+    for a in cmd {
+        out.push(if hide { "<masqué>".to_string() } else { a.clone() });
+        hide = a == "--accessToken";
+    }
+    out.join(" ")
+}
+
+/// Lance le jeu dans l'instance isolée ; stdout/stderr vont dans `instance/logs/launcher-game.log`.
+pub fn spawn(cmd: &[String], dirs: &Dirs) -> Result<Child> {
+    let game_dir = dirs.instance();
+    std::fs::create_dir_all(game_dir.join("logs"))?;
+    std::fs::create_dir_all(dirs.natives())?;
+    let log = std::fs::File::create(game_dir.join("logs").join("launcher-game.log"))?;
+    let mut c = Command::new(&cmd[0]);
+    c.args(&cmd[1..]).current_dir(&game_dir).stdin(Stdio::null()).stdout(log.try_clone()?).stderr(log);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW : pas de console noire
+    }
+    c.spawn().with_context(|| format!("lancement de {}", cmd[0]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn version() -> VersionJson {
+        serde_json::from_str(
+            r#"{"id":"26.3","mainClass":"net.minecraft.client.main.Main",
+            "arguments":{"jvm":["-Djava.library.path=${natives_directory}/java","-cp","${classpath}",
+                {"rules":[{"action":"allow","os":{"name":"osx"}}],"value":"-XstartOnFirstThread"}],
+              "game":["--username","${auth_player_name}","--uuid","${auth_uuid}","--accessToken","${auth_access_token}",
+                "--assetIndex","${assets_index_name}",
+                {"rules":[{"action":"allow","features":{"is_quick_play_multiplayer":true}}],"value":["--quickPlayMultiplayer","${quickPlayMultiplayer}"]}]},
+            "assetIndex":{"id":"34","sha1":"a","url":"u"},
+            "downloads":{"client":{"sha1":"a","url":"u"}},"javaVersion":{"majorVersion":25},
+            "libraries":[
+              {"name":"org.ow2.asm:asm:9.0","downloads":{"artifact":{"path":"org/ow2/asm/asm/9.0/asm-9.0.jar","sha1":"a","url":"u"}}},
+              {"name":"l:n:1:natives-linux","rules":[{"action":"allow","os":{"name":"linux"}}],"downloads":{"artifact":{"path":"l/n-linux.jar","sha1":"a","url":"u"}}},
+              {"name":"l:n:1:natives-windows","rules":[{"action":"allow","os":{"name":"windows"}}],"downloads":{"artifact":{"path":"l/n-win.jar","sha1":"a","url":"u"}}}]}"#,
+        )
+        .unwrap()
+    }
+
+    fn fabric() -> FabricProfile {
+        serde_json::from_str(
+            r#"{"mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient",
+            "arguments":{"game":[],"jvm":["-DFabricMcEmu= net.minecraft.client.main.Main "]},
+            "libraries":[{"name":"org.ow2.asm:asm:9.10.1","url":"https://m/","sha1":"b"},
+                         {"name":"net.fabricmc:fabric-loader:0.20.1","url":"https://m/","sha1":"c"}]}"#,
+        )
+        .unwrap()
+    }
+
+    fn cmd(os: &'static str, server: Option<&str>) -> Vec<String> {
+        let (v, f) = (version(), fabric());
+        let dirs = Dirs::new("/root");
+        let session = Session::offline("Bob");
+        let env = Env { os, arch: "x86_64", features: HashMap::from([("is_quick_play_multiplayer".to_string(), server.is_some())]) };
+        build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &f, dirs: &dirs, session: &session, server, memory_mb: 2048, env: &env }).unwrap()
+    }
+
+    #[test]
+    fn command_layout_windows() {
+        let c = cmd("windows", Some("play.fr:25565"));
+        assert_eq!(&c[..3], ["/j/java", "-Xms512M", "-Xmx2048M"]);
+        let main = c.iter().position(|a| a.ends_with("KnotClient")).unwrap();
+        // jvm avant mainClass, game après
+        assert!(c[..main].iter().any(|a| a == "-cp") && c[..main].contains(&"-DFabricMcEmu= net.minecraft.client.main.Main ".to_string()));
+        let game = &c[main + 1..];
+        assert_eq!(&game[..2], ["--username", "Bob"]);
+        assert!(game.windows(2).any(|w| w == ["--quickPlayMultiplayer", "play.fr:25565"]));
+        assert!(game.windows(2).any(|w| w == ["--assetIndex", "34"]));
+        assert!(!c.iter().any(|a| a == "-XstartOnFirstThread"));
+        // classpath : séparateur ';', asm Mojang remplacé par celui de Fabric, natives windows, client.jar en dernier
+        let cp = &c[c.iter().position(|a| a == "-cp").unwrap() + 1];
+        let parts: Vec<&str> = cp.split(';').collect();
+        assert!(cp.contains("asm-9.10.1.jar") && !cp.contains("asm-9.0.jar"));
+        assert!(cp.contains("n-win.jar") && !cp.contains("n-linux.jar"));
+        assert!(parts.last().unwrap().ends_with("26.3.jar"));
+        assert!(parts.iter().all(|p| !p.contains("${")));
+    }
+
+    #[test]
+    fn no_quickplay_without_server_and_linux_separator() {
+        let c = cmd("linux", None);
+        assert!(!c.iter().any(|a| a == "--quickPlayMultiplayer"));
+        let cp = &c[c.iter().position(|a| a == "-cp").unwrap() + 1];
+        assert!(!cp.contains(';') && cp.contains("n-linux.jar"));
+    }
+
+    #[test]
+    fn redacts_token() {
+        let c = cmd("windows", None);
+        assert!(c.iter().any(|a| a == "0")); // le token factice est bien dans la commande
+        let r = redact(&c);
+        assert!(r.contains("--accessToken <masqué> --assetIndex"));
+    }
+}

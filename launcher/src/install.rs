@@ -1,0 +1,250 @@
+//! Orchestration de l'installation : Java, Minecraft, Fabric, mods. Les URL de base sont injectables.
+use crate::config::{Dirs, fabric_profile_id};
+use crate::download::{self, Job, Progress};
+use crate::fabric::{FabricProfile, maven_path};
+use crate::java;
+use crate::mojang::{AssetIndex, Env, VersionJson, VersionManifest, applicable_libraries};
+use crate::packwiz::{self, Pack};
+use crate::safe::{Hash, safe_join};
+use anyhow::{Context, Result, bail};
+use reqwest::blocking::Client;
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+pub const CONCURRENCY: usize = 12;
+
+#[derive(Clone, Debug)]
+pub struct Endpoints {
+    pub mojang_manifest: String,
+    pub fabric_meta: String,
+    pub adoptium: String,
+    pub assets: String,
+}
+
+impl Default for Endpoints {
+    fn default() -> Self {
+        Endpoints {
+            mojang_manifest: "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json".into(),
+            fabric_meta: "https://meta.fabricmc.net".into(),
+            adoptium: "https://api.adoptium.net".into(),
+            assets: "https://resources.download.minecraft.net".into(),
+        }
+    }
+}
+
+pub struct Installed {
+    pub java: PathBuf,
+    pub version: VersionJson,
+    pub fabric: FabricProfile,
+}
+
+pub struct InstallParams {
+    pub dirs: Dirs,
+    pub pack_dir: PathBuf,
+    /// Fichier jar ou dossier ; None = `<pack_dir>/../build/libs`.
+    pub mod_jar: Option<PathBuf>,
+    pub endpoints: Endpoints,
+}
+
+/// Jar classroomrun (hors manifeste) : fichier explicite, ou le plus récent `*.jar` d'un dossier
+/// (hors `-sources`, `-dev`, `-javadoc`).
+pub fn find_mod_jar(configured: Option<&Path>, pack_dir: &Path) -> Result<PathBuf> {
+    let default_dir = pack_dir.parent().map(|p| p.join("build").join("libs"));
+    let target = configured.map(Path::to_path_buf).or(default_dir).context("chemin du jar classroomrun inconnu")?;
+    if target.is_file() {
+        return Ok(target);
+    }
+    let mut jars: Vec<PathBuf> = fs::read_dir(&target)
+        .with_context(|| format!("jar classroomrun introuvable : {} (configurez `mod_jar`)", target.display()))?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            let n = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_ascii_lowercase();
+            n.starts_with("classroomrun") && n.ends_with(".jar") && !["sources", "dev", "javadoc"].iter().any(|x| n.contains(x))
+        })
+        .collect();
+    jars.sort();
+    jars.pop().with_context(|| format!("aucun classroomrun*.jar dans {}", target.display()))
+}
+
+fn sha1_job(url: &str, dest: PathBuf, sha1: &str) -> Result<Job> {
+    Ok(Job { url: url.to_string(), dest, hash: Some(Hash::new("sha1", sha1)?) })
+}
+
+pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> Result<Installed> {
+    let dirs = &p.dirs;
+    let ep = &p.endpoints;
+    progress.set_stage("Lecture du manifeste du pack");
+    let pack = packwiz::load_pack(&p.pack_dir)?;
+    let mc = pack.versions.minecraft.clone();
+    let loader = pack.versions.fabric.clone().context("pack.toml : version de Fabric absente")?;
+    let mod_jar = find_mod_jar(p.mod_jar.as_deref(), &p.pack_dir)?;
+
+    progress.set_stage("Minecraft : métadonnées");
+    let version = fetch_version_json(client, dirs, ep, &mc)?;
+
+    let major = version.java_version.major_version;
+    let java_exe = match java::find_java(&dirs.java(major)) {
+        Some(j) => j,
+        None => install_java(client, dirs, ep, major, progress)?,
+    };
+
+    progress.set_stage("Minecraft : client et bibliothèques");
+    let env = Env::current(&[]);
+    let mut jobs = vec![sha1_job(&version.downloads.client.url, dirs.client_jar(&version.id), &version.downloads.client.sha1)?];
+    for (_, a) in applicable_libraries(&version.libraries, &env) {
+        jobs.push(sha1_job(&a.url, safe_join(&dirs.libraries(), &a.path)?, &a.sha1)?);
+    }
+    download::fetch_all(client, jobs, CONCURRENCY, progress)?;
+
+    progress.set_stage("Minecraft : ressources");
+    let idx_ref = &version.asset_index;
+    let idx_path = dirs.assets().join("indexes").join(format!("{}.json", idx_ref.id));
+    download::fetch(client, &sha1_job(&idx_ref.url, idx_path.clone(), &idx_ref.sha1)?)?;
+    let index: AssetIndex = serde_json::from_slice(&fs::read(&idx_path)?).context("index d'assets invalide")?;
+    let objects = dirs.assets().join("objects");
+    let mut seen = HashSet::new();
+    let mut jobs = Vec::new();
+    for o in index.objects.values().filter(|o| seen.insert(o.hash.clone())) {
+        let Some(prefix) = o.hash.get(..2) else { bail!("hash d'asset invalide : {}", o.hash) };
+        jobs.push(sha1_job(
+            &format!("{}/{prefix}/{}", ep.assets.trim_end_matches('/'), o.hash),
+            safe_join(&objects, &format!("{prefix}/{}", o.hash))?,
+            &o.hash,
+        )?);
+    }
+    download::fetch_all(client, jobs, CONCURRENCY, progress)?;
+
+    progress.set_stage("Fabric Loader");
+    let fabric = install_fabric(client, dirs, ep, &mc, &loader, progress)?;
+
+    progress.set_stage("Mods");
+    install_mods(client, dirs, &pack, &mod_jar, progress)?;
+
+    progress.set_stage("Terminé");
+    Ok(Installed { java: java_exe, version, fabric })
+}
+
+fn fetch_version_json(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str) -> Result<VersionJson> {
+    let manifest: VersionManifest = download::get_json(client, &ep.mojang_manifest)?;
+    let entry = manifest.versions.iter().find(|v| v.id == mc).with_context(|| format!("Minecraft {mc} absent du manifeste Mojang"))?;
+    let path = dirs.version_json(mc);
+    download::fetch(client, &sha1_job(&entry.url, path.clone(), &entry.sha1)?)?;
+    serde_json::from_slice(&fs::read(&path)?).with_context(|| format!("JSON de version {mc} invalide"))
+}
+
+fn install_java(client: &Client, dirs: &Dirs, ep: &Endpoints, major: u32, progress: &Arc<Progress>) -> Result<PathBuf> {
+    progress.set_stage(&format!("Java {major} : téléchargement"));
+    let pkg = java::parse_assets(&download::get_text(client, &java::assets_url(&ep.adoptium, major))?)?;
+    let archive = safe_join(&dirs.downloads(), crate::safe::safe_file_name(&pkg.name)?)?;
+    let job = Job { url: pkg.link.clone(), dest: archive.clone(), hash: Some(Hash::new("sha256", &pkg.checksum)?) };
+    download::fetch_all(client, vec![job], 1, progress)?;
+    progress.set_stage(&format!("Java {major} : extraction"));
+    let dest = dirs.java(major);
+    let tmp = dest.with_extension("tmp");
+    let _ = fs::remove_dir_all(&tmp);
+    java::extract(&archive, &tmp)?;
+    let _ = fs::remove_dir_all(&dest);
+    fs::rename(&tmp, &dest)?;
+    java::find_java(&dest).context("java introuvable après extraction")
+}
+
+fn install_fabric(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str, loader: &str, progress: &Arc<Progress>) -> Result<FabricProfile> {
+    let url = format!("{}/v2/versions/loader/{mc}/{loader}/profile/json", ep.fabric_meta.trim_end_matches('/'));
+    let text = download::get_text(client, &url)?;
+    let profile: FabricProfile = serde_json::from_str(&text).context("profil Fabric invalide")?;
+    let id = fabric_profile_id(loader, mc);
+    let jp = dirs.versions().join(&id).join(format!("{id}.json"));
+    fs::create_dir_all(jp.parent().unwrap())?;
+    fs::write(&jp, &text)?;
+    let mut jobs = Vec::new();
+    for l in &profile.libraries {
+        let dest = safe_join(&dirs.libraries(), &maven_path(&l.name)?)?;
+        let url = l.download_url()?;
+        // Sans sha1 dans le profil : fichier .sha1 publié à côté sur le Maven.
+        let sha1 = match &l.sha1 {
+            Some(s) => s.clone(),
+            None => download::get_text(client, &format!("{url}.sha1"))?.split_whitespace().next().unwrap_or("").to_string(),
+        };
+        jobs.push(sha1_job(&url, dest, &sha1)?);
+    }
+    download::fetch_all(client, jobs, CONCURRENCY, progress)?;
+    Ok(profile)
+}
+
+/// Lit le profil Fabric déjà installé (lancement sans réinstaller).
+pub fn load_installed(dirs: &Dirs, pack: &Pack) -> Result<Installed> {
+    let mc = &pack.versions.minecraft;
+    let loader = pack.versions.fabric.as_deref().context("pack.toml : version de Fabric absente")?;
+    let id = fabric_profile_id(loader, mc);
+    let read = |p: PathBuf| fs::read(&p).with_context(|| format!("{} absent : lancez d'abord l'installation", p.display()));
+    let version: VersionJson = serde_json::from_slice(&read(dirs.version_json(mc))?)?;
+    let fabric: FabricProfile = serde_json::from_slice(&read(dirs.versions().join(&id).join(format!("{id}.json")))?)?;
+    let java = java::find_java(&dirs.java(version.java_version.major_version)).context("Java absent : lancez d'abord l'installation")?;
+    Ok(Installed { java, version, fabric })
+}
+
+fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, mod_jar: &Path, progress: &Arc<Progress>) -> Result<()> {
+    let mods_dir = dirs.instance().join("mods");
+    fs::create_dir_all(&mods_dir)?;
+    let jar_name = crate::safe::safe_file_name(mod_jar.file_name().and_then(|n| n.to_str()).unwrap_or(""))?.to_string();
+    let mut keep: HashSet<String> = HashSet::from([jar_name.clone()]);
+    let mut jobs = Vec::new();
+    for m in &pack.mods {
+        keep.insert(m.filename.clone());
+        jobs.push(Job { url: m.url.clone(), dest: safe_join(&mods_dir, &m.filename)?, hash: Some(m.hash.clone()) });
+    }
+    download::fetch_all(client, jobs, CONCURRENCY, progress)?;
+    fs::copy(mod_jar, mods_dir.join(&jar_name)).with_context(|| format!("copie de {}", mod_jar.display()))?;
+    // Ménage dans NOTRE dossier mods uniquement : anciens jars retirés du manifeste.
+    for e in fs::read_dir(&mods_dir)?.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.ends_with(".jar") && !keep.contains(&name) {
+            fs::remove_file(e.path())?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("crl-inst-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn find_mod_jar_picks_main_jar() {
+        let d = tmp("jar");
+        for n in ["classroomrun-0.1.0.jar", "classroomrun-0.1.0-sources.jar", "classroomrun-0.1.0-dev.jar", "other.jar"] {
+            fs::write(d.join(n), b"x").unwrap();
+        }
+        assert_eq!(find_mod_jar(Some(&d), &d).unwrap().file_name().unwrap(), "classroomrun-0.1.0.jar");
+        assert!(find_mod_jar(Some(&d.join("classroomrun-0.1.0.jar")), &d).is_ok());
+        assert!(find_mod_jar(Some(&d.join("nope")), &d).is_err());
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn find_mod_jar_defaults_to_repo_build_libs() {
+        let d = tmp("def");
+        fs::create_dir_all(d.join("pack")).unwrap();
+        fs::create_dir_all(d.join("build/libs")).unwrap();
+        fs::write(d.join("build/libs/classroomrun-1.jar"), b"x").unwrap();
+        assert!(find_mod_jar(None, &d.join("pack")).is_ok());
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn manifest_paths_cannot_escape() {
+        let dirs = Dirs::new("/r");
+        assert!(safe_join(&dirs.libraries(), "../../evil.jar").is_err());
+        assert!(sha1_job("u", PathBuf::from("x"), "zz").is_ok()); // l'hex n'est pas validé, la comparaison échouera
+    }
+}

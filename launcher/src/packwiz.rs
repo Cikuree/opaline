@@ -1,0 +1,180 @@
+//! Lecture du manifeste packwiz depuis un dossier local.
+use crate::safe::{Hash, safe_file_name, safe_join};
+use anyhow::{Context, Result, bail};
+use serde::Deserialize;
+use std::path::Path;
+
+#[derive(Deserialize)]
+struct PackToml {
+    index: PackIndex,
+    versions: Versions,
+}
+#[derive(Deserialize)]
+struct PackIndex {
+    file: String,
+    #[serde(rename = "hash-format")]
+    hash_format: String,
+    hash: String,
+}
+#[derive(Deserialize, Clone, Debug)]
+pub struct Versions {
+    pub minecraft: String,
+    pub fabric: Option<String>,
+}
+#[derive(Deserialize)]
+struct IndexToml {
+    #[serde(rename = "hash-format", default)]
+    hash_format: Option<String>,
+    #[serde(default)]
+    files: Vec<IndexFile>,
+}
+#[derive(Deserialize)]
+struct IndexFile {
+    file: String,
+    hash: String,
+    #[serde(rename = "hash-format")]
+    hash_format: Option<String>,
+    #[serde(default)]
+    metafile: bool,
+}
+#[derive(Deserialize)]
+struct MetaFile {
+    filename: String,
+    #[serde(default)]
+    side: Option<String>,
+    download: MetaDownload,
+}
+#[derive(Deserialize)]
+struct MetaDownload {
+    url: Option<String>,
+    #[serde(rename = "hash-format")]
+    hash_format: String,
+    hash: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModEntry {
+    pub filename: String,
+    pub url: String,
+    pub hash: Hash,
+}
+
+#[derive(Debug)]
+pub struct Pack {
+    pub versions: Versions,
+    pub mods: Vec<ModEntry>,
+}
+
+/// Packwiz : `side` absent = both ; on garde client et both.
+pub fn side_wanted(side: Option<&str>) -> bool {
+    matches!(side.unwrap_or("both"), "client" | "both")
+}
+
+pub fn parse_pack(pack_toml: &str) -> Result<(Versions, String, Hash)> {
+    let p: PackToml = toml::from_str(pack_toml).context("pack.toml invalide")?;
+    Ok((p.versions, p.index.file, Hash::new(&p.index.hash_format, &p.index.hash)?))
+}
+
+/// Parse index.toml + lit chaque métafichier via `read(chemin_relatif)`, vérifie leurs hashes
+/// d'index, filtre par side.
+pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> Result<Vec<ModEntry>> {
+    let idx: IndexToml = toml::from_str(index_toml).context("index.toml invalide")?;
+    let mut mods = Vec::new();
+    for f in idx.files.iter().filter(|f| f.metafile) {
+        let fmt = f.hash_format.as_deref().or(idx.hash_format.as_deref()).unwrap_or("sha256");
+        let text = read(&f.file)?;
+        if !Hash::new(fmt, &f.hash)?.matches(&mut text.as_bytes())? {
+            bail!("hash de l'index invalide pour {}", f.file);
+        }
+        let m: MetaFile = toml::from_str(&text).with_context(|| format!("{} invalide", f.file))?;
+        if !side_wanted(m.side.as_deref()) {
+            continue;
+        }
+        let Some(url) = m.download.url else {
+            bail!("{} : pas de download.url (CurseForge non supporté)", f.file);
+        };
+        mods.push(ModEntry {
+            filename: safe_file_name(&m.filename)?.to_string(),
+            url,
+            hash: Hash::new(&m.download.hash_format, &m.download.hash)?,
+        });
+    }
+    Ok(mods)
+}
+
+pub fn load_pack(dir: &Path) -> Result<Pack> {
+    let read_in = |rel: &str| -> Result<String> {
+        let p = safe_join(dir, rel)?;
+        std::fs::read_to_string(&p).with_context(|| format!("lecture de {}", p.display()))
+    };
+    let (versions, index_file, index_hash) = parse_pack(&read_in("pack.toml")?)?;
+    let index_text = read_in(&index_file)?;
+    if !index_hash.matches(&mut index_text.as_bytes())? {
+        bail!("hash de {index_file} différent de celui de pack.toml");
+    }
+    let mods = parse_index(&index_text, read_in)?;
+    Ok(Pack { versions, mods })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    fn sha256(s: &str) -> String {
+        hex::encode(Sha256::digest(s.as_bytes()))
+    }
+
+    fn meta(name: &str, side: &str) -> String {
+        format!(
+            "name = \"{name}\"\nfilename = \"{name}.jar\"\nside = \"{side}\"\n[download]\nurl = \"http://h/{name}.jar\"\nhash-format = \"sha512\"\nhash = \"ab\"\n"
+        )
+    }
+
+    fn index_for(metas: &[(&str, String)]) -> String {
+        let mut s = String::from("hash-format = \"sha256\"\n");
+        for (file, content) in metas {
+            s += &format!("[[files]]\nfile = \"{file}\"\nhash = \"{}\"\nmetafile = true\n", sha256(content));
+        }
+        s
+    }
+
+    #[test]
+    fn filters_sides() {
+        let metas = [
+            ("mods/a.pw.toml", meta("a", "both")),
+            ("mods/b.pw.toml", meta("b", "server")),
+            ("mods/c.pw.toml", meta("c", "client")),
+        ];
+        let idx = index_for(&metas);
+        let read = |p: &str| Ok(metas.iter().find(|(f, _)| *f == p).unwrap().1.clone());
+        let mods = parse_index(&idx, read).unwrap();
+        let names: Vec<_> = mods.iter().map(|m| m.filename.as_str()).collect();
+        assert_eq!(names, ["a.jar", "c.jar"]);
+        assert_eq!(mods[0].url, "http://h/a.jar");
+    }
+
+    #[test]
+    fn side_default_is_both() {
+        assert!(side_wanted(None));
+        assert!(!side_wanted(Some("server")));
+    }
+
+    #[test]
+    fn rejects_wrong_index_hash_and_bad_filename() {
+        let m = meta("a", "both");
+        let idx = format!("hash-format = \"sha256\"\n[[files]]\nfile = \"mods/a.pw.toml\"\nhash = \"{}\"\nmetafile = true\n", "0".repeat(64));
+        assert!(parse_index(&idx, |_| Ok(m.clone())).is_err());
+        let evil = m.replace("a.jar\"\nside", "../../evil.jar\"\nside");
+        let idx = index_for(&[("mods/a.pw.toml", evil.clone())]);
+        assert!(parse_index(&idx, |_| Ok(evil.clone())).is_err());
+    }
+
+    #[test]
+    fn parses_pack_toml() {
+        let t = "[index]\nfile=\"index.toml\"\nhash-format=\"sha256\"\nhash=\"AB\"\n[versions]\nfabric=\"0.20.1\"\nminecraft=\"26.3\"\n";
+        let (v, f, h) = parse_pack(t).unwrap();
+        assert_eq!((v.minecraft.as_str(), v.fabric.as_deref(), f.as_str()), ("26.3", Some("0.20.1"), "index.toml"));
+        assert_eq!(h.expected(), "ab");
+    }
+}
