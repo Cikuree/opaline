@@ -2,7 +2,16 @@
 	"required": true,
 	"package": "fr.classroomrun.mixin",
 	"compatibilityLevel": "JAVA_25",
-	"mixins": [],
+	"mixins": [
+		"BaseFireBlockMixin",
+		"EndPortalBlockMixin",
+		"EnderDragonFightAccessor",
+		"FoodDataMixin",
+		"LivingEntityMixin",
+		"NetherPortalBlockMixin",
+		"PlayerMixin",
+		"ServerPlayerMixin"
+	],
 	"injectors": {
 		"defaultRequire": 1
 	},

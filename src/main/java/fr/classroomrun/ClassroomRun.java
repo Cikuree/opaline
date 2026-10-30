@@ -1,6 +1,7 @@
 package fr.classroomrun;
 
 import fr.classroomrun.net.ClassroomRunNetworking;
+import fr.classroomrun.game.RunManager;
 import net.fabricmc.api.ModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,6 +13,7 @@ public class ClassroomRun implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		ClassroomRunNetworking.registerPayloads();
+		RunManager.register();
 		LOGGER.info("Classroom Run initialised");
 	}
 }
