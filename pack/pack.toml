@@ -1,0 +1,13 @@
+name = "Classroom Run"
+version = "0.1.0"
+description = "Modpack Classroom Run (jar classroomrun ajoute par la CI, hors manifeste)"
+pack-format = "packwiz:1.1.0"
+
+[index]
+file = "index.toml"
+hash-format = "sha256"
+hash = "e069ad1d47ac59345a71c8efad8942f64303f84748579dae6fed2181d2940ce0"
+
+[versions]
+fabric = "0.20.1"
+minecraft = "26.3"

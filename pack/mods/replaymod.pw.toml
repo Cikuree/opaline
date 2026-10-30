@@ -1,0 +1,13 @@
+name = "replaymod"
+filename = "replaymod-26.3-2.6.28.jar"
+side = "client"
+
+[download]
+url = "https://cdn.modrinth.com/data/Nv2fQJo5/versions/7c5mnPyr/replaymod-26.3-2.6.28.jar"
+hash-format = "sha512"
+hash = "e2b3455a138b6b1a866422906e417a5f98dd4a78edaf86d50c109c067309ac34eddac9e714604d3cbc52a9273e240f0a7bb6efe51ca4310d13dc235883659e93"
+
+[update]
+[update.modrinth]
+mod-id = "Nv2fQJo5"
+version = "7c5mnPyr"
