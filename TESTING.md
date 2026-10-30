@@ -105,6 +105,46 @@ Dans un monde solo avec le mod :
 - [ ] 6.7 Sauter dans le portail de sortie : retour dans la salle de classe.
 - [ ] 6.8 `/run reset` pendant le combat contre le dragon : la barre du dragon disparaît bien de l'écran.
 
+## 7. Journal et historique des morts (étape 2)
+
+Serveur de dev : `./gradlew runServer` charge ServerReplay automatiquement. Côté client, il faut ReplayMod pour la section 8 : l'instance Prism ou le launcher l'installent.
+
+- [ ] 7.1 Après `/run start` puis quelques coups reçus et une mort, le fichier `run/config/classroomrun/runs/<n>/journal.jsonl` existe et contient une ligne par événement.
+- [ ] 7.2 La touche **H** (ou `/crhistory`) ouvre l'écran « Historique des morts » avec la liste des runs, de la plus récente à la plus ancienne.
+- [ ] 7.3 Clic sur une run : ses morts s'affichent. Clic sur une mort : cause, message, attaquant, position, dimension, « coup fatal par » et graphe des vies sur les 10 s précédentes.
+- [ ] 7.4 Arrête le serveur sauvagement (fermer la fenêtre ou tuer le processus) en pleine run, puis relance-le : l'historique de cette run est toujours lisible.
+- [ ] 7.5 La touche H se reconfigure dans Options, Commandes, catégorie « Classroom Run ».
+
+## 8. Replay
+
+- [ ] 8.1 Un enregistrement par joueur et par run apparaît dans `run/recordings/classroomrun/run_<n>/<uuid>/`. Le fichier `.mcpr` est finalisé après la fin de la run ou ta déconnexion.
+- [ ] 8.2 Dans l'historique, le bouton « Voir le replay » d'une mort :
+  - une confirmation s'affiche ;
+  - le client se déconnecte ;
+  - ReplayMod s'ouvre sur l'enregistrement de la victime, quelques secondes avant sa mort.
+- [ ] 8.3 Un marqueur « Mort : … » est visible sur la timeline de ReplayMod, et les splits aussi.
+- [ ] 8.4 Clic sur « Voir le replay » juste après la mort, pendant la sauvegarde : le message « en cours de sauvegarde » s'affiche, et ça fonctionne quelques secondes plus tard.
+- [ ] 8.5 Sans ReplayMod côté client : l'écran d'historique fonctionne, mais le bouton est remplacé par un texte explicatif.
+- [ ] 8.6 Un navigateur sur `http://localhost:25580/replay?path=../../server.properties` renvoie une erreur 404.
+
+## 9. Launcher Rust
+
+1. Compile le launcher :
+
+   ```bash
+   cd launcher && cargo build --release
+   ```
+
+2. Lance `launcher/target/release/classroom-launcher.exe` (voir `launcher/README.md` pour les options).
+
+- [ ] 9.1 La fenêtre s'ouvre avec les champs pseudo, serveur et chemin du pack (le dossier `pack/` du dépôt).
+- [ ] 9.2 « Installer » télécharge Java 25, Minecraft 26.3, Fabric et les mods dans `%APPDATA%\ClassroomRunLauncher\`, avec une barre de progression. Ton `.minecraft` n'est pas touché.
+- [ ] 9.3 Coupe le réseau pendant l'installation, puis réessaie : l'installation reprend sans tout retélécharger.
+- [ ] 9.4 « Jouer » lance le jeu en hors ligne et se connecte directement au serveur indiqué.
+- [ ] 9.5 Le panneau des stats affiche la run en cours depuis le serveur (port 25580). Avec le serveur éteint, une erreur s'affiche sans faire planter le launcher.
+- [ ] 9.6 Pendant une partie, le bouton « Installer » est désactivé.
+- [ ] 9.7 Si l'installation est interrompue, « Jouer » refuse de lancer le jeu et demande de réinstaller.
+
 ## Pour me répondre
 
 Indique les numéros KO, avec ce que tu as vu. Les logs serveur sont dans `run/logs/latest.log`, et les logs client dans `.minecraft/logs/latest.log` de l'instance.
