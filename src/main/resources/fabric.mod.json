@@ -1,0 +1,33 @@
+{
+	"schemaVersion": 1,
+	"id": "classroomrun",
+	"version": "${version}",
+	"name": "Classroom Run",
+	"description": "Hardcore coopératif : vie partagée, mort collective, chaque run repart d'une salle de classe.",
+	"authors": [
+		"Odd Node"
+	],
+	"license": "All-Rights-Reserved",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"fr.classroomrun.ClassroomRun"
+		],
+		"client": [
+			"fr.classroomrun.client.ClassroomRunClient"
+		]
+	},
+	"mixins": [
+		"classroomrun.mixins.json",
+		{
+			"config": "classroomrun.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.20.1",
+		"minecraft": "~26.3",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}
