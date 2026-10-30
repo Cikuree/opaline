@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -42,18 +43,28 @@ final class ServerReplayHook implements ReplayHook {
 	private final Map<UUID, ReplayPlayerRecorder> recorders = new ConcurrentHashMap<>();
 	private final Map<UUID, Long> startNanos = new HashMap<>();
 	private final List<CompletableFuture<Long>> saving = new ArrayList<>();
+	/** Paths of recordings we stopped whose save has not completed; read by HTTP threads. */
+	private final Set<String> savingPaths = ConcurrentHashMap.newKeySet();
 
 	@Override
 	public boolean isPending(String path) {
+		if (this.savingPaths.contains(path)) {
+			return true;
+		}
 		for (ReplayPlayerRecorder r : this.recorders.values()) {
 			if (!r.getStopped() && relative(r).equals(path)) {
 				return true;
 			}
 		}
-		for (ReplayPlayerRecorder r : ReplayPlayerRecorders.closing()) { // being saved
-			if (relative(r).equals(path)) {
-				return true;
+		try {
+			// recorders closed by ServerReplay itself (e.g. on disconnect); arcade's set is not thread-safe
+			for (ReplayPlayerRecorder r : ReplayPlayerRecorders.closing()) {
+				if (relative(r).equals(path)) {
+					return true;
+				}
 			}
+		} catch (RuntimeException e) {
+			return true; // concurrent modification: treat as still saving rather than serve a partial file
 		}
 		return false;
 	}
@@ -103,16 +114,22 @@ final class ServerReplayHook implements ReplayHook {
 	}
 
 	private void stop(UUID id) {
-		ReplayPlayerRecorder recorder = this.recorders.remove(id);
-		this.startNanos.remove(id);
+		ReplayPlayerRecorder recorder = this.recorders.get(id);
 		if (recorder == null || recorder.getStopped()) {
+			this.recorders.remove(id);
+			this.startNanos.remove(id);
 			return; // already stopped (ServerReplay closes the recorder of a player who disconnects)
 		}
+		String path = relative(recorder);
+		this.savingPaths.add(path); // before leaving `recorders`, so HTTP threads never see a gap
+		this.recorders.remove(id);
+		this.startNanos.remove(id);
 		try {
 			this.saving.removeIf(CompletableFuture::isDone);
-			ClassroomRun.LOGGER.info("Replay recording stopped, saving {}", relative(recorder));
+			ClassroomRun.LOGGER.info("Replay recording stopped, saving {}", path);
 			CompletableFuture<Long> future = recorder.stop(true);
 			future.whenComplete((size, error) -> {
+				this.savingPaths.remove(path);
 				if (error == null) {
 					ClassroomRun.LOGGER.info("Replay saved: {} ({} bytes)", relative(recorder), size);
 				} else {
@@ -121,6 +138,7 @@ final class ServerReplayHook implements ReplayHook {
 			});
 			this.saving.add(future);
 		} catch (RuntimeException e) {
+			this.savingPaths.remove(path);
 			ClassroomRun.LOGGER.warn("Cannot stop the replay recording {}: {}", recorder.getName(), e.toString());
 		}
 	}
