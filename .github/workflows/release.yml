@@ -1,0 +1,30 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+          cache: gradle
+      - name: Verifier version == tag
+        run: |
+          v=$(sed -n 's/^version=//p' gradle.properties | tr -d '\r')
+          [ "${GITHUB_REF_NAME#v}" = "$v" ] || { echo "tag $GITHUB_REF_NAME != version $v"; exit 1; }
+      - run: ./gradlew build
+      - name: Instance Prism
+        run: |
+          jar=$(ls build/libs/classroomrun-*.jar | grep -v -- '-sources' | head -n1)
+          echo "JAR=$jar" >> "$GITHUB_ENV"
+          python3 scripts/build-prism-instance.py --jar "$jar" --out dist/classroom-run-prism.zip
+      - name: Release GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "$JAR" dist/classroom-run-prism.zip --title "$GITHUB_REF_NAME" --generate-notes
