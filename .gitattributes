@@ -7,3 +7,6 @@
 # These are Windows script files and should use crlf
 *.bat           text eol=crlf
 
+
+# packwiz hashes the exact bytes
+pack/** text eol=lf
