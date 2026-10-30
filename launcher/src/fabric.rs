@@ -8,6 +8,8 @@ pub struct FabricLib {
     pub name: String,
     pub url: String,
     pub sha1: Option<String>,
+    #[serde(default)]
+    pub size: Option<u64>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -51,7 +53,7 @@ mod tests {
 
     #[test]
     fn download_url_joins_base() {
-        let l = FabricLib { name: "g:a:1".into(), url: "https://m.example/".into(), sha1: None };
+        let l = FabricLib { name: "g:a:1".into(), url: "https://m.example/".into(), sha1: None, size: None };
         assert_eq!(l.download_url().unwrap(), "https://m.example/g/a/1/a-1.jar");
     }
 

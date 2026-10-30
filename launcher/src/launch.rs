@@ -61,6 +61,7 @@ pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
         ("auth_uuid", i.session.uuid.clone()),
         ("auth_access_token", i.session.access_token().to_string()),
         ("auth_xuid", String::new()),
+        ("user_type", i.session.user_type.to_string()),
         ("clientid", String::new()),
         ("version_name", i.version.id.clone()),
         ("version_type", "release".into()),
@@ -83,15 +84,23 @@ pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
     cmd.push(i.fabric.main_class.clone());
     cmd.extend(expand_args(&i.version.arguments.game, i.env, &vars));
     cmd.extend(expand_args(&i.fabric.arguments.game, i.env, &vars));
+    if let Some(a) = cmd.iter().find(|a| a.contains("${")) {
+        anyhow::bail!("variable non substituée dans la ligne de commande : {a}");
+    }
     Ok(cmd)
 }
 
-/// Pour les logs : masque la valeur qui suit `--accessToken`.
-pub fn redact(cmd: &[String]) -> String {
+/// Pour les logs : masque la valeur qui suit `--accessToken`, et le token où qu'il apparaisse
+/// (ignoré s'il ne fait qu'un caractère, comme le token factice hors ligne).
+pub fn redact(cmd: &[String], token: &str) -> String {
     let mut out = Vec::with_capacity(cmd.len());
     let mut hide = false;
     for a in cmd {
-        out.push(if hide { "<masqué>".to_string() } else { a.clone() });
+        let mut shown = if hide { "<masqué>".to_string() } else { a.clone() };
+        if token.len() > 1 {
+            shown = shown.replace(token, "<masqué>");
+        }
+        out.push(shown);
         hide = a == "--accessToken";
     }
     out.join(" ")
@@ -172,6 +181,7 @@ mod tests {
         assert!(cp.contains("n-win.jar") && !cp.contains("n-linux.jar"));
         assert!(parts.last().unwrap().ends_with("26.3.jar"));
         assert!(parts.iter().all(|p| !p.contains("${")));
+        assert!(c.iter().all(|a| !a.contains("${")), "variable non substituée");
     }
 
     #[test]
@@ -186,7 +196,23 @@ mod tests {
     fn redacts_token() {
         let c = cmd("windows", None);
         assert!(c.iter().any(|a| a == "0")); // le token factice est bien dans la commande
-        let r = redact(&c);
+        let r = redact(&c, "0");
         assert!(r.contains("--accessToken <masqué> --assetIndex"));
+        // token long présent ailleurs (ex. propriété -D) : masqué par valeur
+        let mut c2 = c.clone();
+        c2.push("-Dx=secrettoken123".into());
+        assert!(!redact(&c2, "secrettoken123").contains("secrettoken123"));
+    }
+
+    #[test]
+    fn leftover_variable_is_an_error() {
+        let mut v = version();
+        v.arguments.game.push(crate::mojang::Arg::Plain("${nope}".into()));
+        let f = fabric();
+        let dirs = Dirs::new("/root");
+        let session = Session::offline("Bob");
+        let env = Env { os: "linux", arch: "x86_64", features: HashMap::new() };
+        let r = build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &f, dirs: &dirs, session: &session, server: None, memory_mb: 1, env: &env });
+        assert!(r.is_err());
     }
 }

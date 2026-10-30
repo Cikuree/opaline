@@ -8,13 +8,15 @@ use std::fmt;
 pub struct Session {
     pub username: String,
     pub uuid: String,
+    /// "legacy" hors ligne ; "msa" avec l'auth Microsoft (étape 3).
+    pub user_type: &'static str,
     access_token: String,
 }
 
 impl Session {
     /// Session hors ligne (dev) : UUID déterministe comme le serveur vanilla hors ligne, token factice.
     pub fn offline(nickname: &str) -> Session {
-        Session { username: nickname.to_string(), uuid: offline_uuid(nickname), access_token: "0".into() }
+        Session { username: nickname.to_string(), uuid: offline_uuid(nickname), user_type: "legacy", access_token: "0".into() }
     }
 
     pub fn access_token(&self) -> &str {

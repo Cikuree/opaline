@@ -249,7 +249,7 @@ impl Fx {
 }
 
 fn job(url: String, dest: PathBuf, body: &[u8]) -> Job {
-    Job { url, dest, hash: Some(Hash::new("sha256", &sha256_hex(body)).unwrap()) }
+    Job { url, dest, hash: Hash::new("sha256", &sha256_hex(body)).unwrap(), size: None }
 }
 
 fn pattern(n: usize) -> Vec<u8> {
@@ -606,7 +606,6 @@ fn case7_server_mods_skipped_and_stale_jars_removed_only_in_instance_mods() {
 /// Deux jobs vers la même destination dans un même `fetch_all` écrivent le même `.part` en parallèle.
 /// Lancer avec `cargo test -- --ignored` pour le reproduire (échec intermittent).
 #[test]
-#[ignore = "bug download.rs:fetch_all : jobs à destination identique concurrents (.part partagé)"]
 fn known_bug_duplicate_destinations_race_on_same_part_file() {
     for _ in 0..10 {
         let srv = Server::start();

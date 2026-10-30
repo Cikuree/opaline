@@ -79,6 +79,10 @@ impl Dirs {
     pub fn config_file(&self) -> PathBuf {
         self.root.join("config.json")
     }
+    /// Marqueur écrit en toute fin d'installation réussie.
+    pub fn install_marker(&self) -> PathBuf {
+        self.root.join("installed.ok")
+    }
     pub fn libraries(&self) -> PathBuf {
         self.root.join("libraries")
     }

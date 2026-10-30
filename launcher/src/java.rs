@@ -93,6 +93,13 @@ pub fn extract(archive: &Path, dest: &Path) -> Result<()> {
         let mut t = tar::Archive::new(flate2::read::GzDecoder::new(File::open(archive)?));
         for e in t.entries()? {
             let mut e = e?;
+            if e.header().entry_type().is_symlink() || e.header().entry_type().is_hard_link() {
+                let target = e.link_name()?.map(|t| t.into_owned()).unwrap_or_default();
+                let escapes = target.has_root() || target.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::Prefix(_)));
+                if escapes {
+                    bail!("lien tar refusé (cible hors du dossier) : {} -> {}", e.path()?.display(), target.display());
+                }
+            }
             // unpack_in refuse (false) tout chemin qui sort de `dest`.
             if !e.unpack_in(dest)? {
                 bail!("entrée tar refusée : {}", e.path()?.display());
@@ -141,6 +148,42 @@ mod tests {
         let out = dir.join("out");
         extract(&zp, &out).unwrap();
         assert!(find_java(&out).unwrap().ends_with(format!("bin/{exe}")));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn tar_gz(entries: &[(&str, tar::EntryType, &str)]) -> Vec<u8> {
+        let mut b = tar::Builder::new(Vec::new());
+        for (name, ty, link) in entries {
+            let mut h = tar::Header::new_gnu();
+            h.set_entry_type(*ty);
+            h.set_size(if *ty == tar::EntryType::Regular { 1 } else { 0 });
+            h.set_mode(0o644);
+            if !link.is_empty() {
+                h.set_link_name(link).unwrap();
+            }
+            b.append_data(&mut h, name, if *ty == tar::EntryType::Regular { &b"x"[..] } else { &b""[..] }).unwrap();
+        }
+        let raw = b.into_inner().unwrap();
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        io::Write::write_all(&mut gz, &raw).unwrap();
+        gz.finish().unwrap()
+    }
+
+    #[test]
+    fn tar_gz_extracts_and_refuses_escaping_links() {
+        let dir = std::env::temp_dir().join(format!("crl-tar-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let ok = dir.join("ok.tar.gz");
+        fs::write(&ok, tar_gz(&[("jdk/bin/java", tar::EntryType::Regular, "")])).unwrap();
+        extract(&ok, &dir.join("out")).unwrap();
+        assert!(find_java(&dir.join("out")).is_some() || cfg!(windows)); // java.exe attendu sous Windows
+        assert!(dir.join("out/jdk/bin/java").is_file());
+        for (i, (ty, target)) in [(tar::EntryType::Symlink, "../../etc/passwd"), (tar::EntryType::Symlink, "/etc/passwd"), (tar::EntryType::Link, "../x")].into_iter().enumerate() {
+            let bad = dir.join(format!("bad{i}.tar.gz"));
+            fs::write(&bad, tar_gz(&[("jdk/l", ty, target)])).unwrap();
+            assert!(extract(&bad, &dir.join(format!("out{i}"))).is_err(), "{target}");
+        }
         fs::remove_dir_all(&dir).unwrap();
     }
 

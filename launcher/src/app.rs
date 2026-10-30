@@ -6,7 +6,7 @@ use eframe::egui;
 use std::process::Child;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 type InstallState = Option<Option<Result<(), String>>>;
 type StatsResult = Option<Result<Stats, String>>;
@@ -17,7 +17,7 @@ pub struct App {
     progress: Arc<Progress>,
     /// Some(None) = installation en cours ; Some(Some(r)) = terminée.
     install: Arc<Mutex<InstallState>>,
-    game: Option<Child>,
+    game: Option<(Child, Instant)>,
     message: String,
     stats: Arc<Mutex<StatsResult>>,
     stats_url: Arc<Mutex<String>>,
@@ -58,12 +58,19 @@ impl App {
         let _ = self.cfg.save(&self.dirs);
         match crate::run_play(&self.dirs, &self.cfg, true) {
             Ok(c) => {
-                self.game = Some(c);
+                self.game = Some((c, Instant::now()));
                 self.message = "Jeu lancé.".into();
             }
             Err(e) => self.message = format!("Lancement impossible : {e:#}"),
         }
     }
+}
+
+/// Dernières lignes de `instance/logs/launcher-game.log`.
+fn log_tail(dirs: &Dirs, n: usize) -> String {
+    let text = std::fs::read_to_string(dirs.instance().join("logs").join("launcher-game.log")).unwrap_or_default();
+    let lines: Vec<&str> = text.lines().collect();
+    lines[lines.len().saturating_sub(n)..].join("\n")
 }
 
 fn spawn_stats_poller(ctx: egui::Context, out: Arc<Mutex<StatsResult>>, url: Arc<Mutex<String>>) {
@@ -95,11 +102,16 @@ impl eframe::App for App {
                 Err(e) => format!("Installation échouée : {e}"),
             };
         }
-        if let Some(c) = &mut self.game
+        if let Some((c, started)) = &mut self.game
             && !matches!(c.try_wait(), Ok(None))
         {
+            // Mort dans les premières secondes : on montre la fin du log pour comprendre pourquoi.
+            self.message = if started.elapsed() < Duration::from_secs(30) {
+                format!("Le jeu s'est arrêté au démarrage. Fin du log :\n{}", log_tail(&self.dirs, 15))
+            } else {
+                "Le jeu est fermé.".into()
+            };
             self.game = None;
-            self.message = "Le jeu est fermé.".into();
         }
         *self.stats_url.lock().unwrap() = self.cfg.stats_url();
 
@@ -123,7 +135,7 @@ impl eframe::App for App {
             });
             ui.separator();
             ui.horizontal(|ui| {
-                if ui.add_enabled(!installing, egui::Button::new("Installer / Mettre à jour")).clicked() {
+                if ui.add_enabled(!installing && self.game.is_none(), egui::Button::new("Installer / Mettre à jour")).clicked() {
                     self.start_install(&ctx);
                 }
                 if ui.add_enabled(!installing && self.game.is_none(), egui::Button::new("Jouer")).clicked() {

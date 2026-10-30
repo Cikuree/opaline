@@ -18,7 +18,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 /// Installe (si `do_install`) puis, si `do_play`, lance le jeu. Partagé par l'interface et la CLI.
+/// Une panique (fil de téléchargement, JSON inattendu...) devient une erreur : l'interface ne reste jamais figée.
 pub fn run_install(dirs: &Dirs, cfg: &Config, progress: &Arc<Progress>) -> Result<install::Installed> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_install_inner(dirs, cfg, progress)))
+        .unwrap_or_else(|_| bail!("erreur interne pendant l'installation (panique), voir la console"))
+}
+
+fn run_install_inner(dirs: &Dirs, cfg: &Config, progress: &Arc<Progress>) -> Result<install::Installed> {
     let client = download::http_client()?;
     let params = install::InstallParams {
         dirs: dirs.clone(),
@@ -33,19 +39,20 @@ pub fn run_play(dirs: &Dirs, cfg: &Config, with_server: bool) -> Result<std::pro
     let pack = packwiz::load_pack(&PathBuf::from(&cfg.pack_dir))?;
     let inst = install::load_installed(dirs, &pack)?;
     let session = auth::Session::offline(cfg.nickname.trim()); // étape 3 : session Microsoft ici
-    let env = mojang::Env::current(&[("is_quick_play_multiplayer", with_server)]);
     let server = cfg.server_host.trim();
+    let quick_play = with_server && !server.is_empty();
+    let env = mojang::Env::current(&[("is_quick_play_multiplayer", quick_play)]);
     let cmd = launch::build_command(&launch::LaunchInput {
         java: &inst.java,
         version: &inst.version,
         fabric: &inst.fabric,
         dirs,
         session: &session,
-        server: (with_server && !server.is_empty()).then_some(server),
+        server: quick_play.then_some(server),
         memory_mb: cfg.memory_mb,
         env: &env,
     })?;
-    eprintln!("{}", launch::redact(&cmd));
+    eprintln!("{}", launch::redact(&cmd, session.access_token()));
     launch::spawn(&cmd, dirs)
 }
 

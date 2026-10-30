@@ -59,10 +59,19 @@ pub struct ModEntry {
     pub hash: Hash,
 }
 
+/// Fichier non-méta de l'index (config, etc.) : copié du dossier du pack vers l'instance.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PackFile {
+    pub path: String,
+    pub hash: Hash,
+}
+
 #[derive(Debug)]
 pub struct Pack {
+    pub version: String,
     pub versions: Versions,
     pub mods: Vec<ModEntry>,
+    pub files: Vec<PackFile>,
 }
 
 /// Packwiz : `side` absent = both ; on garde client et both.
@@ -76,6 +85,14 @@ fn text_matches(h: &Hash, text: &str) -> Result<bool> {
     Ok(h.matches(&mut text.as_bytes())? || h.matches(&mut text.replace("\r\n", "\n").as_bytes())?)
 }
 
+/// Pareil pour un fichier du pack lu en octets (la normalisation ne s'applique qu'au texte UTF-8).
+pub fn bytes_match(h: &Hash, bytes: &[u8]) -> Result<bool> {
+    match std::str::from_utf8(bytes) {
+        Ok(t) => text_matches(h, t),
+        Err(_) => h.matches(&mut &bytes[..]),
+    }
+}
+
 pub fn parse_pack(pack_toml: &str) -> Result<(Versions, String, Hash)> {
     let p: PackToml = toml::from_str(pack_toml).context("pack.toml invalide")?;
     Ok((p.versions, p.index.file, Hash::new(&p.index.hash_format, &p.index.hash)?))
@@ -83,11 +100,17 @@ pub fn parse_pack(pack_toml: &str) -> Result<(Versions, String, Hash)> {
 
 /// Parse index.toml + lit chaque métafichier via `read(chemin_relatif)`, vérifie leurs hashes
 /// d'index, filtre par side.
-pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> Result<Vec<ModEntry>> {
+pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> Result<(Vec<ModEntry>, Vec<PackFile>)> {
     let idx: IndexToml = toml::from_str(index_toml).context("index.toml invalide")?;
     let mut mods = Vec::new();
-    for f in idx.files.iter().filter(|f| f.metafile) {
+    let mut files = Vec::new();
+    for f in &idx.files {
         let fmt = f.hash_format.as_deref().or(idx.hash_format.as_deref()).unwrap_or("sha256");
+        if !f.metafile {
+            safe_join(Path::new("x"), &f.file)?; // refus précoce des chemins qui sortent du dossier
+            files.push(PackFile { path: f.file.clone(), hash: Hash::new(fmt, &f.hash)? });
+            continue;
+        }
         let text = read(&f.file)?;
         if !text_matches(&Hash::new(fmt, &f.hash)?, &text)? {
             bail!("hash de l'index invalide pour {}", f.file);
@@ -105,7 +128,7 @@ pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> R
             hash: Hash::new(&m.download.hash_format, &m.download.hash)?,
         });
     }
-    Ok(mods)
+    Ok((mods, files))
 }
 
 pub fn load_pack(dir: &Path) -> Result<Pack> {
@@ -118,8 +141,14 @@ pub fn load_pack(dir: &Path) -> Result<Pack> {
     if !text_matches(&index_hash, &index_text)? {
         bail!("hash de {index_file} différent de celui de pack.toml");
     }
-    let mods = parse_index(&index_text, read_in)?;
-    Ok(Pack { versions, mods })
+    let (mods, files) = parse_index(&index_text, read_in)?;
+    #[derive(Deserialize)]
+    struct V {
+        #[serde(default)]
+        version: String,
+    }
+    let version = toml::from_str::<V>(&read_in("pack.toml")?)?.version;
+    Ok(Pack { version, versions, mods, files })
 }
 
 #[cfg(test)]
@@ -154,7 +183,8 @@ mod tests {
         ];
         let idx = index_for(&metas);
         let read = |p: &str| Ok(metas.iter().find(|(f, _)| *f == p).unwrap().1.clone());
-        let mods = parse_index(&idx, read).unwrap();
+        let (mods, files) = parse_index(&idx, read).unwrap();
+        assert!(files.is_empty());
         let names: Vec<_> = mods.iter().map(|m| m.filename.as_str()).collect();
         assert_eq!(names, ["a.jar", "c.jar"]);
         assert_eq!(mods[0].url, "http://h/a.jar");
@@ -165,7 +195,17 @@ mod tests {
         let m = meta("a", "both");
         let idx = index_for(&[("mods/a.pw.toml", m.clone())]);
         let crlf = m.replace('\n', "\r\n");
-        assert_eq!(parse_index(&idx, |_| Ok(crlf.clone())).unwrap().len(), 1);
+        assert_eq!(parse_index(&idx, |_| Ok(crlf.clone())).unwrap().0.len(), 1);
+    }
+
+    #[test]
+    fn plain_files_are_listed_and_checked() {
+        let idx = "hash-format = \"sha256\"\n[[files]]\nfile = \"config/a.json\"\nhash = \"ab\"\n";
+        let (mods, files) = parse_index(idx, |_| unreachable!()).unwrap();
+        assert!(mods.is_empty());
+        assert_eq!(files[0].path, "config/a.json");
+        let bad = idx.replace("config/a.json", "../x");
+        assert!(parse_index(&bad, |_| unreachable!()).is_err());
     }
 
     #[test]

@@ -18,17 +18,23 @@ pub struct Artifact {
     pub path: String,
     pub sha1: String,
     pub url: String,
+    #[serde(default)]
+    pub size: Option<u64>,
 }
 #[derive(Deserialize, Debug, Clone)]
 pub struct FileRef {
     pub sha1: String,
     pub url: String,
+    #[serde(default)]
+    pub size: Option<u64>,
 }
 #[derive(Deserialize, Debug, Clone)]
 pub struct AssetIndexRef {
     pub id: String,
     pub sha1: String,
     pub url: String,
+    #[serde(default)]
+    pub size: Option<u64>,
 }
 #[derive(Deserialize, Debug, Clone)]
 pub struct JavaVersion {
@@ -105,6 +111,8 @@ pub struct AssetIndex {
 #[derive(Deserialize, Debug)]
 pub struct AssetObject {
     pub hash: String,
+    #[serde(default)]
+    pub size: Option<u64>,
 }
 
 /// Environnement d'évaluation des règles.
