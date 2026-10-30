@@ -38,8 +38,24 @@ public final class RunStats {
 		return true;
 	}
 
-	/** Index of the first split not reached yet; {@code Split.values().length} when the run is finished. */
+	/** Clamps values read from disk so a hand-edited file cannot cause an out-of-bounds index later. */
+	public void sanitize() {
+		int n = Split.values().length;
+		this.totalTimeMs = Math.max(0L, this.totalTimeMs);
+		this.deaths = Math.max(0, this.deaths);
+		this.runNumber = Math.max(0, this.runNumber);
+		this.reachedSplits &= (1 << n) - 1;
+		this.bestSplit = Math.max(-1, Math.min(n - 1, this.bestSplit));
+	}
+
+	/**
+	 * Index of the first split not reached yet; {@code Split.values().length} when the run is finished, i.e. when
+	 * KILL_DRAGON was reached (even if an earlier split was skipped).
+	 */
 	public int currentSplit() {
+		if ((this.reachedSplits & Split.KILL_DRAGON.bit()) != 0) {
+			return Split.values().length;
+		}
 		for (Split split : Split.values()) {
 			if ((this.reachedSplits & split.bit()) == 0) {
 				return split.ordinal();

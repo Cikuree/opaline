@@ -37,7 +37,8 @@ public abstract class EndPortalBlockMixin {
 			return;
 		}
 		if (currentLevel == worlds.end()) {
-			cir.setReturnValue(run.classroomTransition());
+			// only players go back to the classroom; other entities are not teleported
+			cir.setReturnValue(entity instanceof ServerPlayer ? run.classroomTransition() : null);
 			return;
 		}
 		ServerLevel end = worlds.end();

@@ -16,6 +16,8 @@ public final class ModConfig {
 
 	/** Port of the read-only JSON endpoint; 0 disables it. */
 	public int httpPort = 25580;
+	/** Address the endpoint binds to. */
+	public String httpBind = "0.0.0.0";
 	/** Delay between the collective death and the reset, so clients can show the death recap. 0 = same tick. */
 	public int deathResetDelayTicks = 60;
 

@@ -10,8 +10,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /** Why a mixin: same as {@link FoodDataMixin}, for the peaceful-difficulty regeneration of {@code tickRegeneration}. */
 @Mixin(ServerPlayer.class)
 public abstract class ServerPlayerMixin {
-	@Inject(method = "tickRegeneration", at = @At("HEAD"))
+	@Inject(method = "tickRegeneration", at = @At("HEAD"), cancellable = true)
 	private void classroomrun$naturalRegenStart(CallbackInfo ci) {
+		if (!TeamSync.mayRunNaturalLogic((ServerPlayer) (Object) this)) {
+			ci.cancel();
+			return;
+		}
 		TeamSync.naturalRegeneration = true;
 	}
 

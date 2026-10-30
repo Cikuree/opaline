@@ -14,8 +14,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(FoodData.class)
 public abstract class FoodDataMixin {
-	@Inject(method = "tick", at = @At("HEAD"))
+	@Inject(method = "tick", at = @At("HEAD"), cancellable = true)
 	private void classroomrun$naturalRegenStart(ServerPlayer player, CallbackInfo ci) {
+		if (!TeamSync.mayRunNaturalLogic(player)) {
+			ci.cancel(); // only the carrier consumes food and regenerates for the team
+			return;
+		}
 		TeamSync.naturalRegeneration = true;
 	}
 

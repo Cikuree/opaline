@@ -5,6 +5,7 @@ import fr.classroomrun.command.RunCommand;
 import fr.classroomrun.config.ModConfig;
 import fr.classroomrun.http.StatsHttpServer;
 import fr.classroomrun.http.StatsSnapshot;
+import fr.classroomrun.mixin.EnderDragonFightAccessor;
 import fr.classroomrun.net.DeathPayload;
 import fr.classroomrun.net.RunStatePayload;
 import fr.classroomrun.net.Split;
@@ -27,6 +28,8 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.dimension.end.EnderDragonFight;
 import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.level.storage.LevelData;
 import net.minecraft.world.phys.Vec3;
@@ -65,6 +68,9 @@ public final class RunManager {
 	private @Nullable StatsHttpServer http;
 	private @Nullable RunWorlds worlds;
 	private Classroom.@Nullable Placed classroom;
+	/** False before /run start (waiting in the classroom: no damage, no split probing). */
+	private boolean started;
+	/** Chrono running and splits probed: started and not finished. */
 	private boolean active;
 	private int resetCountdown = -1;
 	private long tickCount;
@@ -129,6 +135,11 @@ public final class RunManager {
 		return this.active;
 	}
 
+	/** False while waiting for /run start: damage is refused. */
+	public boolean isStarted() {
+		return this.started;
+	}
+
 	/** True between a collective death and the reset: damage refused, chrono paused. */
 	public boolean isEnding() {
 		return this.resetCountdown >= 0;
@@ -143,17 +154,28 @@ public final class RunManager {
 		this.classroom = Classroom.build(this.server, this.worlds.overworld());
 		refreshBoard();
 		save();
-		if (this.config.httpPort > 0) {
-			try {
-				this.http = new StatsHttpServer(this.config.httpPort);
-				this.http.start();
-				ClassroomRun.LOGGER.info("Stats endpoint listening on port {}", this.config.httpPort);
-			} catch (IOException e) {
-				ClassroomRun.LOGGER.warn("Cannot start the stats endpoint on port {}: {}", this.config.httpPort, e.getMessage());
-			}
-		}
+		startHttp();
 		publishSnapshot();
 		ClassroomRun.LOGGER.info("Run #{} ready, waiting for /run start", this.stats.runNumber);
+	}
+
+	private void startHttp() {
+		int port = this.config.httpPort;
+		if (port == 0) {
+			return;
+		}
+		if (port < 0 || port > 65535) {
+			ClassroomRun.LOGGER.warn("Invalid httpPort {} in config.json (0..65535), stats endpoint disabled", port);
+			return;
+		}
+		try {
+			this.http = new StatsHttpServer(this.config.httpBind, port);
+			this.http.start();
+			ClassroomRun.LOGGER.info("Stats endpoint listening on {}:{}", this.config.httpBind, port);
+		} catch (IOException | RuntimeException e) {
+			this.http = null;
+			ClassroomRun.LOGGER.warn("Cannot start the stats endpoint on {}:{}: {}", this.config.httpBind, port, e.getMessage());
+		}
 	}
 
 	private void stop() {
@@ -170,8 +192,13 @@ public final class RunManager {
 		if (this.active) {
 			return false;
 		}
+		this.started = true;
 		this.active = true;
 		this.dirty = true;
+		// splits start from zero: vanilla advancements earned while waiting must not count
+		for (ServerPlayer player : this.server.getPlayerList().getPlayers()) {
+			revokeAdvancements(player);
+		}
 		broadcastState();
 		return true;
 	}
@@ -214,12 +241,16 @@ public final class RunManager {
 		this.worlds = fresh;
 		this.classroom = placed;
 		this.resetCountdown = -1;
+		if (!this.active) {
+			this.started = false; // a finished (or never started) run waits for /run start again
+		}
 		this.stats.newRun();
 		this.team.resetVitals();
 		for (ServerPlayer player : List.copyOf(this.server.getPlayerList().getPlayers())) {
 			resetPlayer(player);
 		}
 		if (old != null) {
+			detachDragonBar(old);
 			old.delete();
 		}
 		refreshBoard();
@@ -231,6 +262,8 @@ public final class RunManager {
 
 	/** Teleports to the classroom spawn and wipes inventory, XP, effects, advancements; full health and food. */
 	private void resetPlayer(ServerPlayer player) {
+		player.closeContainer(); // crafting grid and open container are returned before the wipe
+		player.containerMenu.setCarried(ItemStack.EMPTY);
 		moveToClassroom(player);
 		player.getInventory().clearContent();
 		player.getEnderChestInventory().clearContent();
@@ -238,18 +271,31 @@ public final class RunManager {
 		player.setExperienceLevels(0);
 		player.setExperiencePoints(0);
 		player.totalExperience = 0;
-		for (AdvancementHolder holder : this.server.getAdvancements().getAllAdvancements()) {
-			AdvancementProgress progress = player.getAdvancements().getOrStartProgress(holder);
-			for (String criterion : List.copyOf(toList(progress.getCompletedCriteria()))) {
-				player.getAdvancements().revoke(holder, criterion);
-			}
-		}
+		revokeAdvancements(player);
 		player.clearFire();
 		player.resetFallDistance();
 		player.setHealth(player.getMaxHealth());
 		player.setAbsorptionAmount(0.0F);
 		player.getFoodData().setFoodLevel(20);
 		player.getFoodData().setSaturation(5.0F);
+	}
+
+	/** The dragon bar is ticked by the fight of the End level: without this it would stay frozen on the clients. */
+	private static void detachDragonBar(RunWorlds old) {
+		EnderDragonFight fight = old.end().getDragonFight();
+		if (fight != null) {
+			((EnderDragonFightAccessor) fight).classroomrun$getDragonEvent().removeAllPlayers();
+		}
+		// shortcut: raid boss bars are not detached; raids in the old Overworld are not expected in this mod.
+	}
+
+	private void revokeAdvancements(ServerPlayer player) {
+		for (AdvancementHolder holder : this.server.getAdvancements().getAllAdvancements()) {
+			AdvancementProgress progress = player.getAdvancements().getOrStartProgress(holder);
+			for (String criterion : List.copyOf(toList(progress.getCompletedCriteria()))) {
+				player.getAdvancements().revoke(holder, criterion);
+			}
+		}
 	}
 
 	private static List<String> toList(Iterable<String> it) {
@@ -300,7 +346,7 @@ public final class RunManager {
 		} else if (anyPlayer) {
 			this.team.tick(this.server);
 			if (this.active && this.tickCount % 10 == 0) {
-				probeSplits(players);
+				probeSplits(players.stream().filter(TeamSync::isMember).toList());
 			}
 		}
 
@@ -310,7 +356,7 @@ public final class RunManager {
 		if (this.tickCount % 20 == 0) {
 			publishSnapshot();
 		}
-		if (this.dirty && this.tickCount % 600 == 0) {
+		if ((this.dirty || running) && this.tickCount % 600 == 0) {
 			save();
 		}
 	}
@@ -320,15 +366,16 @@ public final class RunManager {
 			return;
 		}
 		if (this.worlds != null && !this.worlds.contains(player.level())) {
-			moveToClassroom(player);
+			resetPlayer(player); // reconnecting after a reset: same clean slate as the team
 		}
 		this.team.onJoin(this.server, player);
+		refreshBoard();
 		ServerPlayNetworking.send(player, statePayload());
 	}
 
 	private void probeSplits(List<ServerPlayer> players) {
 		RunWorlds w = this.worlds;
-		if (w == null || this.stats.finished()) {
+		if (w == null || !this.active) {
 			return;
 		}
 		int found = SplitProbe.probe(this.server, players, w, this.stats.reachedSplits);
@@ -341,7 +388,7 @@ public final class RunManager {
 		}
 		if (any) {
 			if (this.stats.finished()) {
-				this.active = false;
+				this.active = false; // KILL_DRAGON reached, even if an earlier split was skipped
 			}
 			this.dirty = true;
 			refreshBoard();
@@ -369,7 +416,8 @@ public final class RunManager {
 	}
 
 	private void refreshBoard() {
-		String best = this.stats.bestSplit >= 0 ? Split.values()[this.stats.bestSplit].name() : "aucun";
+		int bestIndex = Math.max(-1, Math.min(Split.values().length - 1, this.stats.bestSplit));
+		String best = bestIndex >= 0 ? Split.values()[bestIndex].name() : "aucun";
 		Classroom.updateBoard(this.classroom,
 				"Run #" + this.stats.runNumber + " - " + this.stats.deaths + " morts - meilleur split : " + best);
 	}

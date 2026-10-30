@@ -17,6 +17,8 @@ import net.minecraft.world.entity.LivingEntity;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import org.jspecify.annotations.Nullable;
 import java.util.UUID;
 
 /**
@@ -49,6 +51,10 @@ public final class TeamSync {
 
 	private final SharedVitals vitals = new SharedVitals();
 	private final Map<UUID, Float> beforeHit = new HashMap<>();
+	/** Synced members of the previous tick: anybody else is a newcomer and does not take part in the merge. */
+	private Set<UUID> previousTeam = Set.of();
+	private @Nullable UUID carrier;
+	private @Nullable ServerPlayer carrierPlayer;
 
 	/** Registers the Fabric events; everything is routed to the current {@link RunManager}. */
 	public static void registerEvents() {
@@ -97,6 +103,9 @@ public final class TeamSync {
 		} else {
 			apply(player, this.vitals.baseline());
 		}
+		java.util.HashSet<UUID> known = new java.util.HashSet<>(this.previousTeam);
+		known.add(player.getUUID());
+		this.previousTeam = known;
 	}
 
 	/** End of server tick: propagates the shared values. Skipped while someone is dying. */
@@ -106,14 +115,45 @@ public final class TeamSync {
 		if (team.isEmpty() || team.stream().anyMatch(LivingEntity::isDeadOrDying)) {
 			return;
 		}
-		Vitals shared = this.vitals.resolve(team.stream().map(TeamSync::read).toList());
+		Set<UUID> ids = team.stream().map(ServerPlayer::getUUID).collect(java.util.stream.Collectors.toSet());
+		List<ServerPlayer> established = team.stream().filter(p -> this.previousTeam.contains(p.getUUID())).toList();
+		if (established.isEmpty()) {
+			// nobody was synced before (first tick, or everybody was creative): the first player defines the value
+			established = team.subList(0, 1);
+			this.vitals.reset(read(established.getFirst()));
+		}
+		this.carrier = NaturalCarrier.select(established.stream().map(ServerPlayer::getUUID).toList(), this.carrier);
+		this.carrierPlayer = established.stream().filter(p -> p.getUUID().equals(this.carrier)).findFirst().orElse(null);
+		// newcomers (creative/spectator back to survival) are left out of the merge and receive the common value
+		Vitals shared = this.vitals.resolve(established.stream().map(TeamSync::read).toList());
 		for (ServerPlayer player : team) {
 			apply(player, shared);
 		}
+		this.previousTeam = ids;
+	}
+
+	/** False for non-carrier members: their vanilla hunger and natural regeneration are skipped (see NaturalCarrier). */
+	public static boolean mayRunNaturalLogic(ServerPlayer player) {
+		return exhaustionTarget(player) == null;
+	}
+
+	/** The carrier to charge with this player's exhaustion, or null when the player is the carrier or not synced. */
+	public static @Nullable ServerPlayer exhaustionTarget(ServerPlayer player) {
+		RunManager run = RunManager.get();
+		if (run == null || !isMember(player)) {
+			return null;
+		}
+		TeamSync sync = run.team();
+		ServerPlayer carrier = sync.carrierPlayer;
+		if (carrier == null || carrier == player || carrier.hasDisconnected() || !isSynced(carrier)
+				|| !sync.previousTeam.contains(player.getUUID())) {
+			return null;
+		}
+		return carrier;
 	}
 
 	private boolean allowDamage(RunManager run, ServerPlayer player) {
-		if (run.isEnding()) {
+		if (run.isEnding() || !run.isStarted()) {
 			return false;
 		}
 		if (isMember(player)) {

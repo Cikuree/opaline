@@ -6,6 +6,9 @@ import com.google.gson.JsonParseException;
 import org.slf4j.Logger;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -29,6 +32,7 @@ public final class StatsStore {
 			if (stats == null) {
 				throw new JsonParseException("empty file");
 			}
+			stats.sanitize();
 			return stats;
 		} catch (IOException | JsonParseException e) {
 			Path backup = file.resolveSibling(file.getFileName() + ".bak");
@@ -45,7 +49,14 @@ public final class StatsStore {
 	public static void save(Path file, RunStats stats) throws IOException {
 		Files.createDirectories(file.toAbsolutePath().getParent());
 		Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-		Files.writeString(tmp, GSON.toJson(stats), StandardCharsets.UTF_8);
+		try (FileChannel channel = FileChannel.open(tmp, StandardOpenOption.WRITE, StandardOpenOption.CREATE,
+				StandardOpenOption.TRUNCATE_EXISTING)) {
+			ByteBuffer data = ByteBuffer.wrap(GSON.toJson(stats).getBytes(StandardCharsets.UTF_8));
+			while (data.hasRemaining()) {
+				channel.write(data);
+			}
+			channel.force(true);
+		}
 		try {
 			Files.move(tmp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
 		} catch (AtomicMoveNotSupportedException e) {

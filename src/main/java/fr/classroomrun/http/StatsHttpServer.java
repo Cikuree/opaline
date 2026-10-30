@@ -17,8 +17,8 @@ public final class StatsHttpServer {
 	private final HttpServer server;
 	private volatile StatsSnapshot snapshot;
 
-	public StatsHttpServer(int port) throws IOException {
-		this.server = HttpServer.create(new InetSocketAddress(port), 0);
+	public StatsHttpServer(String bind, int port) throws IOException {
+		this.server = HttpServer.create(new InetSocketAddress(bind == null || bind.isBlank() ? "0.0.0.0" : bind, port), 0);
 		this.server.createContext("/stats", this::handle);
 		this.server.setExecutor(Executors.newSingleThreadExecutor(r -> {
 			Thread t = new Thread(r, "classroomrun-http");
