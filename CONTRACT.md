@@ -1,0 +1,67 @@
+# Contrat réseau serveur → client
+
+Package `fr.classroomrun.net` (source set `main`, partagé serveur et client). **Seul l'orchestrateur modifie ce package et ce fichier.** Un agent qui a besoin d'un changement le demande dans son rapport.
+
+Enregistrement : `ClassroomRunNetworking.registerPayloads()`, appelé une fois dans `ClassroomRun.onInitialize()` via `PayloadTypeRegistry.clientboundPlay().register(TYPE, CODEC)`.
+Envoi serveur : `ServerPlayNetworking.send(ServerPlayer, payload)`.
+Réception client : `ClientPlayNetworking.registerGlobalReceiver(TYPE, (payload, context) -> ...)`.
+
+## Splits — `Split`
+
+Ordre d'affichage, l'ordinal sert d'index. `icon` est le chemin d'un item vanilla (`minecraft:<icon>`).
+
+| # | Split | Icône |
+|---|---|---|
+| 0 | PICKAXE | wooden_pickaxe |
+| 1 | IRON_INGOT | iron_ingot |
+| 2 | DIAMOND | diamond |
+| 3 | NETHER_PORTAL (briquet) | flint_and_steel |
+| 4 | NETHER_WART (forteresse) | nether_wart |
+| 5 | BLAZE_ROD | blaze_rod |
+| 6 | ENDER_EYE | ender_eye |
+| 7 | ENTER_END | end_stone |
+| 8 | KILL_DRAGON | dragon_head |
+
+## `RunStatePayload` — `classroomrun:run_state`
+
+| Champ | Type | Sens |
+|---|---|---|
+| totalTimeMs | long | chrono cumulé de toutes les runs, en ms, au moment de l'envoi |
+| running | boolean | le chrono tourne ; le client extrapole avec `Util.getMillis()` |
+| deaths | int | morts totales de l'équipe |
+| runNumber | int | numéro de la run en cours (à partir de 1) |
+| currentSplit | int | index du prochain split ; `Split.values().length` quand la run est finie |
+| reachedSplits | int | masque de bits (`Split.bit()`) des splits atteints |
+
+Envoyé : à la connexion d'un joueur, à chaque split, mort, démarrage et reset de run, et toutes les 5 s quand le chrono tourne.
+
+## `DamagePayload` — `classroomrun:damage`
+
+| Champ | Type | Sens |
+|---|---|---|
+| player | UUID | joueur réellement touché (source du dégât partagé) |
+| hearts | float | dégâts réellement subis, en cœurs (`damage / 2`), > 0 |
+
+Envoyé à tous les joueurs, **une fois par coup**, pour le joueur touché uniquement. La propagation de la vie aux autres joueurs ne génère pas de payload. Le cumul « même joueur re-touché en moins de 0,5 s » est fait côté client.
+
+## `HealPayload` — `classroomrun:heal`
+
+| Champ | Type | Sens |
+|---|---|---|
+| player | UUID | joueur dont le soin a déclenché le soin partagé |
+| hearts | float | vie réellement gagnée, en cœurs, > 0 |
+
+La régénération naturelle n'est pas envoyée (seulement potions, pommes, totem, etc.).
+
+## `DeathPayload` — `classroomrun:death`
+
+| Champ | Type | Sens |
+|---|---|---|
+| player | UUID | joueur qui a reçu le coup fatal |
+| cause | String | id du type de dégât, ex. `minecraft:fall` |
+| message | String | message de mort vanilla en texte brut |
+| attacker | Optional&lt;String&gt; | nom du joueur ou id du type d'entité attaquante |
+| pos | BlockPos | position de la mort |
+| dimension | ResourceKey&lt;Level&gt; | dimension (peut être une dimension Fantasy) |
+
+Envoyé une seule fois par run terminée, avant le reset.
