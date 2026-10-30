@@ -63,7 +63,7 @@ def build():
         for y in (2, 3):
             put(x, y, D - 1, "glass_pane")
     # porte double sud, bandeau rouge "sortie" au-dessus
-    for x, hinge in ((7, "left"), (8, "right")):
+    for x, hinge in ((7, "right"), (8, "left")):
         put(x, 1, D - 1, "oak_door", facing="south", half="lower", hinge=hinge, open="false")
         put(x, 2, D - 1, "oak_door", facing="south", half="upper", hinge=hinge, open="false")
     for x in range(6, 10):
@@ -251,8 +251,8 @@ def check(path=OUT):
     names = [str(p["Name"]) for p in f["palette"]]
     chest_ids = {i for i, n in enumerate(names) if n == "minecraft:chest"}
     chests = sum(1 for b in f["blocks"] if int(b["state"]) in chest_ids)
-    if chests < 4:
-        errs.append(f"coffres : {chests} < 4")
+    if chests != len(CHEST_POSITIONS) or chests < N_PLAYERS:
+        errs.append(f"coffres : {chests}, attendu {len(CHEST_POSITIONS)} (>= {N_PLAYERS})")
     ents = f["entities"]
     tags = lambda e: [str(t) for t in e["nbt"].get("Tags", [])]
     spawns = [e for e in ents if "classroomrun:spawn" in tags(e)]
