@@ -42,7 +42,8 @@ def main():
     cfg = f"InstanceType=OneSix\nname={name}\nJoinServerOnLaunch=false\n"
 
     a.out.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(a.out, "w", zipfile.ZIP_DEFLATED) as z:
+    tmp = a.out.with_name(a.out.name + ".part")
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("instance.cfg", cfg)
         z.writestr("mmc-pack.json", json.dumps(mmc, indent=4))
         for f in sorted((ROOT / "pack" / "mods").glob("*.pw.toml")):
@@ -54,6 +55,7 @@ def main():
             print("mod:", m["filename"])
         z.write(a.jar, f".minecraft/mods/{a.jar.name}")
         print("mod:", a.jar.name)
+    tmp.replace(a.out)
     print("ecrit:", a.out)
 
 

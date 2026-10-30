@@ -14,6 +14,10 @@ jobs:
           distribution: temurin
           java-version: 25
           cache: gradle
+      - name: Verifier version == tag
+        run: |
+          v=$(sed -n 's/^version=//p' gradle.properties | tr -d '')
+          [ "${GITHUB_REF_NAME#v}" = "$v" ] || { echo "tag $GITHUB_REF_NAME != version $v"; exit 1; }
       - run: ./gradlew build
       - name: Instance Prism
         run: |
