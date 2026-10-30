@@ -1,0 +1,41 @@
+# Gradle / Loom
+build/
+.gradle/
+run/
+out/
+*.class
+
+# Rust launcher
+launcher/target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Worktrees des agents
+.worktrees/
+
+# Secrets / tokens (ne jamais committer)
+*.token
+tokens.json
+*.secret
+.env
+.env.*
+
+# Mondes, replays, données de run
+world/
+worlds/
+saves/
+replay_recordings/
+replays/
+*.mcpr
+config/classroomrun/runs/
+logs/
+crash-reports/
+
+# Python
+__pycache__/
+.venv/
