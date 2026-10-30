@@ -42,7 +42,7 @@ Envoyé : à la connexion d'un joueur, à chaque split, mort, démarrage et rese
 | player | UUID | joueur réellement touché (source du dégât partagé) |
 | hearts | float | dégâts réellement subis, en cœurs (`damage / 2`), > 0 |
 
-Envoyé à tous les joueurs, **une fois par coup**, pour le joueur touché uniquement. La propagation de la vie aux autres joueurs ne génère pas de payload. Le cumul « même joueur re-touché en moins de 0,5 s » est fait côté client.
+Envoyé à tous les joueurs, **une fois par coup**, pour le joueur touché uniquement. La propagation de la vie aux autres joueurs ne génère pas de payload. Le cumul « même joueur re-touché en moins de 0,5 s » est fait côté client. Le coup fatal n'envoie pas de `DamagePayload` : il est suivi d'un `DeathPayload`.
 
 ## `HealPayload` — `classroomrun:heal`
 
