@@ -65,7 +65,7 @@ public final class TeamSync {
 		ServerLivingEntityEvents.AFTER_DAMAGE.register((entity, source, base, taken, blocked) -> {
 			RunManager run = RunManager.get();
 			if (run != null && entity instanceof ServerPlayer player) {
-				run.team().afterDamage(run, player);
+				run.team().afterDamage(run, player, source);
 			}
 		});
 		ServerLivingEntityEvents.ALLOW_DEATH.register((entity, source, amount) -> {
@@ -179,7 +179,7 @@ public final class TeamSync {
 		return true;
 	}
 
-	private void afterDamage(RunManager run, ServerPlayer player) {
+	private void afterDamage(RunManager run, ServerPlayer player, DamageSource source) {
 		Float before = this.beforeHit.remove(player.getUUID());
 		if (before == null) {
 			return;
@@ -187,6 +187,7 @@ public final class TeamSync {
 		float taken = before - (player.getHealth() + player.getAbsorptionAmount());
 		if (taken > EPSILON) {
 			broadcast(run.server(), new DamagePayload(player.getUUID(), taken / 2.0F));
+			run.journal().onDamage(player, source, taken);
 		}
 	}
 
@@ -222,6 +223,7 @@ public final class TeamSync {
 		RunManager run = RunManager.get();
 		if (run != null && !naturalRegeneration && !run.isEnding() && isMember(player) && gained > EPSILON) {
 			broadcast(run.server(), new HealPayload(player.getUUID(), gained / 2.0F));
+			run.journal().onHeal(player, gained);
 		}
 	}
 
