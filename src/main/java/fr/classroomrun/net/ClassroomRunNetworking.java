@@ -4,7 +4,7 @@ import fr.classroomrun.ClassroomRun;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.resources.Identifier;
 
-/** Registers the server → client payload types. Called once from the common entrypoint. */
+/** Registers the payload types (both directions). Called once from the common entrypoint. */
 public final class ClassroomRunNetworking {
 	private ClassroomRunNetworking() {
 	}
@@ -18,5 +18,7 @@ public final class ClassroomRunNetworking {
 		PayloadTypeRegistry.clientboundPlay().register(DamagePayload.TYPE, DamagePayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(HealPayload.TYPE, HealPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(DeathPayload.TYPE, DeathPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(HistoryPayload.TYPE, HistoryPayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(HistoryRequestPayload.TYPE, HistoryRequestPayload.CODEC);
 	}
 }

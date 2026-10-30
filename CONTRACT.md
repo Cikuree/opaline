@@ -65,3 +65,52 @@ La régénération naturelle n'est pas envoyée (seulement potions, pommes, tote
 | dimension | ResourceKey&lt;Level&gt; | dimension (peut être une dimension Fantasy) |
 
 Envoyé une seule fois par run terminée, avant le reset.
+
+## Historique des morts (étape 2)
+
+### `HistoryRequestPayload` — `classroomrun:history_request` (client → serveur)
+
+| Champ | Type | Sens |
+|---|---|---|
+| runNumber | int | run à détailler, ou `-1` (`INDEX`) pour la liste des runs |
+
+Le serveur limite à une requête par seconde et par joueur, et ignore les autres.
+
+### `HistoryPayload` — `classroomrun:history` (serveur → client)
+
+| Champ | Type | Sens |
+|---|---|---|
+| runNumber | int | run demandée, ou `-1` pour l'index |
+| json | String (≤ 262 144 car.) | JSON d'index ou de détail, schémas ci-dessous |
+| httpPort | int | port HTTP du serveur pour télécharger les replays, `0` si désactivé |
+
+Index (`runNumber = -1`), runs triées de la plus récente à la plus ancienne, 200 au plus :
+
+```json
+{"runs": [
+  {"run": 20, "startedAt": "2026-10-30T18:00:00Z", "durationMs": 3600000,
+   "deaths": 1, "bestSplit": "ENDER_EYE", "finished": false}
+]}
+```
+
+Détail d'une run :
+
+```json
+{"run": 20, "startedAt": "2026-10-30T18:00:00Z",
+ "deaths": [{
+   "at": "2026-10-30T18:59:00Z",
+   "player": "uuid", "name": "Alex",
+   "cause": "minecraft:fall", "message": "Alex fell from a high place",
+   "attacker": null, "fatalBy": "Alex",
+   "pos": [12, 64, -30], "dimension": "classroomrun:run_20_overworld",
+   "replay": {"path": "<chemin relatif>.mcpr", "offsetMs": 3540000},
+   "health": [{"name": "Alex", "samples": [[-10000, 20.0], [-500, 6.0], [0, 0.0]]}]
+ }]}
+```
+
+- `replay` vaut `null` si la run n'a pas d'enregistrement.
+- `replay.path` est un chemin relatif opaque, téléchargeable via `GET http://<hôte du serveur>:<httpPort>/replay?path=<path url-encodé>`.
+- Le serveur ne sert que des chemins présents dans un journal, et répond `404` pour tout le reste.
+- `replay.offsetMs` est la position dans ce fichier.
+- `health[].samples` contient des paires `[ms relatif à la mort (≤ 0), vie]` sur les 10 s précédentes.
+- `fatalBy` est le joueur dont le coup a tué l'équipe.
