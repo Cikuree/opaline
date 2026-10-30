@@ -70,6 +70,12 @@ pub fn side_wanted(side: Option<&str>) -> bool {
     matches!(side.unwrap_or("both"), "client" | "both")
 }
 
+/// Hash d'un fichier texte du pack. Git sous Windows (autocrlf) convertit les fins de ligne en CRLF
+/// alors que packwiz hashe la version LF : on accepte l'une ou l'autre.
+fn text_matches(h: &Hash, text: &str) -> Result<bool> {
+    Ok(h.matches(&mut text.as_bytes())? || h.matches(&mut text.replace("\r\n", "\n").as_bytes())?)
+}
+
 pub fn parse_pack(pack_toml: &str) -> Result<(Versions, String, Hash)> {
     let p: PackToml = toml::from_str(pack_toml).context("pack.toml invalide")?;
     Ok((p.versions, p.index.file, Hash::new(&p.index.hash_format, &p.index.hash)?))
@@ -83,7 +89,7 @@ pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> R
     for f in idx.files.iter().filter(|f| f.metafile) {
         let fmt = f.hash_format.as_deref().or(idx.hash_format.as_deref()).unwrap_or("sha256");
         let text = read(&f.file)?;
-        if !Hash::new(fmt, &f.hash)?.matches(&mut text.as_bytes())? {
+        if !text_matches(&Hash::new(fmt, &f.hash)?, &text)? {
             bail!("hash de l'index invalide pour {}", f.file);
         }
         let m: MetaFile = toml::from_str(&text).with_context(|| format!("{} invalide", f.file))?;
@@ -109,7 +115,7 @@ pub fn load_pack(dir: &Path) -> Result<Pack> {
     };
     let (versions, index_file, index_hash) = parse_pack(&read_in("pack.toml")?)?;
     let index_text = read_in(&index_file)?;
-    if !index_hash.matches(&mut index_text.as_bytes())? {
+    if !text_matches(&index_hash, &index_text)? {
         bail!("hash de {index_file} différent de celui de pack.toml");
     }
     let mods = parse_index(&index_text, read_in)?;
@@ -152,6 +158,14 @@ mod tests {
         let names: Vec<_> = mods.iter().map(|m| m.filename.as_str()).collect();
         assert_eq!(names, ["a.jar", "c.jar"]);
         assert_eq!(mods[0].url, "http://h/a.jar");
+    }
+
+    #[test]
+    fn accepts_crlf_checkouts() {
+        let m = meta("a", "both");
+        let idx = index_for(&[("mods/a.pw.toml", m.clone())]);
+        let crlf = m.replace('\n', "\r\n");
+        assert_eq!(parse_index(&idx, |_| Ok(crlf.clone())).unwrap().len(), 1);
     }
 
     #[test]
