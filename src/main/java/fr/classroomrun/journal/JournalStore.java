@@ -2,14 +2,15 @@ package fr.classroomrun.journal;
 
 import org.jspecify.annotations.Nullable;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -19,12 +20,19 @@ import java.util.Set;
 
 /**
  * Reads {@code runs/<n>/journal.jsonl}. The index is rebuilt from the journals; a parsed journal is cached by
- * (size, mtime) so only the files that changed are read again. Thread-safe (HTTP and network threads).
+ * read offset, so a growing journal (the current run) is read incrementally, never again from the start. Thread-safe (HTTP and network threads).
  */
 public final class JournalStore {
 	public static final String FILE = "journal.jsonl";
 
-	private record Cached(long size, long mtime, JournalReader.Parsed parsed) {
+	private static final class Cached {
+		final JournalReader.Accumulator acc;
+		long offset;
+		JournalReader.Parsed parsed;
+
+		Cached(JournalReader.Accumulator acc) {
+			this.acc = acc;
+		}
 	}
 
 	private final Path runsDir;
@@ -60,26 +68,43 @@ public final class JournalStore {
 		return runs;
 	}
 
+	/**
+	 * Reads only what was appended since the last call (the journal is append-only), and only complete lines: a line
+	 * being written, or cut by a crash, stays unread. The result is an immutable snapshot, cached until the file grows.
+	 */
 	public synchronized JournalReader.@Nullable Parsed run(int run) {
 		Path file = journalFile(run);
 		try {
 			long size = Files.size(file);
-			long mtime = Files.getLastModifiedTime(file).toMillis();
 			Cached c = this.cache.get(run);
-			if (c != null && c.size() == size && c.mtime() == mtime) {
-				return c.parsed();
+			if (c == null || size < c.offset) { // new or replaced file
+				c = new Cached(new JournalReader.Accumulator(run));
+				this.cache.put(run, c);
 			}
-			List<String> lines = new ArrayList<>();
-			// InputStreamReader replaces malformed bytes (a multi-byte character cut by a crash) instead of failing
-			try (BufferedReader r = new BufferedReader(new InputStreamReader(Files.newInputStream(file), StandardCharsets.UTF_8))) {
-				String line;
-				while ((line = r.readLine()) != null) {
-					lines.add(line);
+			if (size > c.offset) {
+				try (SeekableByteChannel ch = Files.newByteChannel(file)) {
+					ch.position(c.offset);
+					ByteBuffer buf = ByteBuffer.allocate((int) Math.min(size - c.offset, 64L << 20));
+					while (buf.hasRemaining() && ch.read(buf) > 0) {
+						// fill
+					}
+					byte[] bytes = Arrays.copyOf(buf.array(), buf.position());
+					int end = bytes.length;
+					while (end > 0 && bytes[end - 1] != (byte) 10) {
+						end--;
+					}
+					// malformed bytes are replaced rather than failing (multi-byte character cut by a crash)
+					for (String line : new String(bytes, 0, end, StandardCharsets.UTF_8).split("\n")) {
+						c.acc.add(line);
+					}
+					c.offset += end;
+					c.parsed = null;
 				}
 			}
-			JournalReader.Parsed parsed = JournalReader.parse(run, lines);
-			this.cache.put(run, new Cached(size, mtime, parsed));
-			return parsed;
+			if (c.parsed == null) {
+				c.parsed = c.acc.snapshot();
+			}
+			return c.parsed;
 		} catch (IOException e) {
 			this.cache.remove(run);
 			return null;

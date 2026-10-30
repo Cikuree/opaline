@@ -2,6 +2,7 @@ package fr.classroomrun.client.history;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -12,9 +13,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** Downloads a replay from the server's HTTP endpoint. Blocking: call it off the render thread. */
 public final class ReplayDownloader {
+	/** A server that stays silent this long (headers or body) fails the download instead of blocking the thread. */
+	static final long IDLE_SECONDS = 30;
+
 	private ReplayDownloader() {
 	}
 
@@ -35,25 +43,59 @@ public final class ReplayDownloader {
 	 * @return {@code target}
 	 */
 	public static Path download(URI url, Path target) throws IOException, InterruptedException {
+		return download(url, target, IDLE_SECONDS);
+	}
+
+	static Path download(URI url, Path target, long idleSeconds) throws IOException, InterruptedException {
 		Files.createDirectories(target.toAbsolutePath().getParent());
 		Path part = target.resolveSibling(target.getFileName() + ".part");
-		HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-		HttpResponse<InputStream> response = client.send(HttpRequest.newBuilder(url).GET().build(),
-				HttpResponse.BodyHandlers.ofInputStream());
-		try (InputStream in = response.body()) {
-			if (response.statusCode() != 200) {
-				throw new IOException(response.statusCode() == 404 ? "replay introuvable sur le serveur (pas encore sauvegarde ?)"
-						: "HTTP " + response.statusCode());
+		AtomicLong lastProgress = new AtomicLong(System.nanoTime());
+		ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor(r -> {
+			Thread t = new Thread(r, "classroomrun-replay-watchdog");
+			t.setDaemon(true);
+			return t;
+		});
+		try (HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()) {
+			HttpResponse<InputStream> response = client.send(
+					HttpRequest.newBuilder(url).timeout(Duration.ofSeconds(idleSeconds)).GET().build(),
+					HttpResponse.BodyHandlers.ofInputStream());
+			try (InputStream in = response.body(); OutputStream out = Files.newOutputStream(part)) {
+				int status = response.statusCode();
+				if (status != 200) {
+					throw new IOException(switch (status) {
+						case 404 -> "replay introuvable sur le serveur";
+						case 503 -> "replay en cours d'enregistrement ou de sauvegarde, reessaie dans quelques secondes";
+						default -> "HTTP " + status;
+					});
+				}
+				// a stalled body: closing the stream makes the blocked read fail
+				watchdog.scheduleWithFixedDelay(() -> {
+					if (System.nanoTime() - lastProgress.get() > TimeUnit.SECONDS.toNanos(idleSeconds)) {
+						try {
+							in.close();
+						} catch (IOException ignored) {
+							// nothing more to do
+						}
+					}
+				}, 1, 1, TimeUnit.SECONDS);
+				long expected = response.headers().firstValueAsLong("Content-Length").orElse(-1);
+				byte[] buf = new byte[65536];
+				long copied = 0;
+				int n;
+				while ((n = in.read(buf)) > 0) {
+					out.write(buf, 0, n);
+					copied += n;
+					lastProgress.set(System.nanoTime());
+				}
+				if (expected >= 0 && copied != expected) {
+					throw new IOException("telechargement incomplet (" + copied + "/" + expected + " octets)");
+				}
 			}
-			long expected = response.headers().firstValueAsLong("Content-Length").orElse(-1);
-			long copied = Files.copy(in, part, StandardCopyOption.REPLACE_EXISTING);
-			if (expected >= 0 && copied != expected) {
-				Files.deleteIfExists(part);
-				throw new IOException("telechargement incomplet (" + copied + "/" + expected + " octets)");
-			}
-		} catch (IOException e) {
+		} catch (IOException | InterruptedException | RuntimeException e) {
 			Files.deleteIfExists(part);
 			throw e;
+		} finally {
+			watchdog.shutdownNow();
 		}
 		Files.move(part, target, StandardCopyOption.REPLACE_EXISTING);
 		return target;

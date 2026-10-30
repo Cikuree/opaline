@@ -12,7 +12,10 @@ public interface ReplayHook {
 	record Ref(String path, long offsetMs) {
 	}
 
-	/** Starts (once) the recording of this player for this run. */
+	/** True while the file at this path (relative, as in the journal) is being recorded or saved: do not serve it yet. Any thread. */
+	boolean isPending(String path);
+
+	/** Starts the recording of this player for this run; no-op if it is running, restarts it if it was stopped behind our back. */
 	void start(ServerPlayer player, int run);
 
 	/** Stops and saves this player's recording (asynchronous). */

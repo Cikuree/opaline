@@ -6,7 +6,6 @@ import net.casual.arcade.replay.io.ReplayFormat;
 import net.casual.arcade.replay.recorder.ReplayRecorder;
 import net.casual.arcade.replay.recorder.player.ReplayPlayerRecorder;
 import net.casual.arcade.replay.recorder.player.ReplayPlayerRecorders;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.server.level.ServerPlayer;
 import org.jspecify.annotations.Nullable;
 
@@ -16,6 +15,7 @@ import java.lang.invoke.MethodType;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -32,16 +32,31 @@ import java.util.concurrent.TimeUnit;
  */
 final class ServerReplayHook implements ReplayHook {
 	private static final int MARKER_COLOR = 0xFF5555;
-	private static final Path RECORDINGS = FabricLoader.getInstance().getGameDir().resolve("recordings");
 	/**
 	 * {@code ReplayRecorder.getRecordingLength()} returns a Kotlin {@code Duration}, an inline class: the JVM name is
 	 * mangled with a hash and cannot be written in Java, hence the method handle. Null if a ServerReplay update renames it.
 	 */
 	private static final @Nullable MethodHandle LENGTH = lengthHandle();
 
-	private final Map<UUID, ReplayPlayerRecorder> recorders = new HashMap<>();
+	/** Read by HTTP threads through {@link #isPending}. */
+	private final Map<UUID, ReplayPlayerRecorder> recorders = new ConcurrentHashMap<>();
 	private final Map<UUID, Long> startNanos = new HashMap<>();
 	private final List<CompletableFuture<Long>> saving = new ArrayList<>();
+
+	@Override
+	public boolean isPending(String path) {
+		for (ReplayPlayerRecorder r : this.recorders.values()) {
+			if (!r.getStopped() && relative(r).equals(path)) {
+				return true;
+			}
+		}
+		for (ReplayPlayerRecorder r : ReplayPlayerRecorders.closing()) { // being saved
+			if (relative(r).equals(path)) {
+				return true;
+			}
+		}
+		return false;
+	}
 
 	private static @Nullable MethodHandle lengthHandle() {
 		try {
@@ -56,16 +71,26 @@ final class ServerReplayHook implements ReplayHook {
 	@Override
 	public void start(ServerPlayer player, int run) {
 		UUID id = player.getUUID();
-		if (this.recorders.containsKey(id) || ReplayPlayerRecorders.has(id, ReplayFormat.ReplayMod)) {
+		ReplayPlayerRecorder existing = this.recorders.get(id);
+		if (existing != null && !existing.getStopped()) {
+			return;
+		}
+		if (existing != null) {
+			// stopped by arcade itself (max_duration / max_file_size): its file is saved by arcade, record a new one
+			this.recorders.remove(id);
+			ClassroomRun.LOGGER.info("Replay recording of {} was stopped by ServerReplay, restarting it", player.getGameProfile().name());
+		}
+		if (ReplayPlayerRecorders.has(id, ReplayFormat.ReplayMod)) {
 			return;
 		}
 		try {
-			Path dir = RECORDINGS.resolve("classroomrun").resolve("run_" + run).resolve(id.toString());
+			Path dir = JournalService.recordingsRoot().resolve("classroomrun").resolve("run_" + run).resolve(id.toString());
 			ReplayPlayerRecorder recorder = ReplayPlayerRecorders.create(player, dir, ReplayFormat.ReplayMod,
 					ServerReplay.getConfig().createSettings());
 			if (recorder.start(ReplayRecorder.StartingMode.Start)) {
 				this.recorders.put(id, recorder);
 				this.startNanos.put(id, System.nanoTime());
+				ClassroomRun.LOGGER.info("Replay recording started for {}: {}", player.getGameProfile().name(), relative(recorder));
 			}
 		} catch (RuntimeException e) {
 			ClassroomRun.LOGGER.warn("Cannot start the replay recording of {}: {}", player.getGameProfile().name(), e.toString());
@@ -84,7 +109,17 @@ final class ServerReplayHook implements ReplayHook {
 			return; // already stopped (ServerReplay closes the recorder of a player who disconnects)
 		}
 		try {
-			this.saving.add(recorder.stop(true));
+			this.saving.removeIf(CompletableFuture::isDone);
+			ClassroomRun.LOGGER.info("Replay recording stopped, saving {}", relative(recorder));
+			CompletableFuture<Long> future = recorder.stop(true);
+			future.whenComplete((size, error) -> {
+				if (error == null) {
+					ClassroomRun.LOGGER.info("Replay saved: {} ({} bytes)", relative(recorder), size);
+				} else {
+					ClassroomRun.LOGGER.warn("Replay not saved: {}: {}", relative(recorder), error.toString());
+				}
+			});
+			this.saving.add(future);
 		} catch (RuntimeException e) {
 			ClassroomRun.LOGGER.warn("Cannot stop the replay recording {}: {}", recorder.getName(), e.toString());
 		}
@@ -133,7 +168,7 @@ final class ServerReplayHook implements ReplayHook {
 	/** The file this recorder produces: {@code location} is the working path, the saved file adds {@code .mcpr}. */
 	private static String relative(ReplayRecorder recorder) {
 		Path location = recorder.getLocation();
-		return RECORDINGS.toAbsolutePath().normalize().relativize(location.toAbsolutePath().normalize())
+		return JournalService.recordingsRoot().toAbsolutePath().normalize().relativize(location.toAbsolutePath().normalize())
 				.toString().replace('\\', '/') + ".mcpr";
 	}
 

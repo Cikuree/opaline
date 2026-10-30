@@ -8,7 +8,9 @@ import fr.classroomrun.client.history.HistoryModel.Series;
 import fr.classroomrun.net.HistoryRequestPayload;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.network.chat.Component;
 
@@ -155,7 +157,7 @@ public final class HistoryScreen extends Screen {
 		}
 		Death death = selected();
 		if (death != null && death.replay() != null && HistoryClient.replayModLoaded() && HistoryClient.httpPort() > 0) {
-			Button b = addRenderableWidget(Button.builder(Component.literal("Voir le replay"), btn -> startReplay(death))
+			Button b = addRenderableWidget(Button.builder(Component.literal("Voir le replay"), btn -> confirmReplay(death))
 					.bounds(this.width / 2 - 75, this.height - 56, 150, 20).build());
 			b.active = !this.downloading;
 		}
@@ -168,24 +170,35 @@ public final class HistoryScreen extends Screen {
 
 	// ---------------------------------------------------------------- replay
 
+	/**
+	 * Host of the HTTP endpoint: the remote address of the live connection first (what we really reached), the server
+	 * list entry as last resort. Behind a TCP proxy or tunnel that address is the proxy's, which usually does not
+	 * forward the HTTP port: the download then fails with an error shown to the player.
+	 */
 	private String serverHost() {
-		ServerData data = this.minecraft.getCurrentServer();
-		if (data != null) {
-			return HistoryModel.host(data.ip);
-		}
 		if (this.minecraft.getConnection() != null) {
 			SocketAddress a = this.minecraft.getConnection().getConnection().getRemoteAddress();
 			if (a instanceof InetSocketAddress inet) {
 				return inet.getHostString();
 			}
 		}
-		return "localhost"; // integrated server
+		ServerData data = this.minecraft.getCurrentServer();
+		return data != null ? HistoryModel.host(data.ip) : "localhost"; // integrated server
 	}
 
-	private void startReplay(Death death) {
+	private void confirmReplay(Death death) {
 		if (this.downloading || death.replay() == null) {
 			return;
 		}
+		this.minecraft.gui.setScreen(new ConfirmScreen(yes -> {
+			this.minecraft.gui.setScreen(this);
+			if (yes) {
+				startReplay(death);
+			}
+		}, Component.literal("Voir le replay"), Component.literal("Tu vas quitter le serveur pour voir le replay.")));
+	}
+
+	private void startReplay(Death death) {
 		this.downloading = true;
 		this.replayStatus = "Telechargement du replay...";
 		rebuildWidgets();
@@ -194,21 +207,31 @@ public final class HistoryScreen extends Screen {
 		Path target = this.minecraft.gameDirectory.toPath().resolve("replay_recordings").resolve("classroomrun")
 				.resolve(ReplayDownloader.fileName(ref.path()));
 		Thread t = new Thread(() -> {
+			Path file = null;
+			String error = null;
 			try {
-				Path file = ReplayDownloader.download(url, target);
-				this.minecraft.execute(() -> {
-					try {
-						ReplayModBridge.open(file, ref.offsetMs());
-						this.replayStatus = "";
-					} catch (Exception | LinkageError e) {
-						this.replayStatus = "Ouverture impossible : " + e.getMessage();
-					}
-					finishDownload();
-				});
+				file = ReplayDownloader.download(url, target);
 			} catch (Exception e) {
-				this.replayStatus = "Echec du telechargement : " + e.getMessage();
-				this.minecraft.execute(this::finishDownload);
+				error = "Echec du telechargement : " + e.getMessage();
 			}
+			Path downloaded = file;
+			String failure = error;
+			this.minecraft.execute(() -> {
+				if (failure != null) {
+					this.replayStatus = failure;
+					finishDownload();
+					return;
+				}
+				try {
+					this.minecraft.disconnectWithProgressScreen(); // startReplay does not leave the server by itself
+					ReplayModBridge.open(downloaded, ref.offsetMs());
+					this.replayStatus = "";
+				} catch (Exception | LinkageError e) {
+					this.replayStatus = "Ouverture impossible : " + e.getMessage();
+					this.minecraft.gui.setScreen(new TitleScreen()); // already disconnected
+				}
+				finishDownload();
+			});
 		}, "classroomrun-replay-download");
 		t.setDaemon(true);
 		t.start();

@@ -43,7 +43,6 @@ public final class JournalService {
 
 	private final MinecraftServer server;
 	private final JournalStore store;
-	private final Path recordingsRoot = FabricLoader.getInstance().getGameDir().resolve("recordings");
 	private final LongSupplier chronoMs;
 	private final HealthBuffer buffer = new HealthBuffer();
 	private final RateLimiter limiter = new RateLimiter(1000);
@@ -57,6 +56,7 @@ public final class JournalService {
 	private int run;
 	private boolean started;
 	private boolean ended;
+	private int ticks;
 	private volatile int httpPort;
 
 	public JournalService(MinecraftServer server, Path runsDir, LongSupplier chronoMs) {
@@ -64,6 +64,11 @@ public final class JournalService {
 		this.store = new JournalStore(runsDir);
 		this.chronoMs = chronoMs;
 		this.replay = createReplayHook();
+	}
+
+	/** Root of every replay path in the journals: {@code <game dir>/recordings}. */
+	static Path recordingsRoot() {
+		return FabricLoader.getInstance().getGameDir().resolve("recordings");
 	}
 
 	/** The ServerReplay class is only named here, behind the mod check, so it is never loaded without the mod. */
@@ -107,7 +112,8 @@ public final class JournalService {
 	/** Makes the replay files of the journals downloadable through {@code GET /replay} and announces the port to clients. */
 	public void attachHttp(StatsHttpServer http, int port) {
 		this.httpPort = port;
-		http.setReplayResolver(raw -> ReplayPaths.resolve(this.store.replayPaths(), this.recordingsRoot, raw));
+		http.setReplayResolver(raw -> ReplayPaths.resolve(this.store.replayPaths(), recordingsRoot(), raw));
+		http.setReplayPending(raw -> this.replay != null && this.replay.isPending(raw));
 	}
 
 	// ---------------------------------------------------------------- run life cycle
@@ -121,6 +127,7 @@ public final class JournalService {
 		this.buffer.clear();
 		try {
 			this.journal = new RunJournal(this.store.journalFile(runNumber));
+			ClassroomRun.LOGGER.info("Journal opened: {}", this.store.journalFile(runNumber));
 		} catch (IOException e) {
 			this.journal = null;
 			ClassroomRun.LOGGER.warn("Cannot open the journal of run #{}: {}", runNumber, e.getMessage());
@@ -183,6 +190,7 @@ public final class JournalService {
 		if (this.journal != null) {
 			try {
 				this.journal.close();
+				ClassroomRun.LOGGER.info("Journal closed: run #{}", this.run);
 			} catch (IOException e) {
 				ClassroomRun.LOGGER.warn("Cannot close the journal: {}", e.getMessage());
 			}
@@ -198,6 +206,11 @@ public final class JournalService {
 			return;
 		}
 		long now = Util.getMillis();
+		if (this.replay != null && ++this.ticks % 100 == 0) {
+			for (ServerPlayer p : players) {
+				startRecording(p); // no-op unless ServerReplay stopped the recorder (duration / size limits)
+			}
+		}
 		for (ServerPlayer p : players) {
 			if (TeamSync.isMember(p)) {
 				this.buffer.record(p.getUUID(), p.getGameProfile().name(), now, p.getHealth());
