@@ -137,6 +137,23 @@ public final class TeamSync {
 		return exhaustionTarget(player) == null;
 	}
 
+	/**
+	 * Adds the exhaustion of a member to the carrier, divided by the team size, so the team's hunger equals that of one
+	 * player doing everything.
+	 *
+	 * @return true if handled (vanilla must then not add it)
+	 */
+	public static boolean shareExhaustion(ServerPlayer player, float amount) {
+		RunManager run = RunManager.get();
+		if (run == null || !isMember(player) || !run.team().previousTeam.contains(player.getUUID())) {
+			return false;
+		}
+		ServerPlayer carrier = exhaustionTarget(player);
+		(carrier != null ? carrier : player).getFoodData()
+				.addExhaustion(NaturalCarrier.share(amount, run.team().previousTeam.size()));
+		return true;
+	}
+
 	/** The carrier to charge with this player's exhaustion, or null when the player is the carrier or not synced. */
 	public static @Nullable ServerPlayer exhaustionTarget(ServerPlayer player) {
 		RunManager run = RunManager.get();

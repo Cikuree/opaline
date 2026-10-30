@@ -17,9 +17,7 @@ public abstract class PlayerMixin {
 	@Inject(method = "causeFoodExhaustion", at = @At("HEAD"), cancellable = true)
 	private void classroomrun$shareExhaustion(float amount, CallbackInfo ci) {
 		if ((Object) this instanceof ServerPlayer player) {
-			ServerPlayer carrier = TeamSync.exhaustionTarget(player);
-			if (carrier != null) {
-				carrier.getFoodData().addExhaustion(amount);
+			if (TeamSync.shareExhaustion(player, amount)) {
 				ci.cancel();
 			}
 		}

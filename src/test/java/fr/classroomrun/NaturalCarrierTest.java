@@ -28,6 +28,12 @@ class NaturalCarrierTest {
 	}
 
 	@Test
+	void exhaustionIsDividedByTeamSize() {
+		assertEquals(0.5f, NaturalCarrier.share(2f, 4));
+		assertEquals(2f, NaturalCarrier.share(2f, 0));
+	}
+
+	@Test
 	void dragonKillFinishesTheRunEvenWithSkippedSplits() {
 		RunStats s = new RunStats();
 		s.markSplit(Split.KILL_DRAGON);

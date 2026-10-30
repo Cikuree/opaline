@@ -16,6 +16,10 @@ public final class RunCommand {
 				.requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
 				.then(Commands.literal("start").executes(ctx -> {
 					RunManager run = RunManager.get();
+					if (run != null && run.stats().finished()) {
+						ctx.getSource().sendFailure(Component.literal("Run terminee, faites /run reset"));
+						return 0;
+					}
 					if (run == null || !run.startRun()) {
 						ctx.getSource().sendFailure(Component.literal("La run est deja demarree"));
 						return 0;

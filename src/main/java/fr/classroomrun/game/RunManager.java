@@ -56,6 +56,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * {@code deathResetDelayTicks} later the reset happens at the end of a server tick.
  */
 public final class RunManager {
+	private static final String TOKEN_PREFIX = "classroomrun:run_";
 	private static @Nullable RunManager instance;
 
 	private final MinecraftServer server;
@@ -70,6 +71,8 @@ public final class RunManager {
 	private Classroom.@Nullable Placed classroom;
 	/** False before /run start (waiting in the classroom: no damage, no split probing). */
 	private boolean started;
+	/** Incremented at each reset and each /run start; with the run number it identifies the "clean slate" of a player. */
+	private int epoch;
 	/** Chrono running and splits probed: started and not finished. */
 	private boolean active;
 	private int resetCountdown = -1;
@@ -195,9 +198,14 @@ public final class RunManager {
 		this.started = true;
 		this.active = true;
 		this.dirty = true;
-		// splits start from zero: vanilla advancements earned while waiting must not count
-		for (ServerPlayer player : this.server.getPlayerList().getPlayers()) {
-			revokeAdvancements(player);
+		this.epoch++;
+		// everybody starts equipped with nothing, in the classroom, with no advancement
+		for (ServerPlayer player : List.copyOf(this.server.getPlayerList().getPlayers())) {
+			if (TeamSync.isMember(player)) {
+				resetPlayer(player);
+			} else {
+				moveToClassroom(player);
+			}
 		}
 		broadcastState();
 		return true;
@@ -241,6 +249,7 @@ public final class RunManager {
 		this.worlds = fresh;
 		this.classroom = placed;
 		this.resetCountdown = -1;
+		this.epoch++;
 		if (!this.active) {
 			this.started = false; // a finished (or never started) run waits for /run start again
 		}
@@ -261,7 +270,13 @@ public final class RunManager {
 	}
 
 	/** Teleports to the classroom spawn and wipes inventory, XP, effects, advancements; full health and food. */
+	private String token() {
+		return TOKEN_PREFIX + this.stats.runNumber + "_" + this.epoch;
+	}
+
 	private void resetPlayer(ServerPlayer player) {
+		player.entityTags().removeIf(t -> t.startsWith(TOKEN_PREFIX));
+		player.addTag(token());
 		player.closeContainer(); // crafting grid and open container are returned before the wipe
 		player.containerMenu.setCarried(ItemStack.EMPTY);
 		moveToClassroom(player);
@@ -365,8 +380,10 @@ public final class RunManager {
 		if (player.hasDisconnected()) {
 			return;
 		}
-		if (this.worlds != null && !this.worlds.contains(player.level())) {
-			resetPlayer(player); // reconnecting after a reset: same clean slate as the team
+		if (TeamSync.isMember(player) && !player.entityTags().contains(token())) {
+			resetPlayer(player); // offline during a reset or /run start: same clean slate as the team
+		} else if (this.worlds != null && !this.worlds.contains(player.level())) {
+			moveToClassroom(player); // creative/spectator: moved only
 		}
 		this.team.onJoin(this.server, player);
 		refreshBoard();

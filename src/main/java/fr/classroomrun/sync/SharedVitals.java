@@ -16,7 +16,9 @@ import java.util.List;
  *   <li>otherwise the baseline is kept.</li>
  * </ol>
  * Hunger and natural regeneration are not multiplied by the team size: only the {@link NaturalCarrier} player runs
- * them, the others get its values through this sharing. Players who just became members (creative or spectator to
+ * them, the others get its values through this sharing. Exact hunger rule: every member action exhaustion (the
+ * carrier's own included) is divided by the number of synced members and charged to the carrier
+ * ({@link NaturalCarrier#share}), so a team of N doing the same thing starves like one solo player. Players who just became members (creative or spectator to
  * survival) do not take part in the merge of that tick, they receive the common value instead.
  * A loss and a gain on the same value in the same tick: the loss wins (the gain is lost). The shared value is applied
  * with silent setters (no hurt event), so the propagation never re-triggers the synchronisation.

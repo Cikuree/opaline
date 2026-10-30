@@ -15,6 +15,11 @@ public final class NaturalCarrier {
 	private NaturalCarrier() {
 	}
 
+	/** Exhaustion charged to the carrier for one member's action: amount divided by the team size (at least 1). */
+	public static float share(float amount, int teamSize) {
+		return amount / Math.max(1, teamSize);
+	}
+
 	/**
 	 * @param team    UUIDs of the synced members
 	 * @param current the current carrier, may be {@code null} or no longer in the team
