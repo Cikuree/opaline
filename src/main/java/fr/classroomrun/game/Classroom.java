@@ -121,7 +121,7 @@ public final class Classroom {
 		return new Placed(level, spawn, board);
 	}
 
-	/** Sets the board text: "Run #N - M morts - meilleur split : name". */
+	/** Sets the board text (several lines, wrapped by the display's line_width). */
 	public static void updateBoard(@Nullable Placed placed, String text) {
 		if (placed == null || placed.board() == null || placed.board().isRemoved()) {
 			return;

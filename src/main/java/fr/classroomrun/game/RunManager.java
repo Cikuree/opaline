@@ -448,11 +448,16 @@ public final class RunManager {
 		}
 	}
 
+	/** Board labels, indexed like {@link Split}. */
+	private static final String[] SPLIT_LABELS = {"pioche", "lingot de fer", "diamant", "portail du Nether",
+			"verrue du Nether", "bâton de blaze", "œil de l'Ender", "entrée dans l'End", "Ender Dragon tué"};
+
 	private void refreshBoard() {
 		int bestIndex = Math.max(-1, Math.min(Split.values().length - 1, this.stats.bestSplit));
-		String best = bestIndex >= 0 ? Split.values()[bestIndex].name() : "aucun";
-		Classroom.updateBoard(this.classroom,
-				"Run #" + this.stats.runNumber + " - " + this.stats.deaths + " morts - meilleur split : " + best);
+		String best = bestIndex >= 0 ? SPLIT_LABELS[bestIndex] : "aucun";
+		int deaths = this.stats.deaths;
+		Classroom.updateBoard(this.classroom, "Run #" + this.stats.runNumber + "\n" + deaths + (deaths > 1 ? " morts" : " mort")
+				+ "\nMeilleur split : " + best);
 	}
 
 	private void publishSnapshot() {

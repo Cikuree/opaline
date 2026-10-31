@@ -186,13 +186,13 @@ def entities():
         "text": Compound({"text": String("Classroom Run"), "color": String("white"), "bold": Byte(1)}),
         "billboard": String("fixed"),
         "alignment": String("center"),
-        "line_width": Int(400),
+        "line_width": Int(200),
         "background": Int(0),
         "Rotation": List[Float]([Float(0.0), Float(0.0)]),
         "transformation": Compound({
             "translation": List[Float]([Float(0), Float(0), Float(0)]),
             "left_rotation": List[Float]([Float(0), Float(0), Float(0), Float(1)]),
-            "scale": List[Float]([Float(4), Float(4), Float(4)]),
+            "scale": List[Float]([Float(2), Float(2), Float(2)]),
             "right_rotation": List[Float]([Float(0), Float(0), Float(0), Float(1)]),
         }),
     })
@@ -210,7 +210,7 @@ def entities():
             "blockPos": List[Int]([Int(int(v // 1)) for v in pos]),
             "nbt": nbt,
         })
-    return [ent((7.5, 2.9, 1.02), board), ent((SPAWN[0] + .5, SPAWN[1], SPAWN[2] + .5), spawn),
+    return [ent((7.5, 2.75, 1.02), board), ent((SPAWN[0] + .5, SPAWN[1], SPAWN[2] + .5), spawn),
             ent((13.5, 4.5, 1.5), clock)]
 
 
