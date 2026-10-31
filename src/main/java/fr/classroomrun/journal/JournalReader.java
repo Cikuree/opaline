@@ -10,14 +10,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /** Reads a journal. Lines that are not a JSON object with an {@code e} field (e.g. cut by a crash) are skipped. */
 public final class JournalReader {
 	/** What the history needs from one journal. {@code deaths} are the raw death lines. */
-	public record Parsed(RunSummary summary, List<JsonObject> deaths, Set<String> replayPaths) {
+	public record Parsed(RunSummary summary, List<JsonObject> deaths) {
 	}
 
 	private JournalReader() {
@@ -58,7 +56,6 @@ public final class JournalReader {
 		private boolean finished;
 		private int bestSplit = -1;
 		private final List<JsonObject> deaths = new ArrayList<>();
-		private final Set<String> paths = new HashSet<>();
 
 		public Accumulator(int run) {
 			this.run = run;
@@ -102,12 +99,7 @@ public final class JournalReader {
 				case JournalEvents.SPLIT -> this.bestSplit = Math.max(this.bestSplit, splitOrdinal(o));
 				case JournalEvents.END -> this.finished |= o.has("reason") && "dragon".equals(o.get("reason").getAsString());
 				case JournalEvents.DEATH -> {
-					String path = o.has("replay") && o.get("replay").isJsonObject() && o.getAsJsonObject("replay").has("path")
-							? o.getAsJsonObject("replay").get("path").getAsString() : null;
 					this.deaths.add(o);
-					if (path != null) {
-						this.paths.add(path);
-					}
 				}
 				default -> {
 				}
@@ -118,7 +110,7 @@ public final class JournalReader {
 			long duration = this.goT >= 0 ? Math.max(0, this.lastT - this.goT) : 0;
 			String best = this.bestSplit >= 0 ? Split.values()[this.bestSplit].name() : null;
 			return new Parsed(new RunSummary(this.run, this.startedAt == null ? "" : this.startedAt, duration,
-					this.deaths.size(), best, this.finished), List.copyOf(this.deaths), Set.copyOf(this.paths));
+					this.deaths.size(), best, this.finished), List.copyOf(this.deaths));
 		}
 	}
 

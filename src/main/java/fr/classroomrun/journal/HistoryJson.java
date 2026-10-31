@@ -75,7 +75,7 @@ public final class HistoryJson {
 	private static JsonObject entry(JsonObject line, boolean withHealth) {
 		JsonObject o = new JsonObject();
 		for (String key : new String[] {"at", "player", "name", "cause", "message", "attacker", "fatalBy", "pos",
-				"dimension", "replay"}) {
+				"dimension"}) {
 			JsonElement v = line.get(key);
 			o.add(key, v == null ? JsonNull.INSTANCE : v);
 		}

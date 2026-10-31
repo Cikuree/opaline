@@ -7,13 +7,6 @@ repositories {
 		name = 'Nucleoid'
 		url = 'https://maven.nucleoid.xyz/'
 	}
-	maven {
-		name = 'Modrinth'
-		url = 'https://api.modrinth.com/maven'
-		content {
-			includeGroup 'maven.modrinth'
-		}
-	}
 }
 
 loom {
@@ -27,23 +20,7 @@ loom {
 	}
 }
 
-configurations {
-	serverReplayJar {
-		canBeConsumed = false
-	}
-}
-
-tasks.register('extractArcadeReplay', Copy) {
-	from({ zipTree(configurations.serverReplayJar.singleFile) }) {
-		include 'META-INF/jars/arcade-replay-*.jar'
-		eachFile { it.relativePath = new RelativePath(true, it.name) }
-	}
-	includeEmptyDirs = false
-	into layout.buildDirectory.dir('arcade')
-}
-
 dependencies {
-	serverReplayJar "maven.modrinth:server-replay:${project.server_replay_version}"
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
@@ -51,15 +28,6 @@ dependencies {
 	// Fantasy (runtime worlds), shipped inside our jar
 	implementation "xyz.nucleoid:fantasy:${project.fantasy_version}"
 	include "xyz.nucleoid:fantasy:${project.fantasy_version}"
-
-	// Optional replay mods: compile-only, the code touching them lives in classes loaded only when the mod is present.
-	// ServerReplay ships arcade-replay as a nested jar (invisible to javac): extracted at build time, nothing committed.
-	compileOnly "maven.modrinth:server-replay:${project.server_replay_version}"
-	compileOnly fileTree(dir: layout.buildDirectory.dir('arcade'), include: '*.jar').builtBy('extractArcadeReplay')
-	clientCompileOnly "maven.modrinth:replaymod:${project.replaymod_version}"
-	// Dev runtime only (runServer): records a .mcpr per player. ServerReplay needs Fabric Language Kotlin.
-	localRuntime "maven.modrinth:server-replay:${project.server_replay_version}"
-	localRuntime "maven.modrinth:fabric-language-kotlin:${project.flk_version}"
 
 	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
 	testImplementation "org.junit.jupiter:junit-jupiter"

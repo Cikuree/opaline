@@ -4,48 +4,23 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Optional;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
-import java.util.function.Function;
-import java.util.function.Predicate;
 
 /**
- * Read-only endpoints on the JDK HTTP server: {@code GET /stats} (JSON) and {@code GET /replay?path=...} (a .mcpr
- * file). The HTTP threads only read an immutable {@link StatsSnapshot} published by the server thread and the
- * replay resolver (journal files + disk); they never touch Minecraft state.
+ * Read-only JSON endpoint ({@code GET /stats}) on the JDK HTTP server. The HTTP threads only read an immutable
+ * {@link StatsSnapshot} published by the server thread; they never touch Minecraft state.
  */
 public final class StatsHttpServer {
-	static {
-		// JDK HttpServer has no per-server timeout: this system property (read once, when the JDK server classes load)
-		// cuts any response that lasts more than 10 minutes, so a stalled client cannot hold a download slot for ever.
-		// shortcut: no effect if another mod loaded com.sun.net.httpserver first; upgrade by writing our own timeout.
-		System.setProperty("sun.net.httpserver.maxRspTime", System.getProperty("sun.net.httpserver.maxRspTime", "600"));
-	}
-
-	/** At most this many simultaneous replay downloads (503 beyond), so /stats always has threads left. */
-	private static final int MAX_DOWNLOADS = 2;
-
 	private final HttpServer server;
-	private final Semaphore downloads = new Semaphore(MAX_DOWNLOADS);
 	private volatile StatsSnapshot snapshot;
-	/** Maps the {@code path} query parameter to a servable file; empty means 404. Null until the journal is attached. */
-	private volatile Function<String, Optional<Path>> replayResolver = raw -> Optional.empty();
-	private volatile Predicate<String> replayPending = raw -> false;
 
 	public StatsHttpServer(String bind, int port) throws IOException {
 		this.server = HttpServer.create(new InetSocketAddress(bind == null || bind.isBlank() ? "0.0.0.0" : bind, port), 0);
 		this.server.createContext("/stats", this::handle);
-		this.server.createContext("/replay", this::handleReplay);
-		// a replay download is long: a small pool keeps /stats answering meanwhile
-		this.server.setExecutor(Executors.newFixedThreadPool(4, r -> {
+		this.server.setExecutor(Executors.newSingleThreadExecutor(r -> {
 			Thread t = new Thread(r, "classroomrun-http");
 			t.setDaemon(true);
 			return t;
@@ -65,15 +40,6 @@ public final class StatsHttpServer {
 		if (this.server.getExecutor() instanceof java.util.concurrent.ExecutorService executor) {
 			executor.shutdownNow();
 		}
-	}
-
-	/** Paths for which {@code true} means "recording or being saved": answered 503 instead of served half-written. */
-	public void setReplayPending(Predicate<String> pending) {
-		this.replayPending = pending;
-	}
-
-	public void setReplayResolver(Function<String, Optional<Path>> resolver) {
-		this.replayResolver = resolver;
 	}
 
 	public void publish(StatsSnapshot snapshot) {
@@ -100,59 +66,5 @@ public final class StatsHttpServer {
 				out.write(body);
 			}
 		}
-	}
-
-	private void handleReplay(HttpExchange exchange) throws IOException {
-		try (exchange) {
-			if (!"GET".equals(exchange.getRequestMethod())) {
-				exchange.getResponseHeaders().set("Allow", "GET");
-				exchange.sendResponseHeaders(405, -1);
-				return;
-			}
-			String raw = queryParam(exchange.getRequestURI().getRawQuery(), "path");
-			if (raw != null && this.replayPending.test(raw)) {
-				exchange.getResponseHeaders().set("Retry-After", "5");
-				exchange.sendResponseHeaders(503, -1); // still being recorded or saved
-				return;
-			}
-			Optional<Path> file = this.replayResolver.apply(raw);
-			if (file.isEmpty()) {
-				exchange.sendResponseHeaders(404, -1);
-				return;
-			}
-			if (!this.downloads.tryAcquire()) {
-				exchange.getResponseHeaders().set("Retry-After", "5");
-				exchange.sendResponseHeaders(503, -1);
-				return;
-			}
-			try {
-				exchange.getResponseHeaders().set("Content-Type", "application/octet-stream");
-				exchange.sendResponseHeaders(200, Files.size(file.get()));
-				// streamed in chunks, never loaded in memory
-				try (InputStream in = Files.newInputStream(file.get()); OutputStream out = exchange.getResponseBody()) {
-					in.transferTo(out);
-				}
-			} finally {
-				this.downloads.release();
-			}
-		}
-	}
-
-	/** Decoded value of a query parameter, or null. */
-	static String queryParam(String rawQuery, String name) {
-		if (rawQuery == null) {
-			return null;
-		}
-		for (String pair : rawQuery.split("&")) {
-			int eq = pair.indexOf('=');
-			if (eq > 0 && pair.substring(0, eq).equals(name)) {
-				try {
-					return URLDecoder.decode(pair.substring(eq + 1), StandardCharsets.UTF_8);
-				} catch (IllegalArgumentException e) {
-					return null;
-				}
-			}
-		}
-		return null;
 	}
 }

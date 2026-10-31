@@ -12,8 +12,6 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -67,7 +65,7 @@ class JournalTest {
 
 	// ---------------------------------------------------------------- journal write / read
 
-	private static JsonObject deathLine(long t, String replayPath) {
+	private static JsonObject deathLine(long t) {
 		JsonObject o = JournalEvents.event(JournalEvents.DEATH, AT.plusSeconds(t / 1000), t);
 		o.addProperty("player", "uuid");
 		o.addProperty("name", "Alex");
@@ -77,11 +75,6 @@ class JournalTest {
 		o.addProperty("fatalBy", "Alex");
 		o.add("pos", JournalEvents.pos(12, 64, -30));
 		o.addProperty("dimension", "classroomrun:run_20_overworld");
-		if (replayPath != null) {
-			o.add("replay", JournalEvents.replay(replayPath, t));
-		} else {
-			o.add("replay", com.google.gson.JsonNull.INSTANCE);
-		}
 		HealthBuffer b = new HealthBuffer();
 		b.record(UUID.randomUUID(), "Alex", 0, 20F);
 		o.add("health", JournalEvents.health(b.snapshot(500, 0.0F)));
@@ -97,7 +90,7 @@ class JournalTest {
 			JsonObject split = JournalEvents.event(JournalEvents.SPLIT, AT, 5000);
 			split.addProperty("split", "DIAMOND");
 			j.append(split);
-			j.append(deathLine(61_000, "classroomrun/run_20/u/a.mcpr"));
+			j.append(deathLine(61_000));
 		}
 		// simulate a crash in the middle of the next line, then a restart that appends again
 		Files.writeString(file, "{\"e\":\"damage\",\"at\":\"2026-10-3", StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
@@ -108,7 +101,6 @@ class JournalTest {
 		assertEquals(6, lines.size());
 		JournalReader.Parsed p = JournalReader.parse(20, lines);
 		assertEquals(new RunSummary(20, "2026-10-30T18:00:00Z", 60_000, 1, "DIAMOND", false), p.summary());
-		assertEquals(Set.of("classroomrun/run_20/u/a.mcpr"), p.replayPaths());
 	}
 
 	@Test
@@ -123,23 +115,22 @@ class JournalTest {
 	}
 
 	@Test
-	void storeBuildsIndexFromJournalsNewestFirstAndCollectsReplayPaths(@TempDir Path dir) throws Exception {
+	void storeBuildsIndexFromJournalsNewestFirst(@TempDir Path dir) throws Exception {
 		for (int run : new int[] {2, 10, 9}) {
 			try (RunJournal j = new RunJournal(dir.resolve(run + "/journal.jsonl"))) {
 				j.append(JournalEvents.event(JournalEvents.START, AT, 0));
 				if (run == 10) {
-					j.append(deathLine(1000, "p/10.mcpr"));
+					j.append(deathLine(1000));
 				}
 			}
 		}
 		Files.createDirectories(dir.resolve("not-a-run"));
 		JournalStore store = new JournalStore(dir);
 		assertEquals(List.of(10, 9, 2), store.summaries().stream().map(RunSummary::run).toList());
-		assertEquals(Set.of("p/10.mcpr"), store.replayPaths());
 		try (RunJournal j = new RunJournal(dir.resolve("9/journal.jsonl"))) { // cache invalidated by the new size
-			j.append(deathLine(2000, "p/9.mcpr"));
+			j.append(deathLine(2000));
 		}
-		assertEquals(Set.of("p/10.mcpr", "p/9.mcpr"), store.replayPaths());
+		assertEquals(1, store.run(9).summary().deaths());
 	}
 
 	// ---------------------------------------------------------------- JSON built for the payload
@@ -163,15 +154,13 @@ class JournalTest {
 
 	@Test
 	void detailFollowsTheContractAndDropsTheOldestDeathsWhenTooBig() {
-		List<JsonObject> deaths = List.of(deathLine(1000, null), deathLine(2000, "a.mcpr"), deathLine(3000, "b.mcpr"));
+		List<JsonObject> deaths = List.of(deathLine(1000), deathLine(2000), deathLine(3000));
 		JsonObject root = JsonParser.parseString(HistoryJson.detail(20, "2026-10-30T18:00:00Z", deaths, 262_144)).getAsJsonObject();
 		assertEquals(20, root.get("run").getAsInt());
 		JsonArray arr = root.getAsJsonArray("deaths");
 		assertEquals(3, arr.size());
 		JsonObject d = arr.get(1).getAsJsonObject();
 		assertEquals("Alex", d.get("fatalBy").getAsString());
-		assertEquals(2000, d.getAsJsonObject("replay").get("offsetMs").getAsLong());
-		assertTrue(arr.get(0).getAsJsonObject().get("replay").isJsonNull());
 		assertFalse(d.has("e") || d.has("t"), "journal-only fields are not sent");
 		assertEquals(0.0, d.getAsJsonArray("health").get(0).getAsJsonObject().getAsJsonArray("samples").get(1).getAsJsonArray().get(1).getAsDouble());
 
@@ -180,31 +169,11 @@ class JournalTest {
 		assertTrue(cut.length() <= oneDeath + 20);
 		JsonArray kept = JsonParser.parseString(cut).getAsJsonObject().getAsJsonArray("deaths");
 		assertEquals(1, kept.size());
-		assertEquals("b.mcpr", kept.get(0).getAsJsonObject().getAsJsonObject("replay").get("path").getAsString());
 		// absurdly small limit: still valid JSON
 		assertTrue(JsonParser.parseString(HistoryJson.detail(20, "x", deaths, 30)).isJsonObject());
 	}
 
-	// ---------------------------------------------------------------- whitelist and rate limit
-
-	@Test
-	void replayRouteServesOnlyWhitelistedFilesInsideTheRoot(@TempDir Path tmp) throws Exception {
-		Path root = tmp.resolve("recordings");
-		Files.createDirectories(root.resolve("classroomrun/run_1"));
-		Files.writeString(root.resolve("classroomrun/run_1/a.mcpr"), "x");
-		Files.writeString(root.resolve("classroomrun/run_1/b.mcpr"), "y");
-		Files.writeString(tmp.resolve("secret.txt"), "s");
-		Set<String> white = Set.of("classroomrun/run_1/a.mcpr", "../secret.txt", "classroomrun/run_1/missing.mcpr");
-
-		assertTrue(ReplayPaths.resolve(white, root, "classroomrun/run_1/a.mcpr").isPresent());
-		assertEquals(Optional.empty(), ReplayPaths.resolve(white, root, "classroomrun/run_1/b.mcpr"), "not in a journal");
-		assertEquals(Optional.empty(), ReplayPaths.resolve(white, root, "../../etc"), "not in a journal");
-		assertEquals(Optional.empty(), ReplayPaths.resolve(white, root, "../secret.txt"), "whitelisted but outside the root");
-		assertEquals(Optional.empty(), ReplayPaths.resolve(white, root, "classroomrun/run_1/missing.mcpr"));
-		assertEquals(Optional.empty(), ReplayPaths.resolve(white, root, ""));
-		assertEquals(Optional.empty(), ReplayPaths.resolve(white, root, null));
-		assertEquals(Optional.empty(), ReplayPaths.resolve(Set.of("a\0b"), root, "a\0b"));
-	}
+	// ---------------------------------------------------------------- rate limit
 
 	@Test
 	void rateLimiterAllowsOnePerSecondPerPlayer() {

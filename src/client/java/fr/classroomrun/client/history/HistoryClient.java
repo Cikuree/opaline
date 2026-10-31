@@ -9,7 +9,6 @@ import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.resources.Identifier;
@@ -18,8 +17,6 @@ import net.minecraft.resources.Identifier;
 public final class HistoryClient {
 	private static KeyMapping key;
 	private static boolean openRequested;
-	/** HTTP port announced by the server in the last answer, 0 if none or disabled. */
-	private static int httpPort;
 
 	private HistoryClient() {
 	}
@@ -49,14 +46,6 @@ public final class HistoryClient {
 		}));
 	}
 
-	public static boolean replayModLoaded() {
-		return FabricLoader.getInstance().isModLoaded("replaymod");
-	}
-
-	public static int httpPort() {
-		return httpPort;
-	}
-
 	/** Asks the server; it answers at most once per second per player and ignores the rest. */
 	public static void request(int runNumber) {
 		if (ClientPlayNetworking.canSend(HistoryRequestPayload.TYPE)) {
@@ -65,7 +54,6 @@ public final class HistoryClient {
 	}
 
 	private static void onAnswer(HistoryPayload payload) {
-		httpPort = payload.httpPort();
 		if (Minecraft.getInstance().gui.screen() instanceof HistoryScreen screen) {
 			screen.onAnswer(payload.runNumber(), payload.json());
 		}

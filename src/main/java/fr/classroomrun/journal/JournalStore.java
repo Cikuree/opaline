@@ -13,10 +13,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Reads {@code runs/<n>/journal.jsonl}. The index is rebuilt from the journals; a parsed journal is cached by
@@ -122,17 +120,5 @@ public final class JournalStore {
 		}
 		out.sort(Comparator.comparingInt(RunSummary::run).reversed());
 		return out;
-	}
-
-	/** Every replay path written in any journal: the only paths the HTTP route may serve. */
-	public synchronized Set<String> replayPaths() {
-		Set<String> all = new HashSet<>();
-		for (int n : runNumbers()) {
-			JournalReader.Parsed p = run(n);
-			if (p != null) {
-				all.addAll(p.replayPaths());
-			}
-		}
-		return all;
 	}
 }

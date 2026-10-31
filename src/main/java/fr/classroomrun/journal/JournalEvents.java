@@ -55,11 +55,4 @@ public final class JournalEvents {
 		}
 		return all;
 	}
-
-	public static JsonObject replay(String path, long offsetMs) {
-		JsonObject o = new JsonObject();
-		o.addProperty("path", path);
-		o.addProperty("offsetMs", offsetMs);
-		return o;
-	}
 }

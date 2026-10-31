@@ -82,7 +82,6 @@ Le serveur limite à une requête par seconde et par joueur, et ignore les autre
 |---|---|---|
 | runNumber | int | run demandée, ou `-1` pour l'index |
 | json | String (≤ 262 144 car.) | JSON d'index ou de détail, schémas ci-dessous |
-| httpPort | int | port HTTP du serveur pour télécharger les replays, `0` si désactivé |
 
 Index (`runNumber = -1`), runs triées de la plus récente à la plus ancienne, 200 au plus :
 
@@ -103,15 +102,10 @@ Détail d'une run :
    "cause": "minecraft:fall", "message": "Alex fell from a high place",
    "attacker": null, "fatalBy": "Alex",
    "pos": [12, 64, -30], "dimension": "classroomrun:run_20_overworld",
-   "replay": {"path": "<chemin relatif>.mcpr", "offsetMs": 3540000},
    "health": [{"name": "Alex", "samples": [[-10000, 20.0], [-500, 6.0], [0, 0.0]]}]
  }]}
 ```
 
-- `replay` vaut `null` si la run n'a pas d'enregistrement.
-- `replay.path` est un chemin relatif opaque, téléchargeable via `GET http://<hôte du serveur>:<httpPort>/replay?path=<path url-encodé>`.
-- Le serveur ne sert que des chemins présents dans un journal, et répond `404` pour tout le reste.
-- `replay.offsetMs` est la position dans ce fichier.
 - `health[].samples` contient des paires `[ms relatif à la mort (≤ 0), vie]` sur les 10 s précédentes.
 - `fatalBy` vaut le nom du joueur attaquant s'il y en a un, sinon celui de la victime.
 - `health` contient tous les joueurs de l'équipe, chacun avec un dernier échantillon `[0, 0.0]`. Les valeurs sont en points de vie (20.0 = vie pleine).
