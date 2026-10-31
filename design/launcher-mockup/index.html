@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232c1219'/%3E%3Cg fill='%23f6dcc8'%3E%3Cpath fill-rule='evenodd' d='M9 32a23 27 0 1 0 46 0a23 27 0 1 0 -46 0ZM20.5 32a11.5 24.4 0 1 0 23 0a11.5 24.4 0 1 0 -23 0Z'/%3E%3Cpath d='M32 13Q33.2 30.8 43 32Q33.2 33.2 32 51Q30.8 33.2 21 32Q30.8 30.8 32 13Z'/%3E%3C/g%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500..800&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
 <style>
 :root{
   --outer:#f6d9d9; --win:#6b2b34; --win-deep:#3d171e; --panel:#4a1d25; --panel-hi:#431a21; --line:#5a2630;
@@ -15,7 +15,7 @@
   --ok:#5fd38d; --warn:#ffc46b; --bad:#ff8a80;
   --grad:linear-gradient(135deg,var(--coral),var(--coral2));
   --ease:cubic-bezier(.22,1,.36,1);
-  --font:"Plus Jakarta Sans","Outfit",system-ui,"Segoe UI",sans-serif;
+  --font:"Bricolage Grotesque",system-ui,"Segoe UI",sans-serif; --display:"Bodoni Moda","Didot",Georgia,serif;
 }
 *{box-sizing:border-box;margin:0}
 html,body{height:100%}
@@ -41,8 +41,8 @@ main{min-width:0;container:main/inline-size;display:flex;flex-direction:column;g
 main::-webkit-scrollbar,.col::-webkit-scrollbar{width:8px}
 main::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
 .bar{flex-wrap:wrap;display:flex;align-items:center;justify-content:space-between;gap:16px}
-h1{font-size:clamp(22px,3.2cqi,30px);font-weight:800;letter-spacing:-.02em;line-height:1.15}
-h2{font-size:18px;font-weight:700;letter-spacing:-.01em}
+h1{font-family:var(--display);font-size:clamp(22px,3.2cqi,30px);font-weight:800;letter-spacing:0;line-height:1.15}
+h2{font-family:var(--display);font-size:18px;font-weight:700;letter-spacing:.005em}
 h3{font-size:15px;font-weight:700}
 .card h2{font-size:15px}
 .mute{color:var(--mute)} .small{font-size:13px} .xs{font-size:12px}
@@ -70,7 +70,7 @@ h3{font-size:15px;font-weight:700}
 .news{grid-area:news}
 .hero{grid-area:hero;background:linear-gradient(120deg,#e0574f 10%,#f07a5a 70%,#f59a63);color:var(--on-coral);min-height:236px;overflow:visible;display:grid;grid-template-columns:minmax(0,1fr) clamp(110px,20cqi,210px);align-content:space-between;gap:0 8px}
 .hero>*{grid-column:1}
-.hero h2{font-size:clamp(24px,3.4cqi,34px);font-weight:800;letter-spacing:-.03em;color:var(--on-coral);overflow-wrap:anywhere}
+.hero h2{font-family:var(--display);font-size:clamp(24px,3.4cqi,34px);font-weight:800;letter-spacing:-.005em;color:var(--on-coral);overflow-wrap:anywhere}
 .hero .pill{background:#2c1219;color:var(--cream)}
 .hero .stats{display:flex;flex-wrap:wrap;gap:10px 24px;margin:12px 0}
 .hero .stats b{display:block;font-size:clamp(20px,6cqi,26px);font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
