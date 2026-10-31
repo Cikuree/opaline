@@ -225,9 +225,9 @@ def write():
         blocks.append(Compound({"pos": List[Int]([Int(c) for c in p]), "state": Int(pal[st])}))
     palette = List[Compound]()
     for n, props in order:
-        c = Compound({"Name": String(n)})
+        c = Compound({"id": String(n)})
         if props:
-            c["Properties"] = Compound({k: String(v) for k, v in props})
+            c["properties"] = Compound({k: String(v) for k, v in props})
         palette.append(c)
     root = Compound({
         "DataVersion": Int(DATA_VERSION),
@@ -248,7 +248,7 @@ def check(path=OUT):
         errs.append(f"size {list(f['size'])}")
     if len(f["blocks"]) != W * H * D:
         errs.append("nombre de blocs incohérent")
-    names = [str(p["Name"]) for p in f["palette"]]
+    names = [str(p["id"]) for p in f["palette"]]
     chest_ids = {i for i, n in enumerate(names) if n == "minecraft:chest"}
     chests = sum(1 for b in f["blocks"] if int(b["state"]) in chest_ids)
     if chests != len(CHEST_POSITIONS) or chests < N_PLAYERS:
