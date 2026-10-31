@@ -1,6 +1,7 @@
 package fr.classroomrun.client.hud;
 
 import fr.classroomrun.client.hud.DamageFeed.Entry;
+import fr.classroomrun.client.mixin.BossHealthOverlayAccessor;
 import fr.classroomrun.net.Split;
 import java.util.UUID;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
@@ -27,7 +28,6 @@ public final class HudRenderer {
 	private static final int CELL = 20;
 	private static final int PAD = 3;
 	private static final int TOP = 3;
-	private static final int LEFT = 3;
 	private static final int PINK = 0xFFFF69B4;
 	private static final int CYAN = 0xFF55FFFF;
 	private static final int PANEL = 0x90000000;
@@ -78,16 +78,19 @@ public final class HudRenderer {
 		long now = Util.getMillis();
 		int n = splitStacks.length;
 		int rowW = n * CELL;
-		// Top-left corner: the boss bars are centered at the top and their count is not exposed.
-		int left = LEFT + PAD;
+		// Centered, just under the boss bars so it never covers them.
+		int top = HudFormat.splitsTop(
+				((BossHealthOverlayAccessor) Minecraft.getInstance().gui.hud.getBossOverlay()).classroomrun$events().size(),
+				g.guiHeight(), TOP);
+		int left = (g.guiWidth() - rowW) / 2;
 		int right = left + rowW;
-		int iconY = TOP + PAD;
+		int iconY = top + PAD;
 		int rowY = iconY + CELL + 4;
 		int bottom = rowY + 16 + PAD;
 		int current = run.currentSplit();
 
 		// Pass 1: panel and item icons.
-		g.fill(left - PAD, TOP, right + PAD, bottom, PANEL);
+		g.fill(left - PAD, top, right + PAD, bottom, PANEL);
 		for (int i = 0; i < n; i++) {
 			g.item(splitStacks[i], left + i * CELL + 2, iconY + 2);
 		}

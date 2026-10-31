@@ -100,4 +100,15 @@ class HudLogicTest {
 		s.reset();
 		assertFalse(s.present());
 	}
+
+	@Test
+	void splitsTopSitsUnderBossBars() {
+		assertEquals(3, HudFormat.splitsTop(0, 270, 3));
+		assertEquals(20, HudFormat.splitsTop(1, 270, 3));
+		assertEquals(39, HudFormat.splitsTop(2, 270, 3));
+		// guiHeight 270: limit 90, vanilla draws bars at y=12,31,50,69,88 (5 bars) then stops.
+		assertEquals(12 + 19 * 4 + 8, HudFormat.splitsTop(9, 270, 3));
+		// tiny screen: vanilla always draws the first bar.
+		assertEquals(20, HudFormat.splitsTop(3, 30, 3));
+	}
 }

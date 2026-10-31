@@ -19,4 +19,16 @@ public final class HudFormat {
 		long s = seconds % 60;
 		return h + ":" + (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
 	}
+
+	/**
+	 * Top y of the splits panel: just under the boss bars vanilla draws (BossHealthOverlay, 26.3).
+	 * Vanilla starts at y=12, steps 19 per bar and stops stacking once y >= guiHeight / 3.
+	 */
+	public static int splitsTop(int bossBars, int guiHeight, int top) {
+		if (bossBars <= 0) {
+			return top;
+		}
+		int drawn = Math.min(bossBars, Math.max(1, Math.ceilDiv(guiHeight / 3 - 12, 19)));
+		return 12 + 19 * (drawn - 1) + 5 + 3;
+	}
 }
