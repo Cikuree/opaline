@@ -71,7 +71,7 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 | Commande | Arguments | Retour |
 |---|---|---|
 | `app_info` | – | `{version, update: null \| {version, url}}` |
-| `auth_status` | – | `{state: "signedOut" \| "signedIn" \| "notConfigured", profile: null \| {name, uuid}, warning: null \| string, mode: "direct" \| "official", mojangPending: bool, identity: null \| {name, uuid}}`. `mode` vaut `direct` avec une session Opaline valide, sinon `official` (lancement via le Launcher Minecraft : voir `play`). `mojangPending` : le dernier essai de connexion a été refusé par Mojang (app Azure non approuvée, `NOT_APPROVED`), mémorisé en mémoire seulement. `identity` : pseudo Minecraft mémorisé (mode officiel seulement) |
+| `auth_status` | – | `{state: "signedOut" \| "signedIn" \| "notConfigured", profile: null \| {name, uuid}, warning: null \| string, mode: "direct" \| "official", mojangPending: bool, identity: null \| {name, uuid}}`. `mode` vaut `direct` avec une session Opaline valide et `launchVia` = `opaline`, sinon `official` (lancement via le Launcher Minecraft : voir `play`). `mojangPending` : le dernier essai de connexion a été refusé par Mojang (app Azure non approuvée, `NOT_APPROVED`), mémorisé en mémoire seulement. `identity` : pseudo Minecraft mémorisé (mode officiel seulement) |
 | `identity_set` | `{name}` | `{name, uuid}`, ou `null` si `name` est vide (oublie le pseudo). Mode officiel : le pseudo (`[A-Za-z0-9_]{3,16}`, validé avant tout appel) est résolu via `api.mojang.com/users/profiles/minecraft/<pseudo>` (204 / 404 : erreur « Aucun joueur Minecraft nommé … »), puis mémorisé dans la config ; aucune authentification |
 | `identity_skin` | – | `null` (pas de pseudo) ou `{dataUrl, model: "classic" \| "slim"}` : skin du pseudo mémorisé (sessionserver public, hôte de texture vérifié), affiché en lecture seule |
 | `auth_start` | `{mode: "browser" \| "device"}` (défaut `browser`) | `browser` : `{attempt, mode: "browser", authorizeUrl}`. Opaline ouvre lui-même la page Microsoft dans le navigateur par défaut (code d'autorisation + PKCE, redirection vers `http://localhost:<port>` sur 127.0.0.1). `device` (secours) : `{attempt, mode: "device", userCode, verificationUri, expiresIn}`. Dans les deux cas, événement `auth://done` portant le même `attempt` |
@@ -86,8 +86,8 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 | `server_status` | `{id}` | `ServerView` (§5), ou `null` si le pack n'a pas de serveur |
 | `run_stats` | `{id}` | JSON de `GET /stats` du serveur, ou `null` (seulement pour le widget `classroomRun`) |
 | `run_history` | `{id, run: null \| number}` | JSON de `GET /history` (index) ou `GET /history/<n>` (détail), schémas de CONTRACT.md §Historique, ou `null` |
-| `settings_get` | – | `{perfMode: "low" \| "balanced" \| "quality" \| "custom", memoryMb, noRemember, systemRamMb}` |
-| `settings_set` | `{perfMode?, memoryMb?, noRemember?}` | settings à jour |
+| `settings_get` | – | `{perfMode: "low" \| "balanced" \| "quality" \| "custom", memoryMb, noRemember, launchVia: "opaline" \| "official", systemRamMb}`. `launchVia` ne s'applique qu'avec une session Opaline : sans session, JOUER passe toujours par le Launcher Minecraft |
+| `settings_set` | `{perfMode?, memoryMb?, noRemember?, launchVia?}` | settings à jour |
 | `open_folder` | `{id, kind: "mods" \| "shaderpacks" \| "screenshots" \| "logs" \| "instance"}` | – |
 | `textures_dir` | – | `{dir: string \| null}`. Au démarrage, si les textures manquent, Opaline télécharge le client.jar officiel (hash vérifié, conservé dans `shared/`) et les extrait, puis émet `textures://ready`. `null` tant que ce n'est pas fait. Les PNG sont nommés `<nom>.png` et servis par `convertFileSrc` |
 | `skins_list` | – | `[{id, name, model: "classic" \| "slim", active, dataUrl}]` |

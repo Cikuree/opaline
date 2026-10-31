@@ -30,11 +30,21 @@ pub struct Config {
     /// Pseudo Minecraft saisi en mode officiel (tête et skin affichés sans authentification) et son UUID résolu.
     pub mc_name: String,
     pub mc_uuid: String,
+    /// Avec une session Opaline : lancer le jeu directement ou via le Launcher Minecraft officiel.
+    pub launch_via: LaunchVia,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LaunchVia {
+    #[default]
+    Opaline,
+    Official,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { nickname: "Player".into(), memory_mb: 4096, perf_mode: PerfMode::Balanced, no_remember: false, mc_name: String::new(), mc_uuid: String::new() }
+        Config { nickname: "Player".into(), memory_mb: 4096, perf_mode: PerfMode::Balanced, no_remember: false, mc_name: String::new(), mc_uuid: String::new(), launch_via: LaunchVia::Opaline }
     }
 }
 

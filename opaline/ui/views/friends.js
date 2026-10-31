@@ -20,7 +20,7 @@ export function renderFriends() {
     return;
   }
   const on_ = state.friends.filter((f) => f.online), off = state.friends.filter((f) => !f.online);
-  $('#online').innerHTML = on_.length ? on_.map(row).join('') : '<p class="xs mute tx" style="padding:6px 0">Aucun ami en ligne.</p>';
+  $('#online').innerHTML = on_.length ? on_.map(row).join('') : '<p class="xs mute tx" style="padding:6px 0;text-align:center">Aucun ami en ligne.</p>';
   $('#offline').innerHTML = off.map(row).join(''); $('#onCount').textContent = on_.length;
   hydrateHeads($('#col'));
 }

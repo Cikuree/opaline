@@ -3,7 +3,7 @@
 //! Les erreurs renvoyées à l'interface sont nettoyées (`sanitize`) : ni jeton, ni adresse de serveur, ni chemin personnel.
 use anyhow::{Context, anyhow, bail};
 use base64::Engine;
-use opaline_core::config::{Config, Dirs};
+use opaline_core::config::{Config, Dirs, LaunchVia};
 use opaline_core::download::Progress;
 use opaline_core::perf::PerfMode;
 use opaline_core::{auth, auth_browser, friends, head, identity, official, service, skins};
@@ -136,8 +136,8 @@ async fn settings_get(state: State<'_, S>) -> CmdResult<service::SettingsView> {
 }
 
 #[tauri::command]
-async fn settings_set(state: State<'_, S>, perf_mode: Option<PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>) -> CmdResult<service::SettingsView> {
-    state.blocking(move |r| service::settings_set(r, perf_mode, memory_mb, no_remember)).await
+async fn settings_set(state: State<'_, S>, perf_mode: Option<PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>, launch_via: Option<LaunchVia>) -> CmdResult<service::SettingsView> {
+    state.blocking(move |r| service::settings_set(r, perf_mode, memory_mb, no_remember, launch_via)).await
 }
 
 // ---------- Authentification ----------
@@ -146,13 +146,13 @@ fn profile_json(p: Option<Profile>) -> Value {
     p.map_or(Value::Null, |p| json!({ "name": p.name, "uuid": p.uuid }))
 }
 
-/// `mode` : `direct` (session Opaline) ou `official` (Launcher Minecraft). `identity` : pseudo mémorisé (mode officiel seulement).
+/// `mode` : `direct` (session Opaline et lancement par Opaline choisi) ou `official` (Launcher Minecraft). `identity` : pseudo mémorisé (mode officiel seulement).
 fn status_json(s: &S, state: &str, profile: Option<Profile>, warning: Option<String>) -> Value {
     let direct = state == "signedIn";
     let identity = if direct { None } else { service::identity_get(&s.0.root) };
     json!({
         "state": state, "profile": profile_json(profile), "warning": warning,
-        "mode": if direct { "direct" } else { "official" },
+        "mode": if direct && s.config().launch_via == LaunchVia::Opaline { "direct" } else { "official" },
         "mojangPending": !direct && s.0.mojang_pending.load(Ordering::SeqCst),
         "identity": identity,
     })
@@ -418,11 +418,15 @@ fn refused(reason: impl Into<String>, via: &str) -> Value {
 #[tauri::command]
 async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Value> {
     let s = state.inner().clone();
-    // Session Opaline valide : lancement direct ; sinon Launcher Minecraft officiel.
+    // Session Opaline valide et lancement par Opaline choisi : direct ; sinon Launcher Minecraft officiel.
     let s2 = s.clone();
-    let session = match s.blocking(move |_| service::try_session(&s2.config(), &s2.0.auth)).await {
-        Ok(v) => v,
-        Err(reason) => return Ok(refused(reason, "direct")),
+    let session = if s.config().launch_via == LaunchVia::Official {
+        None
+    } else {
+        match s.blocking(move |_| service::try_session(&s2.config(), &s2.0.auth)).await {
+            Ok(v) => v,
+            Err(reason) => return Ok(refused(reason, "direct")),
+        }
     };
     let via = if session.is_some() { "direct" } else { "official" };
     // Une seule vérification, et l'id est réservé pour toute la préparation (double-clic, installation concurrente).

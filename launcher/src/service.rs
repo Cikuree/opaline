@@ -123,12 +123,13 @@ pub struct SettingsView {
     pub perf_mode: perf::PerfMode,
     pub memory_mb: u32,
     pub no_remember: bool,
+    pub launch_via: crate::config::LaunchVia,
     pub system_ram_mb: Option<u64>,
 }
 
 pub fn settings_get(root: &Dirs) -> SettingsView {
     let c = Config::load(root);
-    SettingsView { perf_mode: c.perf_mode, memory_mb: c.memory_mb, no_remember: c.no_remember, system_ram_mb: sysmem::total_ram_mb() }
+    SettingsView { perf_mode: c.perf_mode, memory_mb: c.memory_mb, no_remember: c.no_remember, launch_via: c.launch_via, system_ram_mb: sysmem::total_ram_mb() }
 }
 
 /// Mémoire bornée : au moins 1 Go, au plus 75 % de la RAM physique (si connue).
@@ -137,7 +138,7 @@ pub fn clamp_memory(mb: u32, ram_mb: Option<u64>) -> u32 {
     mb.clamp(1024, max)
 }
 
-pub fn settings_set(root: &Dirs, mode: Option<perf::PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>) -> Result<SettingsView> {
+pub fn settings_set(root: &Dirs, mode: Option<perf::PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>, launch_via: Option<crate::config::LaunchVia>) -> Result<SettingsView> {
     let mut c = Config::load(root);
     if let Some(m) = mode {
         c.perf_mode = m;
@@ -147,6 +148,9 @@ pub fn settings_set(root: &Dirs, mode: Option<perf::PerfMode>, memory_mb: Option
     }
     if let Some(n) = no_remember {
         c.no_remember = n;
+    }
+    if let Some(v) = launch_via {
+        c.launch_via = v;
     }
     c.save(root)?;
     Ok(settings_get(root))

@@ -23,6 +23,7 @@ export function renderSettings() {
   $('#perf').innerHTML = PERF.map((p) => `<button role="radio" aria-checked="${p.id === s.perfMode}" data-p="${p.id}"><h3>${p.name}</h3><span class="xs" style="color:var(--coral2);font-weight:700">${p.sub}</span><ul><li>${p.gb ? 'Mémoire ' + clamp(p.gb) + ' Go' : 'Mémoire choisie à la main'}</li></ul></button>`).join('');
   memUi(clamp(gbOf(s.memoryMb)));
   setSw($('#noRemember'), !!s.noRemember);
+  setSw($('#launchVia'), s.launchVia === 'official');
 }
 
 async function save(patch) {
@@ -40,4 +41,6 @@ export function initSettings() {
   $('#mem').addEventListener('input', () => memUi(+$('#mem').value));
   $('#mem').addEventListener('change', () => save({ perfMode: 'custom', memoryMb: +$('#mem').value * 1024 }));
   $('#noRemember').addEventListener('click', (e) => save({ noRemember: e.currentTarget.getAttribute('aria-checked') !== 'true' }));
+  // Sans connexion Opaline, JOUER passe de toute façon par le Launcher Minecraft : ce choix ne vaut qu'une fois connecté.
+  $('#launchVia').addEventListener('click', (e) => save({ launchVia: e.currentTarget.getAttribute('aria-checked') === 'true' ? 'opaline' : 'official' }));
 }
