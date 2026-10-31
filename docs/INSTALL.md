@@ -1,16 +1,21 @@
 # Installation Classroom Run
 
-Le dépôt est privé : il faut y avoir accès.
+Les téléchargements sont sur la page **Releases** du dépôt.
 
 ## Joueur
 
-1. Accepter l'invitation de collaborateur au dépôt GitHub (e-mail ou https://github.com/notifications).
-2. Ouvrir la page **Releases** du dépôt et télécharger `classroom-run-prism.zip` de la dernière version (ne pas le décompresser).
-3. Dans Prism Launcher : **Ajouter une instance** → **Importer** → choisir le zip → **OK**.
-4. Lancer l'instance (Minecraft 26.3, Fabric Loader 0.20.1, Java 25 : Prism le propose automatiquement).
-5. À chaque nouvelle version : télécharger le nouveau zip et le réimporter (nouvelle instance ; supprimer l'ancienne).
+1. Ouvrir la page **Releases** du dépôt et télécharger le launcher : `classroom-launcher-windows.exe` (Windows) ou `classroom-launcher-linux` (Linux). Sous Linux, rendre le fichier exécutable : `chmod +x classroom-launcher-linux`.
+2. Le lancer et se connecter avec son compte Microsoft (le compte doit posséder Minecraft Java).
+3. Cliquer **Installer** (Minecraft 26.3, Fabric, mods, Sodium, Iris et shaders), puis **Jouer**.
+4. Les mises à jour du pack sont proposées par le launcher au clic sur Jouer.
 
-L'instance contient : Fabric API et le mod `classroomrun`.
+### Alternative : Prism Launcher
+
+1. Télécharger `classroom-run-prism.zip` depuis la même page Releases (ne pas le décompresser).
+2. Dans Prism Launcher : **Ajouter une instance** → **Importer** → choisir le zip → **OK**.
+3. Lancer l'instance (Java 25 : Prism le propose automatiquement). À chaque nouvelle version : réimporter le nouveau zip et supprimer l'ancienne instance.
+
+L'instance contient : Fabric API, le mod `classroomrun`, et côté client Sodium, Iris et le shaderpack Complementary Reimagined.
 
 ## Hôte du serveur
 
@@ -28,4 +33,10 @@ Serveur Fabric 26.3, loader 0.20.1, Java 25. Dans `mods/` :
 
 ## Pour les mainteneurs
 
-`pack/` est un manifeste packwiz (source de vérité des mods). Le jar `classroomrun` n'est pas sur Modrinth : la CI l'ajoute au zip Prism (`scripts/build-prism-instance.py`). Tag `v*` → release GitHub privée avec le jar et le zip.
+`pack/` est un manifeste packwiz, source de vérité des mods pour Prism et pour le launcher (`side = "client" | "server" | "both"`). Il ne contient volontairement pas `classroomrun.pw.toml` : en dev local, le launcher prend le jar de `build/libs`. Après toute modification d'un `.pw.toml`, `python3 scripts/pack-tools.py index` régénère `index.toml` et le hash d'index de `pack.toml`.
+
+### Publier une version
+
+1. Mettre le même numéro `X.Y.Z` dans `version` de `gradle.properties` et de `launcher/Cargo.toml`, puis commit.
+2. Créer le tag et le pousser : `git tag vX.Y.Z` puis `git push origin vX.Y.Z`.
+3. La CI (`release.yml`) vérifie version == tag, construit le mod et le launcher (Windows et Linux), génère `pack/mods/classroomrun.pw.toml` (sha512 du jar, URL vers l'asset de release du dépôt courant), puis crée la release avec le jar, les deux launchers, `classroom-run-prism.zip`, `pack.zip` (contenu de `pack/` publié, avec `classroomrun.pw.toml` et l'index recalculé) et `launcher.json`. Rien n'est commité sur `main` par la CI.
