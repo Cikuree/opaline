@@ -94,6 +94,21 @@ pub fn pack_mods(root: &Dirs, id: &str) -> Result<Vec<ModView>> {
     Ok(changelog::mod_views(&dirs, &changelog::load_snapshot(&dirs)?))
 }
 
+/// Au démarrage : si les textures manquent, télécharge le client.jar officiel (sha1, partagé avec l'installation)
+/// et les extrait. `Ok(Some(dossier))` si des textures viennent d'être extraites, `Ok(None)` si rien à faire.
+/// Hors ligne : erreur, à ignorer (nouvel essai au prochain démarrage).
+pub fn ensure_textures(root: &Dirs, endpoints: &install::Endpoints) -> Result<Option<PathBuf>> {
+    if textures::complete(&root.textures()) {
+        return Ok(None);
+    }
+    let packs = packs(root).unwrap_or_default();
+    let extra: Vec<String> = packs.iter().map(|p| p.thumbnail.clone()).filter(|t| !t.is_empty()).collect();
+    let client = download::http_client()?;
+    let v = install::fetch_version_json(&client, root, endpoints, textures::pick_mc(&packs))?;
+    textures::ensure_from_jar(&client, root, &v.id, &v.downloads.client, &extra)?;
+    Ok(Some(root.textures()))
+}
+
 /// Dossier des textures extraites, s'il en contient.
 pub fn textures_dir(root: &Dirs) -> Option<PathBuf> {
     let d = root.textures();

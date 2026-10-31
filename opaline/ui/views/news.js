@@ -17,7 +17,7 @@ export async function renderNews() {
   for (const p of state.packs.filter((x) => x.supported)) {
     let body = '<div class="note"><p class="small mute">Aucune nouveauté à installer.</p></div>';
     if (p.installed && p.updateAvailable) { try { body = `<div class="note"><h3>Mise à jour disponible <span class="pill">Nouveau</span></h3>${changelogHtml(await api.packChangelog(p.id))}</div>`; } catch { /* sans changelog */ } }
-    cards.push(`<article class="card"><h2 class="h2i">${tex(p.thumbnail, 32, 'diamond')}${esc(p.name)}</h2><p class="small mute" style="margin-top:6px">${esc(p.description)}</p>${body}</article>`);
+    cards.push(`<article class="card"><h2 class="h2i">${tex(p.thumbnail, 32)}${esc(p.name)}</h2><p class="small mute" style="margin-top:6px">${esc(p.description)}</p>${body}</article>`);
   }
   $('#newsCards').innerHTML = cards.join('');
 }

@@ -1,6 +1,6 @@
 import * as api from './api.js';
 import { state, current, hasWidget, emit, on } from './state.js';
-import { $, toast, copy, setProgress, LS } from './util.js';
+import { $, toast, copy, setProgress, LS, refreshTextures } from './util.js';
 import { STAGES, STAGE_ORDER } from './data.js';
 import { initChrome, show, currentView } from './views/chrome.js';
 import { initHome, renderHome, refreshServers, refreshStats, installPct } from './views/home.js';
@@ -20,6 +20,7 @@ async function loadPacks() {
   emit('packs');
 }
 async function loadTextures() { try { state.texReady = await api.loadTextures(); } catch { state.texReady = false; } }
+const reloadTextures = async () => { await loadTextures(); refreshTextures(); };
 
 function selectPack(id) {
   state.pack = id; LS.set('opaline.pack', id); state.stats = null; emit('packs');
@@ -45,10 +46,11 @@ function progressUi() {
 
 function wireEvents() {
   api.listen('auth://done', onAuthDone);
+  api.listen('textures://ready', reloadTextures);
   api.listen('install://progress', (p) => { state.install = { ...p }; progressUi(); emit('install'); });
   api.listen('install://done', async (p) => {
     state.install = null; progressUi(); emit('install');
-    if (p.ok) { toast('Pack prêt'); await loadTextures(); await loadPacks(); refreshServers(); refreshStats(); } else toast(p.error || 'L’installation a échoué.');
+    if (p.ok) { toast('Pack prêt'); await reloadTextures(); await loadPacks(); refreshServers(); refreshStats(); } else toast(p.error || 'L’installation a échoué.');
   });
   api.listen('game://exited', (p) => {
     state.inGame = false; emit('game');

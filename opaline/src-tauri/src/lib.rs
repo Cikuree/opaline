@@ -501,6 +501,15 @@ pub fn run_with(svc: Services) {
             let tex = state.0.root.textures();
             std::fs::create_dir_all(&tex)?;
             app.asset_protocol_scope().allow_directory(&tex, true)?;
+            // Textures du client.jar : tâche de fond, sous le verrou d'installation (pas de doublon avec une installation en cours).
+            let (s, app) = (state.clone(), app.handle().clone());
+            tauri::async_runtime::spawn(async move {
+                let _guard = s.0.install_lock.lock().await;
+                let s2 = s.clone();
+                if let Ok(Ok(Some(dir))) = tauri::async_runtime::spawn_blocking(move || service::ensure_textures(&s2.0.root, &s2.0.svc.install)).await {
+                    let _ = app.emit("textures://ready", json!({ "dir": dir.to_string_lossy() }));
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

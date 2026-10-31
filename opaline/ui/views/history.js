@@ -5,7 +5,7 @@ import { CAUSES, splitByKey } from '../data.js';
 
 const pretty = (id) => { const t = String(id).split(':').pop().replace(/_/g, ' '); return t.charAt(0).toUpperCase() + t.slice(1); };
 export function causeInfo(d) {
-  const [label, t] = CAUSES[String(d.cause || '').split(':').pop()] || [d.message || pretty(d.cause || 'generic'), 'bone'];
+  const [label, t] = CAUSES[String(d.cause || '').split(':').pop()] || [d.message || pretty(d.cause || 'generic'), 'totem_of_undying'];
   const att = d.attacker ? pretty(d.attacker) : null;
   return { how: att ? `${label} (${att})` : label, label, att, tex: t };
 }
@@ -45,7 +45,7 @@ function renderDetail() {
    <ul class="list" style="gap:8px;margin:12px 0;font-size:14px">
     <li class="row"><span class="mute">Joueur</span><b style="display:flex;align-items:center;gap:8px"><span class="avatar" style="width:28px;height:28px">${headHtml(d.name, d.player, 28)}</span>${esc(d.name)}</b></li>
     <li class="row"><span class="mute">Cause</span><b>${esc(c.label)}</b></li>
-    <li class="row"><span class="mute">Attaquant</span><b style="display:flex;align-items:center;gap:8px">${tex(c.tex, 32, 'diamond')}${esc(c.att || '—')}</b></li>
+    <li class="row"><span class="mute">Attaquant</span><b style="display:flex;align-items:center;gap:8px">${tex(c.tex, 32)}${esc(c.att || '—')}</b></li>
     <li class="row"><span class="mute">Position</span><b>${dim && dim !== 'Overworld' ? dim + ' · ' : ''}${pos}</b></li></ul>${graph(d)}`;
   hydrateHeads(box);
 }
@@ -62,7 +62,7 @@ export async function renderHistory() {
   try { runs = (await api.runHistory(p.id, null))?.runs || []; } catch (e) { runs = []; toast(api.errMsg(e)); }
   $('#histSum').textContent = `${runs.length} run${runs.length > 1 ? 's' : ''} · ${hms(runs.reduce((a, r) => a + r.durationMs, 0))} jouées`;
   $('#runsEmpty').hidden = runs.length > 0;
-  $('#runs').innerHTML = runs.map((r) => { const b = r.bestSplit ? splitByKey(r.bestSplit) : null; return `<tr tabindex="0" data-r="${Number(r.run)}"><td>#${Number(r.run)}</td><td>${hms(r.durationMs)}</td><td>${Number(r.deaths)}</td><td><span style="display:flex;align-items:center;gap:8px">${b ? tex(b.tex, 16, b.fb) + esc(b.label) : '—'}</span></td></tr>`; }).join('');
+  $('#runs').innerHTML = runs.map((r) => { const b = r.bestSplit ? splitByKey(r.bestSplit) : null; return `<tr tabindex="0" data-r="${Number(r.run)}"><td>#${Number(r.run)}</td><td>${hms(r.durationMs)}</td><td>${Number(r.deaths)}</td><td><span style="display:flex;align-items:center;gap:8px">${b ? tex(b.tex, 16) + esc(b.label) : '—'}</span></td></tr>`; }).join('');
   if (!runs.length) { sel = null; renderDetail(); } else if (!runs.some((r) => r.run === sel)) await select(runs[0].run); else await select(sel, di);
 }
 
