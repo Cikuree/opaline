@@ -63,7 +63,7 @@ function renderPacks() {
   $('#packs').innerHTML = list.map((p) => {
     const i = state.packs.indexOf(p), st = statusOf(p), s = servers.get(p.id), up = s?.online;
     const srv = s ? `<span><span class="dot ${up ? '' : 'off'}"></span> ${up ? 'En ligne' : 'Hors ligne'}</span>` : '';
-    return `<button class="pk" role="radio" aria-checked="${p.id === state.pack}" data-k="${esc(p.id)}"><span class="th" style="background:${GR[i % 3]}">${tex(p.thumbnail, 32, 'diamond')}</span><span class="tx2"><b>${esc(p.name)}</b><span class="meta">${esc(loaderName(p.loader))} ${esc(p.mc)} · ${Number(p.modsCount)} mods</span><span class="st"><span class="pill ${st === 'upd' ? 's-upd' : st === 'ok' ? '' : 's-no'}">${STATUS[st]}</span>${srv}</span></span></button>`;
+    return `<button class="pk" role="radio" aria-checked="${p.id === state.pack}" data-k="${esc(p.id)}"><span class="th" style="background:${GR[i % 3]}">${tex(p.thumbnail, 32)}</span><span class="tx2"><b>${esc(p.name)}</b><span class="meta">${esc(loaderName(p.loader))} ${esc(p.mc)} · ${Number(p.modsCount)} mods</span><span class="st"><span class="pill ${st === 'upd' ? 's-upd' : st === 'ok' ? '' : 's-no'}">${STATUS[st]}</span>${srv}</span></span></button>`;
   }).join('');
 }
 
@@ -76,8 +76,8 @@ function renderHero(p, st, cr) {
     ? `<div><b id="chrono">${s ? hms(s.totalTimeMs) : '—'}</b><span>Chrono total</span></div><div><b>${s ? Number(s.deaths) : '—'}</b><span>Morts cumulées</span></div><div><b style="font-size:clamp(14px,4cqi,18px);line-height:1.4">${best ? esc(best.label) : '—'}</b><span>Meilleur split</span></div>`
     : `<div><b>${Number(p.modsCount)}</b><span>Mods</span></div><div><b>${esc(p.mc)}</b><span>Minecraft</span></div><div><b style="font-size:18px;line-height:1.4">${esc(loaderName(p.loader))}</b><span>Chargeur</span></div>`;
   $('#heroArt').innerHTML = cr
-    ? tex('ender_eye', 96, 'eye', 'dragon sm') + tex('blaze_rod', 48, 'blaze', 'eye') + tex('diamond', 48, 'diamond', 'dia') + tex('ender_pearl', 32, 'endp', 'p3') + tex('end_stone', 32, 'endp', 'p4')
-    : tex(p.thumbnail, 80, 'diamond', 'dragon sm') + tex('diamond', 48, 'diamond', 'eye') + tex('diamond_pickaxe', 48, 'pickaxe', 'dia');
+    ? tex('ender_eye', 96, 'dragon sm') + tex('blaze_rod', 48, 'eye') + tex('diamond', 48, 'dia') + tex('ender_pearl', 32, 'p3') + tex('end_stone', 32, 'p4')
+    : tex(p.thumbnail, 80, 'dragon sm') + tex('diamond', 48, 'eye') + tex('diamond_pickaxe', 48, 'dia');
   const play = $('#btnPlay'), busy = !!state.install;
   $('.bl', play).textContent = st === 'no' ? 'INSTALLER' : st === 'unsupported' ? 'INDISPONIBLE' : state.inGame ? 'EN JEU' : 'JOUER';
   play.firstElementChild.firstElementChild.setAttribute('href', st === 'no' ? '#i-down' : '#i-play');
@@ -113,7 +113,7 @@ const motdBad = (s) => s.online && !s.motdOk && !s.help;
 function renderSplits(s) {
   const done = new Set(s?.reachedSplits || []), cur = s ? s.currentSplit : -1;
   $('#splCount').textContent = s ? `${done.size} sur ${SPLITS.length} atteints` : '';
-  $('#splits').innerHTML = SPLITS.map((x, i) => { const c = done.has(x.k) ? 'done' : i === cur ? 'cur' : 'next'; return `<li class="split ${c}" ${c === 'cur' ? 'aria-current="step"' : ''}>${tex(x.tex, 48, x.fb)}<b>${x.label}</b><span>${c === 'cur' ? 'en cours' : c === 'done' ? 'atteint' : '—'}</span></li>`; }).join('');
+  $('#splits').innerHTML = SPLITS.map((x, i) => { const c = done.has(x.k) ? 'done' : i === cur ? 'cur' : 'next'; return `<li class="split ${c}" ${c === 'cur' ? 'aria-current="step"' : ''}>${tex(x.tex, 48)}<b>${x.label}</b><span>${c === 'cur' ? 'en cours' : c === 'done' ? 'atteint' : '—'}</span></li>`; }).join('');
   const ms = s ? s.totalTimeMs : 0;
   $('#statVal').textContent = s ? fmtHours(ms) : '—';
   $('#statSvg').setAttribute('aria-label', s ? `Temps total : ${fmtHours(ms).replace(' ', ' ')}` : 'Temps total indisponible');
@@ -121,7 +121,7 @@ function renderSplits(s) {
 
 function renderDeaths() {
   const d = recent.slice(0, 4);
-  $('#deaths').innerHTML = d.length ? d.map((x, i) => { const c = causeInfo(x); return `<li><button data-d="${i}" aria-label="Détail : ${esc(x.name)}, ${esc(c.how)}, run ${Number(x.run)}"><span class="avatar" style="width:36px;height:36px">${headHtml(x.name, x.player, 36)}</span><span class="t"><b>${esc(x.name)}</b><span class="mute">${esc(c.how)}</span></span>${tex(c.tex, 32, 'diamond')}<span class="run">Run #${Number(x.run)}</span></button></li>`; }).join('') : '<li class="mute small">Aucune mort enregistrée.</li>';
+  $('#deaths').innerHTML = d.length ? d.map((x, i) => { const c = causeInfo(x); return `<li><button data-d="${i}" aria-label="Détail : ${esc(x.name)}, ${esc(c.how)}, run ${Number(x.run)}"><span class="avatar" style="width:36px;height:36px">${headHtml(x.name, x.player, 36)}</span><span class="t"><b>${esc(x.name)}</b><span class="mute">${esc(c.how)}</span></span>${tex(c.tex, 32)}<span class="run">Run #${Number(x.run)}</span></button></li>`; }).join('') : '<li class="mute small">Aucune mort enregistrée.</li>';
 }
 
 async function renderNews(p) {

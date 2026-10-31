@@ -187,7 +187,7 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
     Ok(Installed { java: java_exe, version, fabric, shader_pack: marker.shader_pack, index_hash: marker.index_hash })
 }
 
-fn fetch_version_json(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str) -> Result<VersionJson> {
+pub fn fetch_version_json(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str) -> Result<VersionJson> {
     let manifest: VersionManifest = download::get_json(client, &ep.mojang_manifest)?;
     let entry = manifest.versions.iter().find(|v| v.id == mc).with_context(|| format!("Minecraft {mc} absent du manifeste Mojang"))?;
     let path = dirs.version_json(mc);

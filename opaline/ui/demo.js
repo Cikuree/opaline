@@ -1,6 +1,5 @@
 // MODE DÉMO : données fictives pour prévisualiser l'interface dans un navigateur (hors Tauri).
 // Les textures Mojang ne sont pas copiées ici : servez design/launcher-mockup/assets/mc/ sur le port 8767.
-import { HEADS } from './data.js';
 
 const q = new URLSearchParams(location.search);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -38,8 +37,6 @@ let capes = [['Migrator', '#b14a5a'], ['Vanilla', '#e8d9b0'], ['Mojang Studios',
 
 const FRIENDS = [['LunaFox', 3, true, true, null], ['Creeper_Kid', 2, true, true, null], ['Maëlle', 1, true, false, null], ['PixelPaul', 4, false, false, 1200], ['Zéphyr', 5, false, false, 4300]]
   .map(([name, k, online, inGame, ago]) => ({ name, uuid: 'uuid-' + k, online, inGame, lastSeen: ago ? iso(ago) : null, k }));
-const headPng = (k) => { const [h, s, e] = HEADS[k % HEADS.length]; return px(8, 8, (R) => { R(h, 0, 0, 8, 2); R(h, 0, 2, 1, 1); R(h, 7, 2, 1, 1); R(s, 1, 2, 6, 6); R('#fff', 1, 3, 2, 1); R('#fff', 5, 3, 2, 1); R(e, 2, 3, 1, 1); R(e, 5, 3, 1, 1); R('#b5806a', 3, 5, 2, 1); R('#8a4d3c', 3, 6, 2, 1); }); };
-const kOf = (uuid) => (/uuid-(\d)/.exec(uuid) || [0, 0])[1];
 
 const SPL = ['PICKAXE', 'IRON_INGOT', 'DIAMOND', 'NETHER_PORTAL', 'NETHER_WART', 'BLAZE_ROD', 'ENDER_EYE', 'ENTER_END', 'KILL_DRAGON'];
 const DEATHS = [
@@ -105,7 +102,7 @@ export async function invoke(cmd, a = {}) {
     case 'capes_list': return structuredClone(capes);
     case 'cape_set': capes.forEach((c) => (c.active = c.id === a.id)); return null;
     case 'friends': return FRIENDS;
-    case 'player_head': return { dataUrl: headPng(+kOf(a.uuid)) };
+    case 'player_head': throw 'Tête indisponible en démo.';
     default: throw 'Commande inconnue : ' + cmd;
   }
 }

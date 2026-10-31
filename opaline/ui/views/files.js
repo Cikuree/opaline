@@ -18,7 +18,7 @@ export async function renderFiles() {
   const p = current(); if (!p) return;
   const st = statusOf(p);
   $('#filePacks').innerHTML = state.packs.map((q) => `<button role="radio" aria-checked="${q.id === p.id}" data-k="${esc(q.id)}">${esc(q.name)}</button>`).join('');
-  $('#folders').innerHTML = FOLDERS.map((f) => `<button data-f="${f[0]}" ${p.installed ? '' : 'disabled'}><span class="ic">${tex(f[2], 32, 'gear')}</span>${f[1]}</button>`).join('');
+  $('#folders').innerHTML = FOLDERS.map((f) => `<button data-f="${f[0]}" ${p.installed ? '' : 'disabled'}><span class="ic">${tex(f[2], 32)}</span>${f[1]}</button>`).join('');
   let mods = []; if (p.installed && p.supported) { try { mods = await api.packMods(p.id); } catch (e) { toast(api.errMsg(e)); } }
   if (current()?.id !== p.id) return;
   $('#modsBox').innerHTML = mods.length

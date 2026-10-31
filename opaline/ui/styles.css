@@ -215,7 +215,8 @@ tbody tr.sel td,tbody tr:hover td{background:var(--panel-hi)} tbody tr[tabindex]
 .chg li{display:flex;gap:8px}
 .chs{font-weight:800;width:14px;text-align:center;flex:none}
 .chs.add{color:var(--ok)} .chs.rem{color:var(--bad)} .chs.upd{color:var(--warn)}
-img.mt{image-rendering:pixelated;display:block;flex:none}
+img.mt,.ph{image-rendering:pixelated;display:block;flex:none}
+.ph{background:var(--win-deep);border-radius:4px;opacity:.6}
 .h2i{display:flex;align-items:center;gap:10px}
 .files .ic{width:56px;height:56px}
 .hero .art .dragon.sm{width:96px;right:30px;top:14px}
