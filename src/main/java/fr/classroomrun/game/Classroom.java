@@ -98,7 +98,17 @@ public final class Classroom {
 		}
 
 		StructurePlaceSettings settings = new StructurePlaceSettings().setIgnoreEntities(false);
-		template.placeInWorld(level, origin, origin, settings, level.getRandom(), Block.UPDATE_CLIENTS);
+		boolean ok = template.placeInWorld(level, origin, origin, settings, level.getRandom(), Block.UPDATE_CLIENTS);
+		int solid = 0;
+		for (BlockPos p : BlockPos.betweenClosed(origin, origin.offset(size.getX() - 1, size.getY() - 1, size.getZ() - 1))) {
+			if (!level.getBlockState(p).isAir()) {
+				solid++;
+			}
+		}
+		ClassroomRun.LOGGER.info("Classroom blocks: placeInWorld={}, {} non-air blocks in the volume", ok, solid);
+		if (!ok || solid == 0) {
+			ClassroomRun.LOGGER.error("Classroom placement produced no block (placeInWorld={})", ok);
+		}
 
 		Vec3 base = Vec3.atLowerCornerOf(origin);
 		Vec3 spawn = base.add(loaded.spawn() != null ? loaded.spawn() : DEFAULT_SPAWN_OFFSET);
@@ -197,12 +207,32 @@ public final class Classroom {
 				}
 			}
 			tag.put("entities", kept);
+			upgradePalette(tag);
 			StructureTemplate template = new StructureTemplate();
 			template.load(server.registryAccess().lookupOrThrow(Registries.BLOCK), tag);
 			return new Loaded(template, source, spawn, boardEntry);
 		} catch (IOException | RuntimeException e) {
 			ClassroomRun.LOGGER.warn("Cannot load the classroom template, using the fallback platform", e);
 			return null;
+		}
+	}
+
+	/**
+	 * Since 26.x {@code NbtUtils.readBlockState} reads {@code id}/{@code properties}; the legacy structure format uses
+	 * {@code Name}/{@code Properties} and would silently load every block as air.
+	 */
+	static void upgradePalette(CompoundTag tag) {
+		ListTag palette = tag.getListOrEmpty("palette");
+		for (int i = 0; i < palette.size(); i++) {
+			CompoundTag entry = palette.getCompoundOrEmpty(i);
+			if (!entry.contains("id") && entry.contains("Name")) {
+				entry.put("id", entry.get("Name"));
+				entry.remove("Name");
+			}
+			if (!entry.contains("properties") && entry.contains("Properties")) {
+				entry.put("properties", entry.get("Properties"));
+				entry.remove("Properties");
+			}
 		}
 	}
 
