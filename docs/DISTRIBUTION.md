@@ -11,7 +11,7 @@ Tout le projet vit dans un seul dépôt public : https://github.com/Cikuree/opal
 | `classroom-launcher-linux` | le launcher Linux |
 | `classroom-run-prism.zip` | l'instance Prism importable |
 | `pack.zip` | le dossier `pack/` publié, avec `mods/classroomrun.pw.toml` généré (URL et sha512 du jar de la release) |
-| `launcher.json` | `{"version": "X.Y.Z", "windows": "<url>", "linux": "<url>", "pack": "<url de pack.zip>"}` |
+| `launcher.json` | `{"version": "X.Y.Z", "windows": "<url>", "linux": "<url>", "pack": "<url de pack.zip>", "pack_hash": "<hash de l index>"}` |
 
 ## Fonctionnement du launcher
 
@@ -21,4 +21,4 @@ Tout le projet vit dans un seul dépôt public : https://github.com/Cikuree/opal
 
 ## Données privées
 
-Ni l'adresse du serveur (Tailscale) ni aucun jeton ne sont publiés. Chaque joueur saisit l'adresse du serveur dans le launcher.
+Ni l'adresse du serveur ni aucun jeton ne sont publiés. Le launcher vise `classroom.<suffixe MagicDNS>` calculé à l'exécution via Tailscale, sans jamais l'afficher.
