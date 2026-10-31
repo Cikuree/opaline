@@ -1,5 +1,11 @@
 # Changelog
 
+## Opaline 0.3.0 : jouer via le Launcher Minecraft
+- **Second mode de lancement** : sans connexion Opaline, JOUER prépare le pack, crée le profil « Opaline · <pack> » dans le Launcher Minecraft officiel (présélectionné) et l'ouvre ; le compte et le skin y sont gérés. Version dédiée `opaline-<pack>` dans `.minecraft`, fichiers Forge/NeoForge copiés, autres profils conservés (sauvegarde `launcher_profiles.json.opaline.bak`), refus si le Launcher est déjà ouvert.
+- **Connexion Microsoft facultative** : en attendant la validation de l'app par Mojang, message explicite et bascule en mode Launcher Minecraft ; dès la validation, la connexion redonne le lancement direct, sans nouvelle version.
+- **Pseudo Minecraft** : skin et tête affichés depuis les données publiques de Mojang, sans connexion ; la garde-robe se débloque avec la connexion.
+- Page de connexion du navigateur sans pastille de statut.
+
 ## Opaline 0.2.1 : tous les loaders, JOUER au menu
 - **Loaders** : Fabric, Quilt, NeoForge et Forge, installés depuis leurs sources officielles (installeur et processors exécutés par Opaline, hashes vérifiés, hôtes en liste blanche, redirections revérifiées, installation idempotente et verrouillée).
 - **JOUER** : lance le jeu au menu principal de l'instance choisie ; le serveur du pack est ajouté à la liste Multijoueur. Serveur Tailscale (nom MagicDNS court), public ou absent.
