@@ -180,18 +180,27 @@ tbody tr.sel td,tbody tr:hover td{background:var(--panel-hi)} tbody tr[tabindex]
 }
 @container main (min-width:700px){ .grid2{grid-template-columns:1fr 1fr} }
 @container main (min-width:760px){ .filesgrid{grid-template-columns:minmax(0,1fr) 340px} }
-@media (max-width:1180px){
-  .window{--rail:68px;grid-template-columns:var(--rail) minmax(0,1fr)}
-  .rail .coltoggle{display:grid}
-  .col{position:absolute;z-index:8;top:12px;right:12px;bottom:12px;width:min(280px,calc(100% - 24px));padding:12px;background:var(--win-deep);border-radius:24px;box-shadow:0 20px 40px rgba(0,0,0,.5);border:1px solid var(--line);transform:translateX(calc(100% + 24px));visibility:hidden;transition:transform .25s var(--ease),visibility .25s}
-  .window.drawer .col{transform:none;visibility:visible}
+@media (max-width:1180px){ .window{--rail:68px} }
+@media (min-width:901px){
+  .window{grid-template-columns:var(--rail) minmax(0,1fr) auto}
+  .col{width:clamp(208px,19vw,264px);transition:width .22s var(--ease)}
+  .window.colmini .col{width:72px;overflow:visible;gap:12px}
+  .colmini .col .card{padding:10px 6px;border-radius:24px}
+  .colmini .col .tx,.colmini .col h2,.colmini .col .mtx,.colmini .col .colx .lbl{display:none}
+  .colmini .col .pl,.colmini .col .me{flex-direction:column;justify-content:center;gap:4px;padding:4px 0}
+  .colmini .col .ingame{display:inline-block}
+  .colmini .col .pl[data-tip]:hover::after,.colmini .col .pl[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;right:calc(100% + 14px);top:50%;transform:translateY(-50%);background:var(--cream);color:var(--on-coral);font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px;white-space:nowrap;z-index:9;pointer-events:none}
 }
 @media (max-width:900px){
   .window{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
   .rail{flex-direction:row;padding:6px 10px;border-radius:20px;gap:6px}
   .rail .logo{margin:0 8px 0 0;width:40px;height:40px}
   .rail button{width:44px;height:44px}
+  .rail .coltoggle{display:grid}
+  .colx{display:none!important}
   .prog{left:20px}
+  .col{position:absolute;z-index:8;top:12px;right:12px;bottom:12px;width:min(280px,calc(100% - 24px));padding:12px;background:var(--win-deep);border-radius:24px;box-shadow:0 20px 40px rgba(0,0,0,.5);border:1px solid var(--line);transform:translateX(calc(100% + 24px));visibility:hidden;transition:transform .25s var(--ease),visibility .25s}
+  .window.drawer .col{transform:none;visibility:visible}
 }
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
@@ -226,7 +235,10 @@ tbody tr.sel td,tbody tr:hover td{background:var(--panel-hi)} tbody tr[tabindex]
 img.mt{image-rendering:pixelated;display:block;flex:none}
 .h2i{display:flex;align-items:center;gap:10px}
 .files .ic{width:56px;height:56px}
-.hero .art .dragon.sm{width:80px;right:36px;top:14px}
+.hero .art .dragon.sm{width:96px;right:30px;top:14px}
+.hero .art img.mt{filter:drop-shadow(2px 3px 0 rgba(44,18,25,.5))}
+.hero .art .p3{position:absolute;left:14px;top:34px;width:32px;height:32px;animation:float 5s ease-in-out -3s infinite}
+.hero .art .p4{position:absolute;right:2px;bottom:62px;width:32px;height:32px}
 .wardrobe{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin-top:10px}
 .sk{display:flex;flex-direction:column;gap:10px;align-items:center;padding:14px}
 .sk-b{position:absolute;top:12px;left:12px;z-index:1}
@@ -236,6 +248,19 @@ img.mt{image-rendering:pixelated;display:block;flex:none}
 .acts2{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
 .btn.danger{background:#7a2d32;color:#fff}
 .seg.sm button{padding:4px 12px}
+.ingame{display:none;font-size:10px;font-weight:800;line-height:1;padding:3px 6px;border-radius:999px;background:var(--grad);color:var(--on-coral)}
+.avatar{box-shadow:0 0 0 2px var(--line)}
+button.pl{width:100%;text-align:left;position:relative;border-radius:14px}
+button.me{width:100%;text-align:left;border-radius:14px}
+.dot.away{background:var(--warn)}
+.meCard{position:relative}
+.menu{position:absolute;right:0;top:calc(100% + 6px);width:190px;background:var(--cream);color:var(--on-coral);border-radius:16px;padding:6px;z-index:9;box-shadow:0 12px 24px rgba(0,0,0,.4)}
+.menu button{display:flex;gap:8px;align-items:center;width:100%;min-height:40px;padding:0 10px;border-radius:10px;font-weight:700;font-size:13px;text-align:left}
+.menu button:hover{background:rgba(44,18,25,.1)}
+.menu button[aria-checked=true]::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--on-coral)}
+.menu button[aria-checked=false]::before{content:"";width:8px;height:8px}
+.colx{display:flex;align-items:center;justify-content:center;gap:8px;min-height:40px;width:100%;border-radius:16px;background:var(--panel);color:var(--mute);font-size:13px;font-weight:700;transition:background .2s,color .2s}
+.colx:hover{background:var(--panel-hi);color:var(--ink)}
 .imp{display:flex;flex-direction:column;gap:12px}
 </style>
 </head>
@@ -301,7 +326,7 @@ img.mt{image-rendering:pixelated;display:block;flex:none}
     <div class="packs" id="packs" role="radiogroup" aria-label="Modpacks du groupe"></div>
     <div class="home" id="home">
       <article class="card hero" aria-labelledby="heroT">
-        <div class="art" id="heroArt" aria-hidden="true"><img class="mt dragon" src="assets/mc/dragon_egg.png" alt="" width="160" height="160"><img class="mt eye" src="assets/mc/ender_eye.png" alt="" width="48" height="48"><img class="mt dia" src="assets/mc/diamond.png" alt="" width="48" height="48"></div>
+        <div class="art" id="heroArt" aria-hidden="true"><img class="mt dragon sm" src="assets/mc/ender_eye.png" alt="" width="96" height="96"><img class="mt eye" src="assets/mc/blaze_rod.png" alt="" width="48" height="48"><img class="mt dia" src="assets/mc/diamond.png" alt="" width="48" height="48"><img class="mt p3" src="assets/mc/ender_pearl.png" alt="" width="32" height="32"><img class="mt p4" src="assets/mc/end_stone.png" alt="" width="32" height="32"></div>
         <div>
           <span class="pill" id="runState"><span class="dot"></span>En cours</span>
           <h2 id="heroT" style="margin-top:10px">Run #20</h2>
@@ -441,7 +466,7 @@ img.mt{image-rendering:pixelated;display:block;flex:none}
     <div class="bar"><h1 id="nT">Actualités</h1></div>
     <div class="banner" id="banner" role="region" aria-label="Mise à jour du launcher"><svg class="i"><use href="#i-down"/></svg><b>Nouvelle version du launcher : 0.4.1 est disponible.</b><button class="btn sm" id="updLauncher">Installer</button><button class="x" id="dismiss" aria-label="Fermer la bannière"><svg class="i" style="width:18px;height:18px"><use href="#i-x"/></svg></button></div>
     <div class="grid2">
-      <article class="card"><h2 class="h2i"><img class="mt" src="assets/mc/dragon_egg.png" alt="" width="32" height="32">Pack Classroom Run</h2>
+      <article class="card"><h2 class="h2i"><img class="mt" src="assets/mc/ender_eye.png" alt="" width="32" height="32">Pack Classroom Run</h2>
         <div class="note"><h3>0.9.3 <span class="pill">Nouveau</span></h3><ul><li>Reset de run fiabilisé si un joueur se déconnecte pendant la mort collective.</li><li>Le split « Entrée dans l&rsquo;End » se valide à l&rsquo;entrée, plus à l&rsquo;activation.</li><li>Sodium 0.7.2 et Iris 1.9.4.</li></ul></div>
         <div class="note"><h3>0.9.2 <span class="mute xs">12 oct.</span></h3><ul><li>Ajout du fil de dégâts avec têtes de joueurs.</li><li>La salle de classe retrouve son tableau noir de départ.</li></ul></div></article>
       <article class="card"><h2 class="h2i"><img class="mt" src="assets/mc/grass_block_side.png" alt="" width="32" height="32">Survie entre potes</h2>
@@ -454,9 +479,14 @@ img.mt{image-rendering:pixelated;display:block;flex:none}
   </main>
 
   <aside class="col" id="col" aria-label="Joueurs du serveur">
-    <article class="card">
-      <div class="me"><div class="avwrap"><div class="avatar"><svg class="px" data-head="0" data-s="44"></svg></div><span class="dot" role="img" aria-label="En ligne"></span></div><div><b>OddNode</b><div class="xs mute">Toi · Hôte</div></div></div>
+    <article class="card meCard">
+      <button type="button" class="me" id="meBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Mon statut : En ligne"><div class="avwrap"><div class="avatar"><svg class="px" data-head="0" data-s="44"></svg></div><span class="dot" id="meDot" role="img" aria-label="Mon statut"></span></div><span class="ingame" id="meGame" hidden>En jeu</span><div class="mtx"><b>OddNode</b><div class="xs mute" id="meSt">En ligne</div></div></button>
+      <div class="menu" id="meMenu" role="menu" aria-label="Mon statut" hidden>
+        <button type="button" role="menuitemradio" aria-checked="true" data-s="on">En ligne</button>
+        <button type="button" role="menuitemradio" aria-checked="false" data-s="away">Absent</button>
+        <button type="button" role="menuitemradio" aria-checked="false" data-s="inv">Invisible</button></div>
     </article>
+    <button type="button" class="colx" id="colExpand" aria-expanded="true" aria-controls="col" aria-label="Réduire la liste des amis"><svg class="i"><use href="#i-users"/></svg><span class="lbl">Réduire</span></button>
     <article class="card"><h2>En ligne <span class="mute small" id="onCount">· 3</span></h2><div id="online" style="margin-top:6px"></div></article>
     <article class="card"><h2>Amis du serveur</h2><div id="offline" style="margin-top:6px"></div></article>
   </aside>
@@ -605,7 +635,7 @@ $('#validate').addEventListener('click',()=>{signed=true;show('home');toast('Con
 const GRV='linear-gradient(135deg,#7b4bb7,#a66ad6)',GRC='linear-gradient(135deg,#f6dcc8,#f3b9b4)',GRO='linear-gradient(135deg,#e0574f,#f07a5a)';
 const SAMPLE=[['NeoForge Create','6.0.4','Les deux','ok'],['Create Steam n Rails','1.7.0','Les deux','ok'],['Flywheel','1.0.2','Client','ok'],['Ponder','1.0.5','Client','ok'],['Jade','19.1.0','Client','ok'],['Sodium','0.7.2','Client','ok']];
 const PACKS=[
- {name:'Classroom Run',mc:'26.3',loader:'Fabric',tag:'hardcore coop',icon:'dragon',tex:'dragon_egg',bg:GRO,status:'upd',ver:'0.9.2',next:'0.9.3',size:'48,2 Mo',total:10,mods:MODS,srv:{up:true,pl:3,max:8,lat:23},
+ {name:'Classroom Run',mc:'26.3',loader:'Fabric',tag:'hardcore coop',icon:'eye',tex:'ender_eye',bg:GRO,status:'upd',ver:'0.9.2',next:'0.9.3',size:'48,2 Mo',total:10,mods:MODS,srv:{up:true,pl:3,max:8,lat:23},
   desc:'Hardcore coopératif : vie partagée, mort collective, chaque run recommence dans la salle de classe.',
   chg:{add:['Cloth Config 21.0.1'],rem:['Indium 1.0.37'],upd:['Classroom Run 0.9.2 → 0.9.3','Sodium 0.7.1 → 0.7.2','Iris Shaders 1.9.3 → 1.9.4']},
   news:[['0.9.3','Reset de run fiabilisé si un joueur se déconnecte pendant la mort collective.'],['0.9.2','Ajout du fil de dégâts avec têtes de joueurs.']],
@@ -623,7 +653,7 @@ const STATUS={upd:'Mise à jour dispo',ok:'Installé',no:'Non installé'};
 let pk=0;
 const eff=()=>ts==='on'&&PACKS[pk].srv.up;
 const CR_STATS=$('#heroStats').innerHTML,CR_ART=$('#heroArt').innerHTML;
-function playerRow(p,off){return`<div class="pl ${off?'off':''}" title="${p[0]}"><div class="avwrap"><div class="avatar">${headSvg(p[1],44)}</div><span class="dot ${off?'idle':''}" role="img" aria-label="${off?'Hors ligne':'En ligne'}"></span></div><div class="tx"><div class="n">${p[0]}</div><div class="s">${off?'Hors ligne · ':''}${p[2]}</div></div></div>`}
+function playerRow(p,off){const st=off?'hors ligne':'en ligne';return`<button type="button" class="pl ${off?'off':''}" data-tip="${p[0]} · ${st}" aria-label="${p[0]}, ${st}. ${p[2]}"><div class="avwrap"><div class="avatar">${headSvg(p[1],44)}</div><span class="dot ${off?'idle':''}" role="img" aria-label="${off?'Hors ligne':'En ligne'}"></span></div>${off?'':'<span class="ingame">En jeu</span>'}<div class="tx"><div class="n">${p[0]}</div><div class="s">${off?'Hors ligne · ':''}${p[2]}</div></div></button>`}
 function renderPack(){
   const p=PACKS[pk],on=eff();
   $('#packs').innerHTML=PACKS.map((q,i)=>{const up=ts==='on'&&q.srv.up;return`<button class="pk" role="radio" aria-checked="${i===pk}" data-k="${i}"><span class="th" style="background:${q.bg}">${T(q.tex,32,q.icon)}</span><span class="tx2"><b>${q.name}</b><span class="meta">${q.loader} ${q.mc} · ${q.tag}</span><span class="st"><span class="pill s-${q.status}">${STATUS[q.status]}</span><span><span class="dot ${up?'':'off'}"></span> ${up?'En ligne':'Hors ligne'}</span></span></span></button>`}).join('');
@@ -668,7 +698,7 @@ const setPack=i=>{pk=i;renderPack()};
 ['#packs','#filePacks'].forEach(id=>$(id).addEventListener('click',e=>{const b=e.target.closest('[data-k]');if(b)setPack(+b.dataset.k)}));
 $('#packCard').addEventListener('click',e=>{if(e.target.closest('[data-act]'))act()});
 $('#btnUpd').addEventListener('click',act);
-$('#btnPlay').addEventListener('click',()=>{const p=PACKS[pk];if(p.status==='no')return act();toast('Lancement de '+p.name+'…');progress('Préparation du lancement',p.name+' · '+p.loader+' '+p.mc)});
+$('#btnPlay').addEventListener('click',()=>{const p=PACKS[pk];if(p.status==='no')return act();inGame=true;renderMe();toast('Lancement de '+p.name+'…');progress('Préparation du lancement',p.name+' · '+p.loader+' '+p.mc)});
 $('#btnRepair').addEventListener('click',()=>{const p=PACKS[pk];progress('Vérification des fichiers',p.mods.length+' mods · hash SHA-256',()=>{p.mods.forEach(m=>m[3]='ok');renderFiles();toast('Tous les fichiers sont intègres')})});
 function net(){
   const on=ts==='on';
@@ -735,6 +765,22 @@ const drawer=o=>{win.classList.toggle('drawer',o);ct.setAttribute('aria-expanded
 ct.addEventListener('click',()=>drawer(!win.classList.contains('drawer')));
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&win.classList.contains('drawer')){drawer(false);ct.focus()}});
 $('#main').addEventListener('click',()=>drawer(false));
+/* colonne amis : statut perso + réduction en place */
+const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+const mq=matchMedia('(max-width:1180px)');
+function applyCol(){const v=LS.get('opaline.col'),mini=v?v==='mini':mq.matches,b=$('#colExpand');win.classList.toggle('colmini',mini);b.setAttribute('aria-expanded',!mini);b.setAttribute('aria-label',mini?'Développer la liste des amis':'Réduire la liste des amis');$('.lbl',b).textContent='Réduire'}
+$('#colExpand').addEventListener('click',()=>{LS.set('opaline.col',win.classList.contains('colmini')?'full':'mini');applyCol()});
+mq.addEventListener('change',applyCol);
+$('#col').addEventListener('click',e=>{if(win.classList.contains('colmini')&&e.target.closest('.pl')){LS.set('opaline.col','full');applyCol()}});
+let myStatus='on',inGame=false;
+const ST={on:['En ligne',''],away:['Absent','away'],inv:['Invisible','idle']};
+function renderMe(){const g=inGame&&myStatus!=='inv',t=g?'En jeu':ST[myStatus][0];$('#meSt').textContent=t;$('#meGame').hidden=!g;$('#meDot').className='dot '+ST[myStatus][1];$('#meBtn').setAttribute('aria-label','Mon statut : '+t+'. Changer');$$('#meMenu button').forEach(b=>b.setAttribute('aria-checked',b.dataset.s===myStatus))}
+const menu=o=>{$('#meMenu').hidden=!o;$('#meBtn').setAttribute('aria-expanded',o)};
+$('#meBtn').addEventListener('click',e=>{e.stopPropagation();menu($('#meMenu').hidden)});
+$('#meMenu').addEventListener('click',e=>{const b=e.target.closest('[data-s]');if(!b)return;e.stopPropagation();myStatus=b.dataset.s;renderMe();menu(false);$('#meBtn').focus();toast('Statut : '+ST[myStatus][0])});
+document.addEventListener('click',()=>menu(false));
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#meMenu').hidden){menu(false);$('#meBtn').focus()}});
+renderMe();applyCol();
 paint();net();
 </script>
 </body>
