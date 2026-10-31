@@ -181,16 +181,6 @@ tbody tr.sel td,tbody tr:hover td{background:var(--panel-hi)} tbody tr[tabindex]
 @container main (min-width:700px){ .grid2{grid-template-columns:1fr 1fr} }
 @container main (min-width:760px){ .filesgrid{grid-template-columns:minmax(0,1fr) 340px} }
 @media (max-width:1180px){ .window{--rail:68px} }
-@media (min-width:901px){
-  .window{grid-template-columns:var(--rail) minmax(0,1fr) auto}
-  .col{width:clamp(208px,19vw,264px);transition:width .22s var(--ease)}
-  .window.colmini .col{width:72px;overflow:visible;gap:12px}
-  .colmini .col .card{padding:10px 6px;border-radius:24px}
-  .colmini .col .tx,.colmini .col h2,.colmini .col .mtx,.colmini .col .colx .lbl{display:none}
-  .colmini .col .pl,.colmini .col .me{flex-direction:column;justify-content:center;gap:4px;padding:4px 0}
-  .colmini .col .ingame{display:inline-block}
-  .colmini .col .pl[data-tip]:hover::after,.colmini .col .pl[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;right:calc(100% + 14px);top:50%;transform:translateY(-50%);background:var(--cream);color:var(--on-coral);font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px;white-space:nowrap;z-index:9;pointer-events:none}
-}
 @media (max-width:900px){
   .window{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
   .rail{flex-direction:row;padding:6px 10px;border-radius:20px;gap:6px}
@@ -264,28 +254,6 @@ button.me{width:100%;text-align:left;border-radius:14px}
 .imp{display:flex;flex-direction:column;gap:12px}
 .chat{display:none}
 .avatar svg{width:100%;height:100%}
-@media (min-width:901px){
-  .window.colmini{--pill:#4a1d25}
-  .window.colmini .col{gap:0;align-items:stretch}
-  .colmini .col .card{background:var(--pill);border-radius:0;padding:4px 0;display:flex;flex-direction:column;align-items:center}
-  .colmini .col .meCard{border-radius:36px 36px 0 0;padding-top:18px}
-  .colmini .col .colx{background:var(--pill);border-radius:0;color:var(--cream);min-height:40px;margin:0}
-  .colmini .col .colx:hover{background:#431a21}
-  .colmini .col .onl{border-radius:0 0 36px 36px;padding-bottom:20px}
-  .colmini .col .onl #offline{margin-top:14px!important}
-  .colmini .col .chat{display:block;width:22px;height:22px;color:var(--cream);margin-bottom:12px}
-  .colmini .col .me{padding:0}
-  .colmini .col .me .avatar{box-shadow:0 0 0 3px var(--cream)}
-  .colmini .col .avatar{width:40px;height:40px;box-shadow:0 0 0 2px rgba(255,241,224,.2)}
-  .colmini .col .me .avatar{width:44px;height:44px;box-shadow:0 0 0 3px var(--cream)}
-  .colmini .col .avwrap .dot{top:-2px;bottom:auto;right:-4px;width:14px;height:14px;border:3px solid var(--pill)}
-  .colmini .col .pl.off .dot{background:var(--coral)}
-  .colmini .col #online,.colmini .col #offline{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:8px!important}
-  .colmini .col .pl{padding:0;gap:0}
-  .colmini .col .ingame{margin-top:-9px;position:relative;z-index:1;background:#c9423f;color:#fff;border-radius:6px;font-size:10px;padding:3px 6px}
-  .colmini .col .pl.off{filter:none}
-  .colmini .col .pl.off .avatar{filter:grayscale(.6) brightness(.85)}
-}
 .titlebar{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:36px;margin:-6px 0 -4px;user-select:none;-webkit-app-region:drag}
 .titlebar .tt{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--mute);padding-left:6px;flex:1;min-height:36px}
 .wbtns{display:flex;gap:6px;-webkit-app-region:no-drag}
@@ -297,6 +265,31 @@ button.me{width:100%;text-align:left;border-radius:14px}
 .window.max{max-width:none;max-height:none;border-radius:0}
 body:has(.window.max){padding:0}
 @media (max-width:900px){.window{grid-template-rows:auto auto minmax(0,1fr)}}
+@media (min-width:901px){
+  .window{grid-template-columns:var(--rail) minmax(0,1fr) auto;--pill:#4a1d25}
+  .col{width:clamp(208px,19vw,264px);transition:width .22s var(--ease);align-self:start;overflow:visible;gap:0;background:var(--pill);border-radius:36px;padding:18px 0 20px}
+  .window.colmini .col{width:72px}
+  .col .card{background:none;padding:0;border-radius:0;display:block}
+  .col h2{display:none}
+  .col .me{display:flex;flex-direction:row;align-items:center;gap:12px;padding:0 14px;height:44px;width:100%;border-radius:0}
+  .col .me .avatar{width:44px;height:44px;box-shadow:0 0 0 3px var(--cream)}
+  .col .colx{justify-content:flex-start;gap:12px;padding:0 26px;margin-top:8px;min-height:40px;background:none;border-radius:0;color:var(--cream)}
+  .col .colx:hover{background:rgba(255,255,255,.05)}
+  .col .colx .lbl{display:none}
+  .col .tx,.col .mtx,.col .colx .lbl{opacity:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;transition:opacity .18s}
+  .window.colmini .col .tx,.window.colmini .col .mtx,.window.colmini .col .colx .lbl{opacity:0;pointer-events:none}
+  .col #online,.col #offline{display:flex;flex-direction:column;gap:14px;margin-top:14px!important}
+  .col .pl{display:flex;flex-direction:row;align-items:center;gap:12px;padding:0 16px;height:40px;width:100%;border-radius:0}
+  .col .avatar{width:40px;height:40px}
+  .col .me .avatar{width:44px;height:44px}
+  .col .avwrap .dot{top:-2px;bottom:auto;right:-4px;width:14px;height:14px;border:3px solid var(--pill)}
+  .col .pl.off .dot{background:var(--coral)}
+  .col .ingame{display:inline-block;position:absolute;left:16px;bottom:-7px;width:40px;text-align:center;padding:3px 0;background:#c9423f;color:#fff;border-radius:6px;font-size:10px;margin:0;z-index:1}
+  .col .me .ingame{left:14px;width:44px;bottom:-7px}
+  .col .me{position:relative}
+  .col .pl.off .avatar{filter:grayscale(.6) brightness(.85)}
+  .window.colmini .col .pl[data-tip]:hover::after,.window.colmini .col .pl[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;right:calc(100% + 14px);top:50%;transform:translateY(-50%);background:var(--cream);color:var(--on-coral);font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px;white-space:nowrap;z-index:9;pointer-events:none}
+}
 </style>
 </head>
 <body>
@@ -817,7 +810,7 @@ $('#main').addEventListener('click',()=>drawer(false));
 /* colonne amis : statut perso + réduction en place */
 const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 const mq=matchMedia('(max-width:1180px)');
-function applyCol(){const v=LS.get('opaline.col'),mini=v?v==='mini':mq.matches,b=$('#colExpand');win.classList.toggle('colmini',mini);b.setAttribute('aria-expanded',!mini);b.setAttribute('aria-label',mini?'Développer la liste des amis':'Réduire la liste des amis');$('.lbl',b).textContent='Réduire'}
+function applyCol(){const v=LS.get('opaline.col'),mini=v?v==='mini':mq.matches,b=$('#colExpand');win.classList.toggle('colmini',mini);b.setAttribute('aria-expanded',!mini);{const t=mini?'Afficher les amis':'Réduire la liste';b.setAttribute('aria-label',t);b.title=t}$('.lbl',b).textContent='Réduire'}
 $('#colExpand').addEventListener('click',()=>{LS.set('opaline.col',win.classList.contains('colmini')?'full':'mini');applyCol()});
 mq.addEventListener('change',applyCol);
 $('#col').addEventListener('click',e=>{if(win.classList.contains('colmini')&&e.target.closest('.pl')){LS.set('opaline.col','full');applyCol()}});
