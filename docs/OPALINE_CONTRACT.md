@@ -81,7 +81,7 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 | `pack_mods` | `{id}` | `[{name, version, side, file, verified}]` |
 | `pack_repair` | `{id}` | comme `pack_install` (revérifie tout) |
 | `play` | `{id}` | `{started: bool, reason: null \| string}`, puis événement `game://exited`. Lance le jeu dans l'instance du pack, avec ses mods, jusqu'au **menu principal** de Minecraft : aucune connexion automatique, aucun ping ni vérification Tailscale/MOTD préalable. Si le pack déclare un serveur, Opaline l'ajoute au préalable à la liste Multijoueur de l'instance (`servers.dat`, entrée nommée d'après le pack, ajoutée seulement si absente, entrées de l'utilisateur jamais modifiées) |
-| `server_status` | `{id}` | `ServerView` (§5) |
+| `server_status` | `{id}` | `ServerView` (§5), ou `null` si le pack n'a pas de serveur |
 | `run_stats` | `{id}` | JSON de `GET /stats` du serveur, ou `null` (seulement pour le widget `classroomRun`) |
 | `run_history` | `{id, run: null \| number}` | JSON de `GET /history` (index) ou `GET /history/<n>` (détail), schémas de CONTRACT.md §Historique, ou `null` |
 | `settings_get` | – | `{perfMode: "low" \| "balanced" \| "quality" \| "custom", memoryMb, noRemember, systemRamMb}` |
@@ -110,10 +110,11 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 
 ```
 PackView = {id, name, description, mc, loader, loaderVersion, modsCount, thumbnail, widgets,
-            supported: bool, installed: bool, updateAvailable: bool, installedVersionHash: string | null}
+            supported: bool, installed: bool, updateAvailable: bool, installedVersionHash: string | null,
+            hasServer: bool, hasStats: bool}
 ServerView = {online: bool, latencyMs: number | null, players: {online, max, sample: [{name, uuid}]},
-              version: string | null, motdOk: bool,
-              help: null | "tailscaleNotInstalled" | "tailscaleDisconnected" | "noAccess" | "unexpectedServer"}
+              version: string | null, motdOk: bool, viaTailscale: bool,
+              help: null | "tailscaleNotInstalled" | "tailscaleDisconnected" | "noAccess" | "unexpectedServer" | "serverOffline"}
 SkinView = {id, name, model, active, dataUrl}
 ```
 
