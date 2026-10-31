@@ -1,27 +1,40 @@
-# Launcher Classroom Run
+# opaline_core
 
-Launcher Rust (eframe/egui, interface minimale en attendant l'interface web) : installe Java 25, Minecraft 26.3,
-Fabric Loader, les mods et les shaders du pack packwiz dans une instance isolée, puis lance le jeu connecté au serveur.
-La logique (pack distant, mise à jour, modes de performance, auth Microsoft, ping, Tailscale) est dans des modules
-sans dépendance à egui, réutilisables comme commandes Tauri.
+Bibliothèque Rust (sans interface graphique) du launcher Opaline ; le backend Tauri (`opaline/src-tauri`) l'appelle via
+`service`. Un petit binaire de développement, `opaline-cli`, sert aux tests manuels :
+`cargo run --bin opaline-cli -- install <id> [--pack <dossier packwiz>] [--root <dossier>]` puis `play <id> --nick <pseudo>`
+avec `CLASSROOM_DEV_OFFLINE=1`.
 
 ## Dossier de données
 
-`%APPDATA%\ClassroomRunLauncher\` (Windows), surchargeable avec la variable `CLASSROOM_LAUNCHER_HOME`.
-Le launcher n'écrit jamais ailleurs et jamais dans `.minecraft`. Sous ce dossier : `config.json` (sans secret),
-`java/`, `libraries/`, `assets/`, `versions/`, `downloads/`, `instance/` (dossier de jeu : `mods/`, `logs/`, mondes).
-Les chemins issus des manifestes sont normalisés et refusés s'ils sortent du dossier (`..`, absolus, `:`).
+`%APPDATA%\Opaline\` (Windows), `~/.local/share/Opaline/` (Linux), surchargeable par `OPALINE_HOME`. Jamais `.minecraft`.
+- `shared/` : `java/`, `libraries/`, `assets/`, `versions/`, `downloads/` (communs à tous les packs, téléchargés une fois).
+- `instances/<id>/` : dossier de jeu isolé d'un pack (`mods/`, `logs/`, mondes), `installed.ok` (version, hash de l'index = `packHash`),
+  `opaline-pack.json` (manifeste installé : sert au changelog et à la liste des mods).
+- `textures/` (PNG extraits du `client.jar`, jamais redistribués), `skins/` (garde-robe), `cache/` (catalogue, têtes, amis), `config.json` (sans secret).
+
+## Catalogue multi-pack
+
+`packs.json` de la dernière release (contrat §3), repli sur le dernier catalogue en cache hors ligne. Entrées invalides ignorées une à une
+(id non simple, URL non https, `packHash` absent). Loader autre que `fabric` : `supported: false`. Surcharge de dev : `OPALINE_PACKS_URL`
+(URL ou chemin de fichier). Le zip téléchargé doit avoir un index dont le hash égale `packHash`.
+
+## Autres modules
+
+- `skins` : garde-robe, PNG 64x64 / 64x32 validé, API Mojang officielle (jeton obligatoire, jamais dans une erreur), textures depuis `textures.minecraft.net` seulement.
+- `head` : profil `sessionserver.mojang.com`, visage 8x8 + chapeau, cache 24 h. `friends` : joueurs vus par ping, mémorisés localement.
+- `serverview` : ping + diagnostic Tailscale. `stats::fetch_value` : `/stats`, `/history[/<n>]` (404 = absent).
 
 ## Pack, mods et shaders
 
-- Par défaut le pack vient de `https://github.com/Cikuree/opaline/releases/latest/download/pack.zip`
-  (constante `config::REPO`). Le zip est extrait dans `downloads/pack-remote` (zip-slip refusé), puis les hashes sont
+- Le pack vient de `pack-<id>.zip` (URL du catalogue ; racine : dossier `pack/`).
+  Le zip est extrait dans `shared/downloads/pack-<id>` (zip-slip refusé), puis les hashes sont
   vérifiés : `pack.toml` -> `index.toml` -> chaque `.pw.toml` -> fichier téléchargé.
-- Option avancée (dev) : `pack_dir` (config.json, ou `--pack`) = dossier local contenant `pack.toml`, qui remplace le zip.
+- Dev : `--pack` (opaline-cli) = dossier local contenant `pack.toml`, qui remplace le zip.
 - Seuls les `side = client|both` sont installés. Un métafichier est installé dans le dossier d'instance qui porte le nom
   de son dossier dans le pack : `mods/` -> `instance/mods/`, `shaderpacks/` -> `instance/shaderpacks/`.
 - Le jar classroomrun vient du pack (`mods/classroomrun.pw.toml`). Repli dev sans entrée dans le pack : `mod_jar`
-  (fichier ou dossier), vide = `<pack_dir>/../build/libs`.
+  (fichier ou dossier), uniquement si fourni explicitement ; opaline-cli cherche `build/libs` au-dessus du pack.
 - Fichiers absents du pack, supprimés à chaque installation dans l'instance isolée seulement (`.minecraft` n'est jamais touché) :
   `.jar` de `mods/`, `.zip` de `shaderpacks/` et de `resourcepacks/`. Les réglages (`*.zip.txt`) et les dossiers sont conservés.
 - `pack.zip` : délai global de 120 s, 50 Mo maximum, extraction bornée (5000 entrées, 300 Mo décompressés) ; le JRE est borné aussi (50 000 entrées, 2 Go).

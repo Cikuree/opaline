@@ -1,7 +1,7 @@
 //! Tête d'un joueur : profil `sessionserver.mojang.com`, texture `textures.minecraft.net` (autre hôte refusé),
 //! recadrage du visage 8×8 + calque du chapeau, cache disque.
 use crate::config::Dirs;
-use crate::skins::{fetch_texture, is_texture_url};
+use crate::skins::fetch_texture;
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine;
 use reqwest::blocking::Client;
@@ -32,10 +32,7 @@ pub fn skin_url_from_profile(profile: &Value) -> Result<String> {
     let raw = base64::engine::general_purpose::STANDARD.decode(value).context("texture illisible")?;
     let v: Value = serde_json::from_slice(&raw).context("texture illisible")?;
     let url = v.pointer("/textures/SKIN/url").and_then(Value::as_str).context("profil sans skin")?;
-    if !is_texture_url(url) {
-        bail!("adresse de texture refusée (hôte non officiel)");
-    }
-    Ok(url.to_string())
+    crate::skins::official_texture_url(url).context("adresse de texture refusée (hôte non officiel)")
 }
 
 /// RGBA 8 bits d'un PNG de skin (64×64 ou 64×32).
@@ -181,6 +178,7 @@ mod tests {
             serde_json::json!({"properties": [{"name": "textures", "value": t}]})
         };
         assert_eq!(skin_url_from_profile(&mk("https://textures.minecraft.net/texture/x")).unwrap(), "https://textures.minecraft.net/texture/x");
+        assert_eq!(skin_url_from_profile(&mk("http://textures.minecraft.net/texture/y")).unwrap(), "https://textures.minecraft.net/texture/y");
         assert!(skin_url_from_profile(&mk("https://evil.example/texture/x")).is_err());
         assert!(skin_url_from_profile(&serde_json::json!({})).is_err());
     }

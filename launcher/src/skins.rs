@@ -80,6 +80,13 @@ pub fn multipart_body(boundary: &str, variant: &str, png: &[u8]) -> Vec<u8> {
     b
 }
 
+/// Mojang publie souvent `http://textures.minecraft.net/...` : même hôte officiel, remis en https. Autre hôte : `None`.
+pub fn official_texture_url(url: &str) -> Option<String> {
+    let u = reqwest::Url::parse(url).ok()?;
+    let ok = matches!(u.scheme(), "http" | "https") && u.host_str() == Some(TEXTURE_HOST) && u.port().is_none() && u.username().is_empty();
+    ok.then(|| format!("https://{TEXTURE_HOST}{}", u.path()))
+}
+
 pub fn is_texture_url(url: &str) -> bool {
     reqwest::Url::parse(url).is_ok_and(|u| u.scheme() == "https" && u.host_str() == Some(TEXTURE_HOST) && u.port().is_none() && u.username().is_empty())
 }
@@ -267,7 +274,7 @@ pub fn get_profile(c: &Client, ep: &Endpoints, token: &str) -> Result<Value> {
 pub fn current_skin(profile: &Value) -> Option<(String, &'static str)> {
     let s = profile.get("skins")?.as_array()?.iter().find(|s| s.get("state").and_then(Value::as_str) == Some("ACTIVE"))?;
     let model = if s.get("variant").and_then(Value::as_str).is_some_and(|v| v.eq_ignore_ascii_case("slim")) { "slim" } else { "classic" };
-    Some((s.get("url")?.as_str()?.to_string(), model))
+    Some((official_texture_url(s.get("url")?.as_str()?)?, model))
 }
 
 pub fn apply_skin(c: &Client, ep: &Endpoints, token: &str, model: &str, png: &[u8]) -> Result<()> {
@@ -298,7 +305,7 @@ pub fn parse_capes(profile: &Value) -> Vec<CapeView> {
                         id: c.get("id")?.as_str()?.to_string(),
                         alias: c.get("alias").and_then(Value::as_str).unwrap_or("Cape").to_string(),
                         active: c.get("state").and_then(Value::as_str) == Some("ACTIVE"),
-                        url: c.get("url").and_then(Value::as_str).filter(|u| is_texture_url(u)).unwrap_or("").to_string(),
+                        url: c.get("url").and_then(Value::as_str).and_then(official_texture_url).unwrap_or_default(),
                     })
                 })
                 .collect()
@@ -422,6 +429,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(current_skin(&p), Some(("https://textures.minecraft.net/b".into(), "slim")));
+        assert_eq!(official_texture_url("http://textures.minecraft.net/texture/x").as_deref(), Some("https://textures.minecraft.net/texture/x"));
+        assert!(official_texture_url("http://textures.minecraft.net.evil.com/x").is_none());
         let c = parse_capes(&p);
         assert_eq!((c[0].active, c[1].active, c[1].url.as_str()), (true, false, ""));
         assert!(current_skin(&serde_json::json!({})).is_none());
