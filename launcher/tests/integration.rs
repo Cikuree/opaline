@@ -1,27 +1,8 @@
 //! Tests d'intégration du launcher sur serveur de fixtures local (aucun réseau réel).
-//! Le crate est un binaire : les modules sans UI sont recompilés ici via `#[path]`.
 #![allow(dead_code)]
 
-#[path = "../src/config.rs"]
-mod config;
-#[path = "../src/download.rs"]
-mod download;
-#[path = "../src/fabric.rs"]
-mod fabric;
-#[path = "../src/install.rs"]
-mod install;
-#[path = "../src/java.rs"]
-mod java;
-#[path = "../src/mojang.rs"]
-mod mojang;
-#[path = "../src/perf.rs"]
-mod perf;
-#[path = "../src/packwiz.rs"]
-mod packwiz;
-#[path = "../src/safe.rs"]
-mod safe;
-#[path = "../src/stats.rs"]
-mod stats;
+use opaline_core::{config, download, install, java, packwiz, safe, stats};
+
 mod support;
 
 use config::Dirs;
@@ -200,10 +181,7 @@ impl Fx {
         // Adoptium
         srv.put(
             "/adoptium/v3/assets/latest/25/hotspot",
-            format!(
-                r#"[{{"binary":{{"package":{{"link":"{b}/adoptium/jre.zip","name":"jre.zip","checksum":"{}"}}}}}}]"#,
-                sha256_hex(&java_zip)
-            ),
+            format!(r#"[{{"binary":{{"package":{{"link":"{b}/adoptium/jre.zip","name":"jre.zip","checksum":"{}"}}}}}}]"#, sha256_hex(&java_zip)),
         );
         srv.put("/adoptium/jre.zip", java_zip);
 

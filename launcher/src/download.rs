@@ -4,12 +4,12 @@ use anyhow::{Context, Result, anyhow, bail};
 use reqwest::StatusCode;
 use reqwest::blocking::Client;
 use reqwest::header::RANGE;
+use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::collections::HashMap;
-use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -28,7 +28,7 @@ pub const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 pub fn http_client() -> Result<Client> {
     // Pas de timeout total (gros fichiers) : l'inactivité est surveillée dans `download_part`.
     Ok(Client::builder()
-        .user_agent(concat!("ClassroomRunLauncher/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("Opaline/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(15))
         .timeout(None::<Duration>)
         .build()?)

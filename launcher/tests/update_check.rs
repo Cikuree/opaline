@@ -1,12 +1,8 @@
 //! Cas 4 : vérification de `launcher.json` (mise à jour proposée ou silence) et garde https de `open_url`.
 #![allow(dead_code)]
 
-#[path = "../src/download.rs"]
-mod download;
-#[path = "../src/safe.rs"]
-mod safe;
-#[path = "../src/update.rs"]
-mod update;
+use opaline_core::{download, update};
+
 mod support;
 
 use support::{Mode, Server, dead_base};

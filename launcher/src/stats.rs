@@ -31,6 +31,23 @@ pub fn fetch(client: &Client, url: &str) -> Result<Stats> {
     r.json().context("réponse /stats invalide")
 }
 
+/// `GET url` en JSON brut. 404 = `None` (endpoint ou run absent). Les erreurs ne citent pas l'adresse.
+pub fn fetch_value(client: &Client, url: &str) -> Result<Option<serde_json::Value>> {
+    use std::io::Read;
+    let r = client.get(url).timeout(std::time::Duration::from_secs(5)).send().map_err(|_| anyhow::anyhow!("serveur injoignable"))?;
+    match r.status().as_u16() {
+        404 => return Ok(None),
+        200..=299 => {}
+        c => bail!("le serveur a répondu HTTP {c}"),
+    }
+    let mut b = Vec::new();
+    r.take(2 * 1024 * 1024 + 1).read_to_end(&mut b).context("lecture de la réponse")?;
+    if b.len() > 2 * 1024 * 1024 {
+        bail!("réponse trop volumineuse");
+    }
+    Ok(Some(serde_json::from_slice(&b).context("réponse du serveur invalide")?))
+}
+
 pub fn format_time(ms: u64) -> String {
     let s = ms / 1000;
     format!("{:02}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)

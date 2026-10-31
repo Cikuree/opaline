@@ -1,8 +1,7 @@
 //! Cas 5 : Server List Ping contre un faux serveur SLP local (127.0.0.1, aucun réseau réel).
 #![allow(dead_code)]
 
-#[path = "../src/ping.rs"]
-mod ping;
+use opaline_core::ping;
 
 use ping::{PROTOCOL, ping};
 use std::io::{Read, Write};

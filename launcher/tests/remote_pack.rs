@@ -1,18 +1,8 @@
 //! Cas 3 : pack distant (pack.zip servi par le serveur de fixtures) : extraction, zip-slip, hashes.
 #![allow(dead_code)]
 
-#[path = "../src/config.rs"]
-mod config;
-#[path = "../src/download.rs"]
-mod download;
-#[path = "../src/java.rs"]
-mod java;
-#[path = "../src/packwiz.rs"]
-mod packwiz;
-#[path = "../src/perf.rs"]
-mod perf;
-#[path = "../src/safe.rs"]
-mod safe;
+use opaline_core::{config, download, packwiz, safe};
+
 mod support;
 
 use config::Dirs;
@@ -31,10 +21,7 @@ fn sha256(b: &[u8]) -> String {
 }
 
 fn meta(jar_url: &str) -> String {
-    format!(
-        "name = \"a\"\nfilename = \"a.jar\"\nside = \"client\"\n[download]\nurl = \"{jar_url}\"\nhash-format = \"sha256\"\nhash = \"{}\"\n",
-        sha256(JAR)
-    )
+    format!("name = \"a\"\nfilename = \"a.jar\"\nside = \"client\"\n[download]\nurl = \"{jar_url}\"\nhash-format = \"sha256\"\nhash = \"{}\"\n", sha256(JAR))
 }
 
 fn index(meta_text: &str) -> String {

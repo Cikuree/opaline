@@ -1,8 +1,7 @@
 //! Cas 7 : parsing de sorties Tailscale fictives -> état et message. Aucune commande réelle n'est lancée.
 #![allow(dead_code)]
 
-#[path = "../src/tailscale.rs"]
-mod tailscale;
+use opaline_core::tailscale;
 
 use tailscale::{MSG_DISCONNECTED, MSG_NOT_INSTALLED, MSG_UNREACHABLE, TailscaleState, message, parse_backend_state, parse_magic_dns_suffix, server_host};
 

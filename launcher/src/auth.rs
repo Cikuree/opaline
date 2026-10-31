@@ -9,8 +9,8 @@ use md5::{Digest, Md5};
 use reqwest::blocking::Client;
 use serde_json::{Value, json};
 use std::fmt;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 /// ID client de l'app Azure (public, non secret), fixé à la compilation. Vide = connexion non configurée.
@@ -28,7 +28,7 @@ pub fn dev_offline() -> bool {
     std::env::var("CLASSROOM_DEV_OFFLINE").is_ok_and(|v| v == "1")
 }
 
-const KEYRING_SERVICE: &str = "ClassroomRunLauncher";
+const KEYRING_SERVICE: &str = "Opaline";
 const KEYRING_USER: &str = "microsoft-refresh-token";
 pub const SCOPE: &str = "XboxLive.signin offline_access";
 
@@ -48,7 +48,14 @@ pub struct Session {
 impl Session {
     /// Session hors ligne (dev) : UUID déterministe comme le serveur vanilla hors ligne, token factice.
     pub fn offline(nickname: &str) -> Session {
-        Session { username: nickname.to_string(), uuid: offline_uuid(nickname), user_type: "legacy", xuid: String::new(), client_id: String::new(), access_token: "0".into() }
+        Session {
+            username: nickname.to_string(),
+            uuid: offline_uuid(nickname),
+            user_type: "legacy",
+            xuid: String::new(),
+            client_id: String::new(),
+            access_token: "0".into(),
+        }
     }
 
     pub fn microsoft(username: String, uuid: String, access_token: String) -> Session {
@@ -86,7 +93,12 @@ pub struct Endpoints {
 
 impl Default for Endpoints {
     fn default() -> Self {
-        Endpoints::with_bases("https://login.microsoftonline.com/consumers/oauth2/v2.0", "https://user.auth.xboxlive.com", "https://xsts.auth.xboxlive.com", "https://api.minecraftservices.com")
+        Endpoints::with_bases(
+            "https://login.microsoftonline.com/consumers/oauth2/v2.0",
+            "https://user.auth.xboxlive.com",
+            "https://xsts.auth.xboxlive.com",
+            "https://api.minecraftservices.com",
+        )
     }
 }
 
@@ -223,9 +235,9 @@ pub fn parse_xbox_token(v: &Value) -> Result<(String, String)> {
 
 /// Possession du jeu d'après `entitlements/mcstore`.
 pub fn owns_game(v: &Value) -> bool {
-    v.get("items").and_then(Value::as_array).is_some_and(|a| {
-        a.iter().any(|i| matches!(i.get("name").and_then(Value::as_str), Some("product_minecraft" | "game_minecraft")))
-    })
+    v.get("items")
+        .and_then(Value::as_array)
+        .is_some_and(|a| a.iter().any(|i| matches!(i.get("name").and_then(Value::as_str), Some("product_minecraft" | "game_minecraft"))))
 }
 
 pub fn parse_profile(v: &Value) -> Result<(String, String)> {
@@ -253,7 +265,7 @@ fn post_json(c: &Client, url: &str, body: &Value) -> Result<(u16, Value)> {
 }
 
 pub fn http_client() -> Result<Client> {
-    Ok(Client::builder().user_agent(concat!("ClassroomRunLauncher/", env!("CARGO_PKG_VERSION"))).timeout(Duration::from_secs(30)).build()?)
+    Ok(Client::builder().user_agent(concat!("Opaline/", env!("CARGO_PKG_VERSION"))).timeout(Duration::from_secs(30)).build()?)
 }
 
 pub fn start_device_code(c: &Client, ep: &Endpoints, client_id: &str) -> Result<DeviceCode> {
@@ -281,7 +293,9 @@ pub fn poll_device_code(c: &Client, ep: &Endpoints, client_id: &str, dc: &Device
             bail!("code expiré : relancez la connexion");
         }
         // Une erreur réseau ponctuelle ne casse pas le flux : on réessaie jusqu'à l'échéance.
-        let Ok((st, v)) = post_form(c, &ep.token, &poll_form(client_id, &dc.device_code)) else { continue };
+        let Ok((st, v)) = post_form(c, &ep.token, &poll_form(client_id, &dc.device_code)) else {
+            continue;
+        };
         match parse_token_response(st, &v) {
             Poll::Done(t) => return Ok(t),
             Poll::Pending => {}
@@ -429,7 +443,15 @@ impl AuthManager {
     }
 
     /// Connexion interactive. `on_code` reçoit le code et l'URL à montrer à l'utilisateur.
-    pub fn login(&self, c: &Client, ep: &Endpoints, client_id: &str, remember: bool, on_code: impl FnOnce(&DeviceCode), cancel: &AtomicBool) -> Result<Session> {
+    pub fn login(
+        &self,
+        c: &Client,
+        ep: &Endpoints,
+        client_id: &str,
+        remember: bool,
+        on_code: impl FnOnce(&DeviceCode),
+        cancel: &AtomicBool,
+    ) -> Result<Session> {
         let gen_at_start = self.generation.load(Ordering::SeqCst);
         let dc = start_device_code(c, ep, client_id)?;
         on_code(&dc);

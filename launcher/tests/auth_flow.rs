@@ -3,8 +3,8 @@
 //! et `silent_login` écrivent/lisent le keyring système, donc les tests composent les étapes pures et réseau.
 #![allow(dead_code)]
 
-#[path = "../src/auth.rs"]
-mod auth;
+use opaline_core::auth;
+
 mod support;
 
 use auth::{Endpoints, Session};
@@ -13,7 +13,8 @@ use std::time::{Duration, Instant};
 use support::{Mode, Server, dead_base};
 
 const CID: &str = "client-id-fixture";
-const DEVICE: &str = r#"{"user_code":"ABCD-1234","verification_uri":"https://www.microsoft.com/link","device_code":"DEV-CODE-123","expires_in":900,"interval":1}"#;
+const DEVICE: &str =
+    r#"{"user_code":"ABCD-1234","verification_uri":"https://www.microsoft.com/link","device_code":"DEV-CODE-123","expires_in":900,"interval":1}"#;
 const TOKEN_OK: &str = r#"{"token_type":"Bearer","access_token":"MS-TOKEN-SECRET-123","refresh_token":"REFRESH-TOKEN-SECRET-123"}"#;
 const XBL_OK: &str = r#"{"Token":"XBL-TOKEN-SECRET-123","DisplayClaims":{"xui":[{"uhs":"UHS123"}]}}"#;
 const XSTS_OK: &str = r#"{"Token":"XSTS-TOKEN-SECRET-123","DisplayClaims":{"xui":[{"uhs":"UHS123"}]}}"#;
@@ -66,7 +67,9 @@ fn full_flow_success_after_authorization_pending() {
     // deux interrogations du jeton : pending puis succès
     assert_eq!(srv.count("/ms/token"), 2);
     let polls = srv.requests().into_iter().filter(|r| r.path == "/ms/token").map(|r| r.body_text()).collect::<Vec<_>>();
-    assert!(polls.iter().all(|b| b.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code") && b.contains("device_code=DEV-CODE-123")));
+    assert!(
+        polls.iter().all(|b| { b.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code") && b.contains("device_code=DEV-CODE-123") })
+    );
     // la chaîne transmet bien chaque jeton au service suivant
     let xbl = srv.requests().into_iter().find(|r| r.path == "/xbl/user/authenticate").unwrap();
     assert!(xbl.body_text().contains("d=MS-TOKEN-SECRET-123"));
@@ -108,7 +111,9 @@ fn deadline_without_answer_expires_locally() {
     let (srv, ep) = fixtures();
     srv.put_mode("/ms/token", r#"{"error":"authorization_pending"}"#, Mode::Reply(400));
     let c = client();
-    let dc = auth::parse_device_code(&serde_json::json!({"user_code": "A", "verification_uri": "https://x", "device_code": "D", "expires_in": 1, "interval": 1})).unwrap();
+    let dc =
+        auth::parse_device_code(&serde_json::json!({"user_code": "A", "verification_uri": "https://x", "device_code": "D", "expires_in": 1, "interval": 1}))
+            .unwrap();
     let t0 = Instant::now();
     let e = auth::poll_device_code(&c, &ep, CID, &dc, &AtomicBool::new(false)).err().expect("doit expirer").to_string();
     assert_eq!(e, "code expiré : relancez la connexion");
@@ -136,20 +141,18 @@ fn declined_and_cancelled_are_reported() {
 fn device_code_refused_mentions_client_id() {
     let (srv, ep) = fixtures();
     srv.put_mode("/ms/devicecode", r#"{"error":"invalid_client"}"#, Mode::Reply(400));
-    assert_eq!(
-        err_of(full_flow(&ep)),
-        "demande de code refusée (HTTP 400, invalid_client) : vérifiez l'ID client de l'app Azure"
-    );
+    assert_eq!(err_of(full_flow(&ep)), "demande de code refusée (HTTP 400, invalid_client) : vérifiez l'ID client de l'app Azure");
 }
 
 #[test]
 fn xsts_2148916233_no_xbox_account() {
     let (srv, ep) = fixtures();
-    srv.put_mode("/xsts/xsts/authorize", r#"{"XErr":2148916233,"Identity":"0","Message":"","Redirect":"https://start.ui.xboxlive.com/AddAccount"}"#, Mode::Reply(401));
-    assert_eq!(
-        err_of(full_flow(&ep)),
-        "Ce compte Microsoft n'a pas de compte Xbox : créez-en un sur xbox.com puis réessayez."
+    srv.put_mode(
+        "/xsts/xsts/authorize",
+        r#"{"XErr":2148916233,"Identity":"0","Message":"","Redirect":"https://start.ui.xboxlive.com/AddAccount"}"#,
+        Mode::Reply(401),
     );
+    assert_eq!(err_of(full_flow(&ep)), "Ce compte Microsoft n'a pas de compte Xbox : créez-en un sur xbox.com puis réessayez.");
     assert_eq!(srv.count("/mc/authentication/login_with_xbox"), 0, "pas d'appel login_with_xbox après échec XSTS");
 }
 
@@ -157,10 +160,7 @@ fn xsts_2148916233_no_xbox_account() {
 fn xsts_2148916238_child_account() {
     let (srv, ep) = fixtures();
     srv.put_mode("/xsts/xsts/authorize", r#"{"XErr":2148916238,"Identity":"0"}"#, Mode::Reply(401));
-    assert_eq!(
-        err_of(full_flow(&ep)),
-        "Compte enfant : il doit être rattaché à une famille Microsoft (autorisation d'un parent) pour jouer."
-    );
+    assert_eq!(err_of(full_flow(&ep)), "Compte enfant : il doit être rattaché à une famille Microsoft (autorisation d'un parent) pour jouer.");
 }
 
 #[test]
