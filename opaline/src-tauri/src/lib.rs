@@ -382,7 +382,7 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
             let session = service::session_for_play(&cfg, &s2.0.auth)?;
             let e = service::entry(root, &id2)?;
             let l = service::launch_pack(root, &e, &cfg, &session)?;
-            *s2.0.last_server.lock().unwrap() = Some(l.server.clone());
+            *s2.0.last_server.lock().unwrap() = Some(l.server.clone()).filter(|a| !a.is_empty());
             Ok((l, session.access_token().to_string()))
         })
         .await;
@@ -404,7 +404,7 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
 }
 
 #[tauri::command]
-async fn server_status(state: State<'_, S>, id: String) -> CmdResult<opaline_core::serverview::ServerView> {
+async fn server_status(state: State<'_, S>, id: String) -> CmdResult<Option<opaline_core::serverview::ServerView>> {
     state.blocking(move |r| service::server_status(r, &id)).await
 }
 

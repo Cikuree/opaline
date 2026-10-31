@@ -105,11 +105,13 @@ def load_opaline(pack):
         bad("`widgets` requis (liste de textes)")
     if set(w) - WIDGETS:
         bad(f"widgets inconnus {sorted(set(w) - WIDGETS)} ; autorises : {sorted(WIDGETS)}")
-    s = o.get("server")
+    s = o.get("server")  # section facultative : sans elle, pas de carte serveur ni de statistiques
+    if s is None:
+        return o
     if not isinstance(s, dict):
-        bad("section [server] requise")
-    if not isinstance(s.get("host"), str) or not re.fullmatch(r"[a-z0-9-]+", s["host"]):
-        bad("`server.host` requis, de la forme [a-z0-9-]+ (nom MagicDNS court)")
+        bad("[server] doit etre une section")
+    if not isinstance(s.get("host"), str) or not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)*", s["host"]):
+        bad("`server.host` requis : nom court [a-z0-9-]+ (Tailscale MagicDNS) ou nom complet / IP (serveur public)")
     if not isinstance(s.get("motd"), str) or not s["motd"]:
         bad("`server.motd` requis (texte non vide)")
     for k in ("port", "statsPort"):
@@ -155,7 +157,7 @@ def catalog(root, base, out):
             "modsCount": len(list((d / "mods").glob("*.pw.toml"))),
             "thumbnail": o["thumbnail"], "widgets": o["widgets"],
             "pack": f"{base}pack-{d.name}.zip",
-            "packHash": pt["index"]["hash"], "server": o["server"],
+            "packHash": pt["index"]["hash"], "server": o.get("server"),
         })
     out.write_text(json.dumps({"packs": packs}, ensure_ascii=False, indent=2) + "\n", "utf-8")
     print("catalogue:", out, [p["id"] for p in packs])

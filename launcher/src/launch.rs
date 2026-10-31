@@ -17,8 +17,6 @@ pub struct LaunchInput<'a> {
     pub fabric: &'a FabricProfile,
     pub dirs: &'a Dirs,
     pub session: &'a Session,
-    /// `hôte[:port]` ; Some => --quickPlayMultiplayer.
-    pub server: Option<&'a str>,
     pub memory_mb: u32,
     pub env: &'a Env,
 }
@@ -72,7 +70,6 @@ pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
         ("launcher_name", LAUNCHER_NAME.into()),
         ("launcher_version", env!("CARGO_PKG_VERSION").into()),
         ("classpath", cp),
-        ("quickPlayMultiplayer", i.server.unwrap_or_default().to_string()),
     ]);
     let mut cmd = vec![i.java.to_string_lossy().into_owned(), "-Xms512M".into(), format!("-Xmx{}M", i.memory_mb)];
     cmd.extend(expand_args(&i.version.arguments.jvm, i.env, &vars));
@@ -164,25 +161,25 @@ mod tests {
         .unwrap()
     }
 
-    fn cmd(os: &'static str, server: Option<&str>) -> Vec<String> {
+    fn cmd(os: &'static str) -> Vec<String> {
         let (v, f) = (version(), fabric());
         let dirs = Dirs::new("/root");
         let session = Session::offline("Bob");
-        let env = Env { os, arch: "x86_64", features: HashMap::from([("is_quick_play_multiplayer".to_string(), server.is_some())]) };
-        build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &f, dirs: &dirs, session: &session, server, memory_mb: 2048, env: &env })
+        let env = Env { os, arch: "x86_64", features: HashMap::new() };
+        build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &f, dirs: &dirs, session: &session, memory_mb: 2048, env: &env })
             .unwrap()
     }
 
     #[test]
     fn command_layout_windows() {
-        let c = cmd("windows", Some("play.fr:25565"));
+        let c = cmd("windows");
         assert_eq!(&c[..3], ["/j/java", "-Xms512M", "-Xmx2048M"]);
         let main = c.iter().position(|a| a.ends_with("KnotClient")).unwrap();
         // jvm avant mainClass, game après
         assert!(c[..main].iter().any(|a| a == "-cp") && c[..main].contains(&"-DFabricMcEmu= net.minecraft.client.main.Main ".to_string()));
         let game = &c[main + 1..];
         assert_eq!(&game[..2], ["--username", "Bob"]);
-        assert!(game.windows(2).any(|w| w == ["--quickPlayMultiplayer", "play.fr:25565"]));
+        assert!(!c.iter().any(|a| a.contains("quickPlay")), "JOUER ne se connecte jamais seul");
         assert!(game.windows(2).any(|w| w == ["--assetIndex", "34"]));
         assert!(!c.iter().any(|a| a == "-XstartOnFirstThread"));
         // classpath : séparateur ';', asm Mojang remplacé par celui de Fabric, natives windows, client.jar en dernier
@@ -196,16 +193,15 @@ mod tests {
     }
 
     #[test]
-    fn no_quickplay_without_server_and_linux_separator() {
-        let c = cmd("linux", None);
-        assert!(!c.iter().any(|a| a == "--quickPlayMultiplayer"));
+    fn linux_separator() {
+        let c = cmd("linux");
         let cp = &c[c.iter().position(|a| a == "-cp").unwrap() + 1];
         assert!(!cp.contains(';') && cp.contains("n-linux.jar"));
     }
 
     #[test]
     fn redacts_token() {
-        let c = cmd("windows", None);
+        let c = cmd("windows");
         assert!(c.iter().any(|a| a == "0")); // le token factice est bien dans la commande
         let r = redact(&c, "0", None);
         assert!(r.contains("--accessToken <masqué> --assetIndex"));
@@ -217,8 +213,8 @@ mod tests {
 
     #[test]
     fn redacts_server_address() {
-        let c = cmd("windows", Some("secret.host:25565"));
-        assert!(c.iter().any(|a| a == "secret.host:25565"));
+        let c = cmd("windows");
+        assert!(!redact_text("Connecting to secret.host, 25565", "0", Some("secret.host:25565")).contains("secret.host"));
         assert!(!redact(&c, "0", Some("secret.host:25565")).contains("secret.host"));
     }
 
@@ -236,7 +232,6 @@ mod tests {
             fabric: &f,
             dirs: &dirs,
             session: &session,
-            server: None,
             memory_mb: 1,
             env: &env,
         });

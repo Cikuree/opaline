@@ -26,6 +26,7 @@ export const HELP = {
   tailscaleNotInstalled: ['Tailscale non installé', 'Tailscale n’est pas installé sur ce PC.'],
   tailscaleDisconnected: ['Tailscale non connecté', 'Tailscale n’est pas connecté : ouvre Tailscale et connecte-toi.'],
   noAccess: ['Accès refusé', 'Tu n’as pas accès à ce serveur : demande à l’hôte de t’autoriser sur le réseau.'],
+  serverOffline: ['Serveur hors ligne', 'Serveur hors ligne ou injoignable.'],
   unexpectedServer: ['Serveur inattendu', 'Le serveur joint ne correspond pas à ce pack.'],
 };
 

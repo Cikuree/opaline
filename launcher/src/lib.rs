@@ -18,6 +18,7 @@ pub mod perf;
 pub mod ping;
 pub mod safe;
 pub mod serverview;
+pub mod servers;
 pub mod service;
 pub mod skins;
 pub mod stats;

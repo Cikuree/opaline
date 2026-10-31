@@ -1,5 +1,5 @@
 import * as api from '../api.js';
-import { state, current, hasWidget, emit, on } from '../state.js';
+import { state, current, hasWidget, statsMissing, emit, on } from '../state.js';
 import { $, esc, toast, tex, hms, headHtml, hydrateHeads } from '../util.js';
 import { SPLITS, splitByKey, HELP, STAGE_ORDER, loaderName } from '../data.js';
 import { causeInfo, loadRecent } from './history.js';
@@ -98,6 +98,8 @@ function renderServer(p) {
   $('#kvVer').textContent = (on && s.version) || p.mc;
   const help = s?.help ? HELP[s.help] : null, bad = !!help || (s && !on);
   const tsDown = s?.help === 'tailscaleNotInstalled' || s?.help === 'tailscaleDisconnected';
+  const ts = s?.viaTailscale !== false; // serveur public : aucune mention de Tailscale
+  $('#tsBox').hidden = !ts && !bad;
   $('#tsT').textContent = help ? help[0] : s && !on ? 'Serveur injoignable' : 'Tailscale connecté';
   $('#tsH').textContent = help ? help[1] : s && !on ? 'Le serveur ne répond pas : réessaie dans un instant.' : '';
   $('#tsH').hidden = !bad;
@@ -105,7 +107,7 @@ function renderServer(p) {
   $('#tsBox > svg').style.color = bad ? 'var(--bad)' : 'var(--ok)';
   $('#tsBox > svg use').setAttribute('href', tsDown || !bad ? '#i-wifi' : '#i-x');
   $('#srvMsg').hidden = !s || on || !!help;
-  $('#srvMsg').textContent = 'Serveur injoignable : vérifie que Tailscale est connecté, sinon demande l’accès à l’hôte.';
+  $('#srvMsg').textContent = ts ? 'Serveur injoignable : vérifie que Tailscale est connecté, sinon demande l’accès à l’hôte.' : 'Serveur hors ligne ou injoignable.';
   if (s && motdBad(s)) { $('#srvMsg').hidden = false; $('#srvMsg').textContent = 'Le serveur répond mais ne correspond pas à ce pack.'; }
 }
 const motdBad = (s) => s.online && !s.motdOk && !s.help;
@@ -146,6 +148,8 @@ export function renderHome() {
   $('#homeName').textContent = name;
   const s = state.stats, sv = servers.get(p.id);
   $('#homeSub').textContent = !p.supported ? `Non pris en charge par cette version d’Opaline (chargeur ${loaderName(p.loader)}).`
+    : statsMissing(p) ? 'Statistiques indisponibles sur ce serveur.'
+    : p.hasServer === false ? p.name
     : cr ? (s ? `Run #${s.runNumber} ${s.running ? 'en cours' : 'en pause'}.${sv?.online ? ' Le serveur t’attend.' : ''}` : 'Run en attente du serveur.')
     : p.name + ' · ' + (sv ? (sv.online ? `${sv.players.online} joueur${sv.players.online > 1 ? 's' : ''} connecté${sv.players.online > 1 ? 's' : ''}` : 'serveur injoignable') : 'serveur inconnu');
   renderPacks();
