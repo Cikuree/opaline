@@ -13,10 +13,10 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-/// ID client de l'app Azure (public, non secret), fixé à la compilation. Vide = connexion non configurée.
+/// ID client de l'app Azure « Opaline » (public, non secret). Surchargeable à la compilation par CLASSROOM_MS_CLIENT_ID.
 pub const CLIENT_ID: &str = match option_env!("CLASSROOM_MS_CLIENT_ID") {
-    Some(s) => s,
-    None => "",
+    Some(s) if !s.is_empty() => s,
+    _ => "8bf95053-8b32-45e3-9ca3-16d7a7f00869",
 };
 
 pub fn configured() -> bool {
