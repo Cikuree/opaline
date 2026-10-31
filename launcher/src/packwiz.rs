@@ -132,6 +132,9 @@ pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> R
 }
 
 pub fn load_pack(dir: &Path) -> Result<Pack> {
+    if dir.as_os_str().is_empty() {
+        anyhow::bail!("dossier du pack non renseigné : indiquez le dossier qui contient pack.toml");
+    }
     let read_in = |rel: &str| -> Result<String> {
         let p = safe_join(dir, rel)?;
         std::fs::read_to_string(&p).with_context(|| format!("lecture de {}", p.display()))

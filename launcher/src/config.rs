@@ -32,7 +32,14 @@ impl Default for Config {
 
 impl Config {
     pub fn load(dirs: &Dirs) -> Config {
-        std::fs::read_to_string(dirs.config_file()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        let mut cfg: Config =
+            std::fs::read_to_string(dirs.config_file()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        if cfg.pack_dir.trim().is_empty()
+            && let Some(found) = std::env::current_exe().ok().and_then(|exe| find_pack_dir(&exe))
+        {
+            cfg.pack_dir = found.display().to_string();
+        }
+        cfg
     }
 
     pub fn save(&self, dirs: &Dirs) -> anyhow::Result<()> {
@@ -45,6 +52,11 @@ impl Config {
     pub fn stats_url(&self) -> String {
         stats_url(&self.server_host, self.stats_port)
     }
+}
+
+/// First `pack/` containing `pack.toml` among the ancestors of `start` (e.g. the repo when run from `launcher/target/release`).
+pub fn find_pack_dir(start: &std::path::Path) -> Option<PathBuf> {
+    start.ancestors().map(|d| d.join("pack")).find(|p| p.join("pack.toml").is_file())
 }
 
 pub fn stats_url(server_host: &str, stats_port: u16) -> String {
@@ -120,6 +132,19 @@ pub fn fabric_profile_id(loader: &str, mc: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_pack_dir_among_ancestors() {
+        let root = std::env::temp_dir().join(format!("crl-pack-{}", std::process::id()));
+        let exe_dir = root.join("launcher").join("target").join("release");
+        std::fs::create_dir_all(&exe_dir).unwrap();
+        std::fs::create_dir_all(root.join("pack")).unwrap();
+        std::fs::write(root.join("pack").join("pack.toml"), "").unwrap();
+        assert_eq!(find_pack_dir(&exe_dir.join("launcher.exe")), Some(root.join("pack")));
+        std::fs::remove_file(root.join("pack").join("pack.toml")).unwrap();
+        assert_eq!(find_pack_dir(&exe_dir.join("launcher.exe")), None);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn stats_url_strips_game_port() {
