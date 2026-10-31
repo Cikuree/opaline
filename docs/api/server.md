@@ -1,6 +1,6 @@
 # API serveur : Minecraft 26.3 / Fabric API 0.165.0+26.3 / Fantasy 0.8.4+26.3
 
-Vérifié le 2026-10-30 par fabric-scout. Aucun nom n'est deviné : chaque entrée cite son jar ou sa source.
+Vérifié le 2026-10-30. Aucun nom n'est deviné : chaque entrée cite son jar ou sa source.
 
 Sources utilisées :
 - **MC** : sources décompilées `D:\mod_hardcore\.gradle\loom-cache\minecraftMaven\net\minecraft\minecraft-common-13d9796e56\26.3\minecraft-common-13d9796e56-26.3-sources.jar` (noms officiels, non obfusqués).

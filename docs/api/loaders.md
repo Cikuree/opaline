@@ -1,6 +1,6 @@
 # Loaders : installation dans Opaline
 
-Recherche fabric-scout du 2026-10-31. « NON VÉRIFIÉ » = à confirmer pendant le développement.
+Recherche du 2026-10-31. « NON VÉRIFIÉ » = à confirmer pendant le développement.
 
 ## Quilt
 
