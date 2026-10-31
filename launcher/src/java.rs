@@ -69,13 +69,48 @@ pub fn find_java(dir: &Path) -> Option<PathBuf> {
 }
 
 /// Extrait `archive` (.zip ou .tar.gz) dans `dest`. Les chemins d'entrées qui sortiraient de `dest` sont refusés.
+/// Bornes anti « zip bomb » de l'extraction du JRE.
+pub const JRE_MAX_ENTRIES: usize = 50_000;
+pub const JRE_MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
 pub fn extract(archive: &Path, dest: &Path) -> Result<()> {
+    extract_limited(archive, dest, JRE_MAX_ENTRIES, JRE_MAX_BYTES)
+}
+
+/// Compteur partagé : nombre d'entrées et octets décompressés (réels, pas ceux annoncés par l'archive).
+struct Budget {
+    entries: usize,
+    bytes: u64,
+}
+
+impl Budget {
+    fn entry(&mut self, max: usize) -> Result<()> {
+        self.entries += 1;
+        if self.entries > max {
+            bail!("archive refusée : plus de {max} entrées");
+        }
+        Ok(())
+    }
+}
+
+fn copy_limited(r: &mut impl io::Read, w: &mut impl io::Write, b: &mut Budget, max_bytes: u64) -> Result<()> {
+    let n = io::copy(&mut io::Read::take(r, max_bytes.saturating_sub(b.bytes) + 1), w)?;
+    b.bytes += n;
+    if b.bytes > max_bytes {
+        bail!("archive refusée : plus de {max_bytes} octets décompressés");
+    }
+    Ok(())
+}
+
+pub fn extract_limited(archive: &Path, dest: &Path, max_entries: usize, max_bytes: u64) -> Result<()> {
+    let mut budget = Budget { entries: 0, bytes: 0 };
     fs::create_dir_all(dest)?;
     let name = archive.to_string_lossy();
     if name.ends_with(".zip") {
         let mut z = zip::ZipArchive::new(File::open(archive)?)?;
         for i in 0..z.len() {
             let mut e = z.by_index(i)?;
+            budget.entry(max_entries)?;
             let Some(rel) = e.enclosed_name() else {
                 bail!("entrée zip refusée (chemin hors du dossier, index {i})");
             };
@@ -86,13 +121,18 @@ pub fn extract(archive: &Path, dest: &Path) -> Result<()> {
                 if let Some(p) = out.parent() {
                     fs::create_dir_all(p)?;
                 }
-                io::copy(&mut e, &mut File::create(&out)?)?;
+                copy_limited(&mut e, &mut File::create(&out)?, &mut budget, max_bytes)?;
             }
         }
     } else if name.ends_with(".tar.gz") {
         let mut t = tar::Archive::new(flate2::read::GzDecoder::new(File::open(archive)?));
         for e in t.entries()? {
             let mut e = e?;
+            budget.entry(max_entries)?;
+            budget.bytes += e.header().size().unwrap_or(0);
+            if budget.bytes > max_bytes {
+                bail!("archive refusée : plus de {max_bytes} octets décompressés");
+            }
             if e.header().entry_type().is_symlink() || e.header().entry_type().is_hard_link() {
                 let target = e.link_name()?.map(|t| t.into_owned()).unwrap_or_default();
                 let escapes = target.has_root() || target.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::Prefix(_)));
@@ -114,6 +154,25 @@ pub fn extract(archive: &Path, dest: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extraction_is_bounded() {
+        use std::io::Write;
+        let d = std::env::temp_dir().join(format!("crl-bomb-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        let zp = d.join("a.zip");
+        let mut w = zip::ZipWriter::new(File::create(&zp).unwrap());
+        for i in 0..3 {
+            w.start_file(format!("f{i}"), zip::write::SimpleFileOptions::default()).unwrap();
+            w.write_all(&[0u8; 1000]).unwrap();
+        }
+        w.finish().unwrap();
+        assert!(extract_limited(&zp, &d.join("ok"), 3, 3000).is_ok());
+        assert!(extract_limited(&zp, &d.join("n"), 2, 3000).is_err(), "trop d'entrées");
+        assert!(extract_limited(&zp, &d.join("b"), 3, 2999).is_err(), "trop d'octets");
+        fs::remove_dir_all(&d).unwrap();
+    }
 
     #[test]
     fn parses_adoptium_json() {

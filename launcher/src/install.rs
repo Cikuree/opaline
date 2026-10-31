@@ -41,6 +41,8 @@ pub struct Installed {
     pub fabric: FabricProfile,
     /// Zip de shaders installé (pour iris.properties).
     pub shader_pack: Option<String>,
+    /// Hash de l'index du pack installé (None pour une installation ancienne).
+    pub index_hash: Option<String>,
 }
 
 pub struct InstallParams {
@@ -84,6 +86,9 @@ struct Marker {
     fabric: String,
     #[serde(default)]
     shader_pack: Option<String>,
+    /// Hash de l'index du pack installé (détection « le pack a changé »).
+    #[serde(default)]
+    index_hash: Option<String>,
 }
 
 fn marker_for(pack: &Pack) -> Result<Marker> {
@@ -92,6 +97,7 @@ fn marker_for(pack: &Pack) -> Result<Marker> {
         minecraft: pack.versions.minecraft.clone(),
         fabric: pack.versions.fabric.clone().context("pack.toml : version de Fabric absente")?,
         shader_pack: pack.shader_pack().map(str::to_string),
+        index_hash: Some(pack.index_hash.clone()),
     })
 }
 
@@ -177,7 +183,7 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
     fs::create_dir_all(&dirs.root)?;
     fs::write(dirs.install_marker(), serde_json::to_vec_pretty(&marker)?)?;
     progress.set_stage("Terminé");
-    Ok(Installed { java: java_exe, version, fabric, shader_pack: marker.shader_pack })
+    Ok(Installed { java: java_exe, version, fabric, shader_pack: marker.shader_pack, index_hash: marker.index_hash })
 }
 
 fn fetch_version_json(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str) -> Result<VersionJson> {
@@ -240,7 +246,7 @@ pub fn load_installed(dirs: &Dirs) -> Result<Installed> {
     validate_version(&version, mc)?;
     let fabric: FabricProfile = serde_json::from_slice(&read(dirs.versions().join(&id).join(format!("{id}.json")))?)?;
     let java = java::find_java(&dirs.java(version.java_version.major_version)).context("Java absent : lancez d'abord l'installation")?;
-    Ok(Installed { java, version, fabric, shader_pack: have.shader_pack })
+    Ok(Installed { java, version, fabric, shader_pack: have.shader_pack, index_hash: have.index_hash })
 }
 
 fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_jar: Option<&Path>, progress: &Arc<Progress>) -> Result<()> {
@@ -273,12 +279,25 @@ fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_
     if let (Some(j), Some(n)) = (mod_jar, &jar_name) {
         fs::copy(j, mods_dir.join(n)).with_context(|| format!("copie de {}", j.display()))?;
     }
-    // Ménage dans NOTRE dossier mods uniquement : anciens jars retirés du manifeste.
-    for e in fs::read_dir(&mods_dir)?.flatten() {
-        let name = e.file_name().to_string_lossy().into_owned();
-        // Fichiers seulement : un dossier nommé « x.jar » est ignoré.
-        if name.ends_with(".jar") && !keep.contains(&name) && e.file_type().is_ok_and(|t| t.is_file()) {
-            fs::remove_file(e.path())?;
+    // Ménage dans NOTRE instance uniquement : fichiers absents du pack (jars de mods ; zips de shaders et de
+    // resource packs). Les fichiers de réglages (`*.zip.txt`) et les dossiers ne sont jamais supprimés.
+    for (dir, ext) in [("mods", ".jar"), ("shaderpacks", ".zip"), ("resourcepacks", ".zip")] {
+        let target = dirs.instance().join(dir);
+        let Ok(rd) = fs::read_dir(&target) else { continue };
+        let wanted: HashSet<&str> = pack
+            .mods
+            .iter()
+            .filter(|m| m.dir == dir)
+            .map(|m| m.filename.as_str())
+            .chain(pack.files.iter().filter_map(|f| f.path.strip_prefix(dir)?.strip_prefix('/')))
+            .collect();
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let kept = wanted.contains(name.as_str()) || (dir == "mods" && keep.contains(&name));
+            // Fichiers seulement : un dossier nommé « x.jar » est ignoré.
+            if name.ends_with(ext) && !kept && e.file_type().is_ok_and(|t| t.is_file()) {
+                fs::remove_file(e.path())?;
+            }
         }
     }
     Ok(())
@@ -341,6 +360,7 @@ mod tests {
         fs::write(d.join("classroomrun-1.jar"), b"x").unwrap();
         let pack = Pack {
             version: "1".into(),
+            index_hash: String::new(),
             versions: packwiz::Versions { minecraft: "26.3".into(), fabric: Some("0.20.1".into()) },
             mods: vec![],
             files: vec![],

@@ -1,7 +1,6 @@
 //! Détection locale de l'état de Tailscale. Rien de la sortie de la CLI (noms de machines, IP) n'est loggé ni conservé.
 use serde_json::Value;
 use std::io::Read;
-use std::net::Ipv4Addr;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -34,15 +33,21 @@ pub fn parse_backend_state(json: &str) -> Option<TailscaleState> {
     Some(if s == "Running" { TailscaleState::Connected } else { TailscaleState::Disconnected })
 }
 
-/// 100.64.0.0/10 (CGNAT, plage de Tailscale).
-pub fn is_tailscale_ip(ip: Ipv4Addr) -> bool {
-    let o = ip.octets();
-    o[0] == 100 && (64..=127).contains(&o[1])
+/// Suffixe MagicDNS du tailnet (`MagicDNSSuffix`, ou `CurrentTailnet.MagicDNSSuffix`). Calculé à l'exécution, jamais loggé.
+/// Refusé s'il contient autre chose que lettres, chiffres, `.` et `-`.
+pub fn parse_magic_dns_suffix(json: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(json).ok()?;
+    let s = v.get("MagicDNSSuffix").and_then(Value::as_str).filter(|s| !s.is_empty()).or_else(|| v.pointer("/CurrentTailnet/MagicDNSSuffix").and_then(Value::as_str))?;
+    let s = s.trim().trim_matches('.');
+    (!s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')).then(|| s.to_string())
 }
 
-/// Repli : une adresse de la plage Tailscale apparaît dans la sortie de `ipconfig` / `ip addr`.
-pub fn has_tailscale_addr(text: &str) -> bool {
-    text.split(|c: char| !(c.is_ascii_digit() || c == '.')).filter_map(|t| t.parse::<Ipv4Addr>().ok()).any(is_tailscale_ip)
+/// `base.suffixe` si le suffixe est connu, sinon `base` seul.
+pub fn server_host(base: &str, suffix: Option<&str>) -> String {
+    match suffix {
+        Some(s) => format!("{base}.{s}"),
+        None => base.to_string(),
+    }
 }
 
 /// Exécute une commande avec un délai ; sortie standard seulement.
@@ -78,23 +83,22 @@ fn cli_path() -> Option<std::path::PathBuf> {
     std::env::var_os("PATH").and_then(|p| std::env::split_paths(&p).map(|d| d.join(name)).find(|f| f.is_file()))
 }
 
-fn local_addrs_text() -> String {
-    let mut c = if cfg!(windows) { Command::new("ipconfig") } else {
-        let mut c = Command::new("ip");
-        c.args(["-o", "-4", "addr"]);
-        c
-    };
-    run(&mut c, Duration::from_secs(3)).unwrap_or_default()
+#[derive(Debug, Clone, PartialEq)]
+pub struct TailscaleInfo {
+    pub state: TailscaleState,
+    pub magic_dns_suffix: Option<String>,
 }
 
-pub fn tailscale_state() -> TailscaleState {
-    let Some(cli) = cli_path() else {
-        return if has_tailscale_addr(&local_addrs_text()) { TailscaleState::Connected } else { TailscaleState::NotInstalled };
+/// Une seule exécution de `tailscale status --json` (délai 3 s) : état et suffixe MagicDNS.
+pub fn status() -> TailscaleInfo {
+    let Some(cli) = cli_path() else { return TailscaleInfo { state: TailscaleState::NotInstalled, magic_dns_suffix: None } };
+    // CLI présente mais en échec (service arrêté, délai dépassé) : non connecté.
+    let Some(json) = run(Command::new(cli).args(["status", "--json"]), Duration::from_secs(3)) else {
+        return TailscaleInfo { state: TailscaleState::Disconnected, magic_dns_suffix: None };
     };
-    if let Some(st) = run(Command::new(cli).args(["status", "--json"]), Duration::from_secs(3)).and_then(|j| parse_backend_state(&j)) {
-        return st;
-    }
-    if has_tailscale_addr(&local_addrs_text()) { TailscaleState::Connected } else { TailscaleState::Disconnected }
+    let state = parse_backend_state(&json).unwrap_or(TailscaleState::Disconnected);
+    let magic_dns_suffix = (state == TailscaleState::Connected).then(|| parse_magic_dns_suffix(&json)).flatten();
+    TailscaleInfo { state, magic_dns_suffix }
 }
 
 #[cfg(test)]
@@ -112,10 +116,14 @@ mod tests {
     }
 
     #[test]
-    fn detects_cgnat_range() {
-        assert!(has_tailscale_addr("Adresse IPv4. . . : 100.101.2.3\n"));
-        assert!(has_tailscale_addr("2: tailscale0 inet 100.64.0.1/32 scope global"));
-        assert!(!has_tailscale_addr("inet 192.168.1.5 inet 100.63.0.1 inet 100.128.0.1 inet 10.100.64.1"));
+    fn magic_dns_suffix_and_host() {
+        let j = r#"{"BackendState":"Running","MagicDNSSuffix":"tail1234.ts.net"}"#;
+        assert_eq!(parse_magic_dns_suffix(j).as_deref(), Some("tail1234.ts.net"));
+        assert_eq!(parse_magic_dns_suffix(r#"{"CurrentTailnet":{"MagicDNSSuffix":"x.ts.net."}}"#).as_deref(), Some("x.ts.net"));
+        assert_eq!(parse_magic_dns_suffix(r#"{"MagicDNSSuffix":"a b;rm"}"#), None);
+        assert_eq!(parse_magic_dns_suffix("{}"), None);
+        assert_eq!(server_host("classroom", Some("x.ts.net")), "classroom.x.ts.net");
+        assert_eq!(server_host("classroom", None), "classroom");
     }
 
     #[test]

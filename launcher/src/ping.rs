@@ -58,6 +58,23 @@ fn packet(id: i32, body: &[u8]) -> Vec<u8> {
     out
 }
 
+/// Texte que le MOTD du serveur doit contenir (`motd=Classroom Run` dans server.properties).
+pub const EXPECTED_MOTD: &str = "Classroom Run";
+
+/// Le MOTD (codes de format `§x` retirés) contient `EXPECTED_MOTD`.
+pub fn motd_matches(st: &ServerStatus) -> bool {
+    let mut out = String::new();
+    let mut it = st.motd.chars();
+    while let Some(c) = it.next() {
+        if c == '\u{a7}' {
+            it.next();
+        } else {
+            out.push(c);
+        }
+    }
+    out.contains(EXPECTED_MOTD)
+}
+
 pub fn handshake(host: &str, port: u16) -> Vec<u8> {
     let mut b = Vec::new();
     write_varint(&mut b, PROTOCOL);
@@ -151,6 +168,13 @@ pub fn ping_stream(s: &mut (impl Read + Write), host: &str, port: u16) -> Result
 /// `hôte[:port]` -> (hôte, port).
 pub fn split_host(addr: &str) -> (String, u16) {
     let a = addr.trim();
+    if let Some(rest) = a.strip_prefix('[') {
+        // IPv6 : [adresse] ou [adresse]:port
+        if let Some((h, tail)) = rest.split_once(']') {
+            let port = tail.strip_prefix(':').and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
+            return (h.to_string(), port);
+        }
+    }
     match a.rsplit_once(':') {
         Some((h, p)) if !h.is_empty() && !h.contains(':') => (h.to_string(), p.parse().unwrap_or(DEFAULT_PORT)),
         _ => (a.to_string(), DEFAULT_PORT),
@@ -190,6 +214,21 @@ mod tests {
         assert_eq!(parse_status(r#"{"description":"x"}"#).unwrap().motd, "x");
         assert!(parse_status("nope").is_err());
     }
+
+    #[test]
+    fn motd_check_ignores_format_codes() {
+        let mk = |m: &str| ServerStatus { version: String::new(), protocol: 0, online: 0, max: 0, sample: vec![], motd: m.into(), latency_ms: None };
+        assert!(motd_matches(&mk("\u{a7}aClassroom \u{a7}lRun")));
+        assert!(!motd_matches(&mk("A Minecraft Server")));
+    }
+
+    #[test]
+    fn splits_ipv6() {
+        assert_eq!(split_host("[2001:db8::1]:25566"), ("2001:db8::1".into(), 25566));
+        assert_eq!(split_host("[::1]"), ("::1".into(), 25565));
+        assert_eq!(split_host("::1"), ("::1".into(), 25565));
+    }
+
 
     #[test]
     fn splits_host() {

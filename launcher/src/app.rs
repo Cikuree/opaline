@@ -29,6 +29,17 @@ enum AuthUi {
 struct Net {
     tailscale: TailscaleState,
     server: Option<ServerStatus>,
+    /// Le MOTD annonce bien Classroom Run (ou serveur surchargé en dev).
+    motd_ok: bool,
+    /// Adresse résolue : jamais affichée (sert au ping, aux stats et au filtrage des logs).
+    addr: String,
+}
+
+enum PlayOutcome {
+    Started(Child),
+    /// Un autre pack est publié : proposer la mise à jour avant de lancer.
+    PackUpdate,
+    Failed(String),
 }
 
 pub struct App {
@@ -45,8 +56,10 @@ pub struct App {
     cancel_login: Arc<AtomicBool>,
     update: Arc<Mutex<Option<Update>>>,
     net: Arc<Mutex<Option<Net>>>,
-    play_slot: Arc<Mutex<Option<Result<Child, String>>>>,
+    play_slot: Arc<Mutex<Option<PlayOutcome>>>,
     play_busy: bool,
+    mgr: Arc<auth::AuthManager>,
+    pack_update_pending: bool,
 }
 
 pub fn run() -> eframe::Result {
@@ -79,6 +92,8 @@ impl App {
             net: Arc::default(),
             play_slot: Arc::default(),
             play_busy: false,
+            mgr: Arc::default(),
+            pack_update_pending: false,
         };
         app.spawn_background(ctx);
         app
@@ -96,24 +111,23 @@ impl App {
         let (net, c) = (self.net.clone(), ctx.clone());
         std::thread::spawn(move || {
             loop {
-                let ts = tailscale::tailscale_state();
-                let server = if ts == TailscaleState::Connected || crate::config::server_overridden() {
-                    ping::ping(&crate::config::server_addr(), Duration::from_secs(3)).ok()
-                } else {
-                    None
-                };
-                *net.lock().unwrap() = Some(Net { tailscale: ts, server });
+                let info = tailscale::status();
+                let addr = crate::resolve_server(info.magic_dns_suffix.as_deref());
+                let server = ping::ping(&addr, Duration::from_secs(3)).ok();
+                let motd_ok = server.as_ref().is_some_and(|s| crate::config::server_overridden() || ping::motd_matches(s));
+                *net.lock().unwrap() = Some(Net { tailscale: info.state, server, motd_ok, addr });
                 c.request_repaint();
                 std::thread::sleep(Duration::from_secs(10));
             }
         });
         let slot = self.auth.clone();
-        if auth::dev_offline() || !auth::configured() {
+        if auth::dev_offline() || !auth::configured() || self.cfg.no_remember {
             *slot.lock().unwrap() = AuthUi::SignedOut;
             return;
         }
+        let mgr = self.mgr.clone();
         std::thread::spawn(move || {
-            let r = auth::http_client().and_then(|c| auth::silent_login(&c, &auth::Endpoints::default(), auth::CLIENT_ID));
+            let r = auth::http_client().and_then(|c| mgr.ensure_session(&c, &auth::Endpoints::default(), auth::CLIENT_ID, true));
             *slot.lock().unwrap() = match r {
                 Ok(Some(s)) => AuthUi::SignedIn(s.username.clone()),
                 Ok(None) => AuthUi::SignedOut,
@@ -125,14 +139,15 @@ impl App {
 
     fn start_login(&mut self, ctx: &egui::Context) {
         self.cancel_login.store(false, Ordering::Relaxed);
-        let (slot, cancel, ctx) = (self.auth.clone(), self.cancel_login.clone(), ctx.clone());
+        let (slot, cancel, ctx, mgr, remember) = (self.auth.clone(), self.cancel_login.clone(), ctx.clone(), self.mgr.clone(), !self.cfg.no_remember);
         std::thread::spawn(move || {
             let (s2, c2) = (slot.clone(), ctx.clone());
             let r = auth::http_client().and_then(|c| {
-                auth::login_interactive(
+                mgr.login(
                     &c,
                     &auth::Endpoints::default(),
                     auth::CLIENT_ID,
+                    remember,
                     |dc| {
                         *s2.lock().unwrap() = AuthUi::Code { code: dc.user_code.clone(), uri: dc.verification_uri.clone() };
                         c2.request_repaint();
@@ -161,12 +176,21 @@ impl App {
         });
     }
 
-    fn play(&mut self, ctx: &egui::Context) {
+    /// `check_pack` : proposer d'abord la mise à jour si un autre pack est publié.
+    fn play(&mut self, ctx: &egui::Context, check_pack: bool) {
         let _ = self.cfg.save(&self.dirs);
         self.play_busy = true;
-        let (dirs, cfg, slot, ctx) = (self.dirs.clone(), self.cfg.clone(), self.play_slot.clone(), ctx.clone());
+        self.pack_update_pending = false;
+        let (dirs, cfg, slot, ctx, mgr) = (self.dirs.clone(), self.cfg.clone(), self.play_slot.clone(), ctx.clone(), self.mgr.clone());
         std::thread::spawn(move || {
-            let r = crate::session_for_play(&cfg).and_then(|s| crate::run_play(&dirs, &cfg, &s)).map_err(|e| format!("{e:#}"));
+            let r = if check_pack && crate::pack_update_available(&dirs, &cfg) {
+                PlayOutcome::PackUpdate
+            } else {
+                match crate::session_for_play(&cfg, &mgr).and_then(|s| crate::run_play(&dirs, &cfg, &s)) {
+                    Ok(c) => PlayOutcome::Started(c),
+                    Err(e) => PlayOutcome::Failed(format!("{e:#}")),
+                }
+            };
             *slot.lock().unwrap() = Some(r);
             ctx.request_repaint();
         });
@@ -174,10 +198,10 @@ impl App {
 }
 
 /// Dernières lignes de `instance/logs/launcher-game.log`.
-fn log_tail(dirs: &Dirs, n: usize) -> String {
+fn log_tail(dirs: &Dirs, n: usize, token: &str, server: &str) -> String {
     let text = std::fs::read_to_string(dirs.instance().join("logs").join("launcher-game.log")).unwrap_or_default();
     let lines: Vec<&str> = text.lines().collect();
-    lines[lines.len().saturating_sub(n)..].join("\n")
+    crate::launch::redact_text(&lines[lines.len().saturating_sub(n)..].join("\n"), token, Some(server))
 }
 
 fn spawn_stats_poller(ctx: egui::Context, out: Arc<Mutex<StatsResult>>, url: Arc<Mutex<String>>) {
@@ -212,28 +236,39 @@ impl eframe::App for App {
         if let Some(r) = self.play_slot.lock().unwrap().take() {
             self.play_busy = false;
             match r {
-                Ok(c) => {
+                PlayOutcome::Started(c) => {
                     self.game = Some((c, Instant::now()));
                     self.message = "Jeu lancé.".into();
                 }
-                Err(e) => self.message = format!("Lancement impossible : {e}"),
+                PlayOutcome::PackUpdate => {
+                    self.pack_update_pending = true;
+                    self.message = "Une mise à jour du pack est disponible.".into();
+                }
+                PlayOutcome::Failed(e) => self.message = format!("Lancement impossible : {e}"),
             }
+        }
+        if let Some(w) = self.mgr.take_warning() {
+            self.message = w;
         }
         if let Some((c, started)) = &mut self.game
             && !matches!(c.try_wait(), Ok(None))
         {
             // Mort dans les premières secondes : on montre la fin du log pour comprendre pourquoi.
             self.message = if started.elapsed() < Duration::from_secs(30) {
-                format!("Le jeu s'est arrêté au démarrage. Fin du log :\n{}", log_tail(&self.dirs, 15))
+                let addr = self.net.lock().unwrap().as_ref().map(|n| n.addr.clone()).unwrap_or_default();
+                format!("Le jeu s'est arrêté au démarrage. Fin du log :\n{}", log_tail(&self.dirs, 15, &self.mgr.current_token().unwrap_or_default(), &addr))
             } else {
                 "Le jeu est fermé.".into()
             };
             self.game = None;
         }
-        *self.stats_url.lock().unwrap() = self.cfg.stats_url();
         let auth_state = self.auth.lock().unwrap().clone();
         let net = self.net.lock().unwrap().clone();
-        let ts_ok = crate::config::server_overridden() || net.as_ref().is_some_and(|n| n.tailscale == TailscaleState::Connected);
+        if let Some(n) = &net {
+            *self.stats_url.lock().unwrap() = crate::config::stats_url(&n.addr, crate::config::STATS_PORT);
+        }
+        // Jouer : le ping répond et le MOTD correspond ; l'état Tailscale ne sert qu'au message d'aide.
+        let ts_ok = net.as_ref().is_some_and(|n| n.motd_ok);
         let signed_in = matches!(auth_state, AuthUi::SignedIn(_));
         let can_play = !installing && self.game.is_none() && !self.play_busy && ts_ok && (auth::dev_offline() || (auth::configured() && signed_in));
 
@@ -287,7 +322,7 @@ impl eframe::App for App {
                         ui.horizontal(|ui| {
                             ui.label(format!("Connecté : {name}"));
                             if ui.button("Se déconnecter").clicked() {
-                                match auth::sign_out() {
+                                match self.mgr.sign_out() {
                                     Ok(()) => *self.auth.lock().unwrap() = AuthUi::SignedOut,
                                     Err(e) => self.message = format!("{e:#}"),
                                 }
@@ -302,10 +337,14 @@ impl eframe::App for App {
                     ui.label("Vérification du réseau…");
                 }
                 Some(n) => {
-                    if let Some(m) = tailscale::message(n.tailscale, n.server.is_some()) {
-                        ui.colored_label(egui::Color32::LIGHT_YELLOW, m);
+                    if n.server.is_none() {
+                        if let Some(m) = tailscale::message(n.tailscale, false) {
+                            ui.colored_label(egui::Color32::LIGHT_YELLOW, m);
+                        }
+                    } else if !n.motd_ok {
+                        ui.colored_label(egui::Color32::LIGHT_YELLOW, "Serveur inattendu.");
                     }
-                    if let Some(s) = &n.server {
+                    if let Some(s) = n.server.as_ref().filter(|_| n.motd_ok) {
                         ui.label(format!(
                             "Serveur : en ligne - {} ms - {}/{} joueurs - {}",
                             s.latency_ms.map_or("?".into(), |l| l.to_string()),
@@ -322,6 +361,10 @@ impl eframe::App for App {
                         ui.selectable_value(&mut self.cfg.perf_mode, m, m.label());
                     }
                 });
+                if !auth::dev_offline() && ui.checkbox(&mut self.cfg.no_remember, "Ne pas mémoriser la connexion sur ce PC").changed() && self.cfg.no_remember {
+                    // Oublie aussi ce qui a pu être mémorisé avant.
+                    let _ = auth::clear_stored_token();
+                }
                 ui.collapsing("Options avancées (dev)", |ui| {
                     ui.label("Dossier du pack local (vide = pack de la release)");
                     ui.text_edit_singleline(&mut self.cfg.pack_dir);
@@ -335,9 +378,20 @@ impl eframe::App for App {
                     self.start_install(&ctx);
                 }
                 if ui.add_enabled(can_play, egui::Button::new("Jouer")).clicked() {
-                    self.play(&ctx);
+                    self.play(&ctx, true);
                 }
             });
+            if self.pack_update_pending {
+                ui.horizontal(|ui| {
+                    if ui.button("Mettre à jour le pack").clicked() {
+                        self.pack_update_pending = false;
+                        self.start_install(&ctx);
+                    }
+                    if ui.button("Jouer quand même").clicked() {
+                        self.play(&ctx, false);
+                    }
+                });
+            }
             if installing {
                 let (d, t) = (self.progress.done.load(Ordering::Relaxed), self.progress.total.load(Ordering::Relaxed));
                 let frac = if t == 0 { 0.0 } else { d as f32 / t as f32 };

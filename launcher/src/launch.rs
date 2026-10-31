@@ -85,24 +85,35 @@ pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
     cmd.extend(expand_args(&i.version.arguments.game, i.env, &vars));
     cmd.extend(expand_args(&i.fabric.arguments.game, i.env, &vars));
     if let Some(a) = cmd.iter().find(|a| a.contains("${")) {
-        anyhow::bail!("variable non substituée dans la ligne de commande : {a}");
+        // Seulement le nom de la variable : l'argument contient peut-être déjà des valeurs substituées (jeton).
+        let name = a.find("${").map(|i| a[i..].split('}').next().unwrap_or("").to_string() + "}").unwrap_or_default();
+        anyhow::bail!("variable non substituée dans la ligne de commande : {name}");
     }
     Ok(cmd)
 }
 
 /// Pour les logs : masque la valeur qui suit `--accessToken`, le token où qu'il apparaisse
 /// (ignoré s'il ne fait qu'un caractère, comme le token factice hors ligne) et l'adresse du serveur.
+pub fn redact_text(text: &str, token: &str, server: Option<&str>) -> String {
+    let mut s = text.to_string();
+    if token.len() > 1 {
+        s = s.replace(token, "<masqué>");
+    }
+    if let Some(sv) = server.filter(|s| !s.is_empty()) {
+        s = s.replace(sv, "<serveur>");
+        // Hôte seul aussi (log du jeu), mais seulement s'il est assez distinctif (un nom court comme `classroom` est aussi un mot courant).
+        if let Some((h, _)) = sv.rsplit_once(':').filter(|(h, _)| h.contains('.')) {
+            s = s.replace(h, "<serveur>");
+        }
+    }
+    s
+}
+
 pub fn redact(cmd: &[String], token: &str, server: Option<&str>) -> String {
     let mut out = Vec::with_capacity(cmd.len());
     let mut hide = false;
     for a in cmd {
-        let mut shown = if hide { "<masqué>".to_string() } else { a.clone() };
-        if token.len() > 1 {
-            shown = shown.replace(token, "<masqué>");
-        }
-        if let Some(sv) = server.filter(|s| !s.is_empty()) {
-            shown = shown.replace(sv, "<serveur>");
-        }
+        let shown = if hide { "<masqué>".to_string() } else { redact_text(a, token, server) };
         out.push(shown);
         hide = a == "--accessToken";
     }

@@ -71,6 +71,8 @@ pub struct PackFile {
 #[derive(Debug)]
 pub struct Pack {
     pub version: String,
+    /// Hash de l'index annoncé par pack.toml (minuscules) : identifie la version du pack.
+    pub index_hash: String,
     pub versions: Versions,
     pub mods: Vec<ModEntry>,
     pub files: Vec<PackFile>,
@@ -143,21 +145,36 @@ pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> R
     Ok((mods, files))
 }
 
-/// Télécharge `pack.zip` (release), l'extrait dans `<downloads>/pack-remote` (extraction sûre : zip-slip refusé)
-/// et renvoie le dossier contenant `pack.toml`. Les hashes sont vérifiés ensuite par `load_pack`.
+/// Taille max du zip, et bornes d'extraction (anti zip bomb).
+pub const PACK_ZIP_MAX_BYTES: u64 = 50 * 1024 * 1024;
+pub const PACK_MAX_ENTRIES: usize = 5_000;
+pub const PACK_MAX_UNPACKED: u64 = 300 * 1024 * 1024;
+
+/// Télécharge `pack.zip` (release) avec délai global et limite de taille, l'extrait dans `<downloads>/pack-remote`
+/// (extraction sûre : zip-slip refusé, nombre d'entrées et taille décompressée bornés) et renvoie le dossier
+/// contenant `pack.toml`. Les hashes sont vérifiés ensuite par `load_pack`.
 pub fn fetch_remote_pack(client: &reqwest::blocking::Client, dirs: &crate::config::Dirs, url: &str) -> Result<std::path::PathBuf> {
-    let r = client.get(url).send().with_context(|| format!("requête {url}"))?;
+    use std::io::Read;
+    let r = client.get(url).timeout(std::time::Duration::from_secs(120)).send().with_context(|| format!("requête {url}"))?;
     if !r.status().is_success() {
         bail!("HTTP {} pour {url}", r.status());
     }
-    let bytes = r.bytes()?;
+    if r.content_length().is_some_and(|n| n > PACK_ZIP_MAX_BYTES) {
+        bail!("pack.zip trop gros (limite {} Mo)", PACK_ZIP_MAX_BYTES / 1024 / 1024);
+    }
+    let mut bytes = Vec::new();
+    r.take(PACK_ZIP_MAX_BYTES + 1).read_to_end(&mut bytes).context("lecture de pack.zip")?;
+    if bytes.len() as u64 > PACK_ZIP_MAX_BYTES {
+        bail!("pack.zip trop gros (limite {} Mo)", PACK_ZIP_MAX_BYTES / 1024 / 1024);
+    }
     let work = dirs.downloads().join("pack-remote");
     let _ = std::fs::remove_dir_all(&work); // notre propre dossier de travail
     std::fs::create_dir_all(&work)?;
     let zip = work.with_extension("zip");
     std::fs::write(&zip, &bytes)?;
-    crate::java::extract(&zip, &work)?;
+    let r = crate::java::extract_limited(&zip, &work, PACK_MAX_ENTRIES, PACK_MAX_UNPACKED);
     let _ = std::fs::remove_file(&zip);
+    r?;
     [work.join("pack"), work.clone()].into_iter().find(|d| d.join("pack.toml").is_file()).context("pack.zip : pack.toml introuvable")
 }
 
@@ -181,7 +198,7 @@ pub fn load_pack(dir: &Path) -> Result<Pack> {
         version: String,
     }
     let version = toml::from_str::<V>(&read_in("pack.toml")?)?.version;
-    Ok(Pack { version, versions, mods, files })
+    Ok(Pack { version, index_hash: index_hash.expected().to_ascii_lowercase(), versions, mods, files })
 }
 
 #[cfg(test)]

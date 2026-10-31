@@ -138,7 +138,7 @@ fn successful_login_then_config_json_has_no_secret() {
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
     let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     keys.sort();
-    assert_eq!(keys, ["memory_mb", "mod_jar", "nickname", "pack_dir", "perf_mode"]);
+    assert_eq!(keys, ["memory_mb", "mod_jar", "nickname", "no_remember", "pack_dir", "perf_mode"]);
     let _ = std::fs::remove_dir_all(&dirs.root);
 }
 
@@ -200,7 +200,6 @@ fn command_line_redaction_keeps_offline_token_readable_but_masks_flag_value() {
 }
 
 #[test]
-#[ignore = "bug launch.rs:88 (build_command) : le message reprend l'argument complet, donc le jeton s'il est dans le même argument qu'un ${variable} non substituée"]
 fn bug_leftover_variable_error_echoes_token() {
     let s = Session::microsoft("Steve".into(), "uuid".into(), "MC-TOKEN-SECRET-123".into());
     let mut v = version_json();

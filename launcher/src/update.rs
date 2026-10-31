@@ -7,8 +7,7 @@ pub struct LauncherInfo {
     pub version: String,
     pub windows: Option<String>,
     pub linux: Option<String>,
-    /// Version du pack (informative).
-    #[allow(dead_code)]
+    /// Hash de l'index du pack publié (celui de `pack.toml`) ; sert à détecter « le pack a changé ».
     pub pack: Option<String>,
 }
 
@@ -39,10 +38,22 @@ pub fn pick(info: &LauncherInfo, current: &str) -> Option<Update> {
     Some(Update { version: info.version.clone(), url: url.clone() })
 }
 
+pub fn fetch_info(client: &reqwest::blocking::Client, url: &str) -> Result<LauncherInfo> {
+    crate::download::get_json(client, url)
+}
+
+/// Le pack publié diffère de l'installé. Sans hash publié : faux. Installation ancienne sans hash : vrai.
+pub fn pack_changed(info: &LauncherInfo, installed_index_hash: Option<&str>) -> bool {
+    match (info.pack.as_deref().map(str::trim).filter(|p| !p.is_empty()), installed_index_hash) {
+        (Some(remote), Some(local)) => !remote.eq_ignore_ascii_case(local),
+        (Some(_), None) => true,
+        (None, _) => false,
+    }
+}
+
 /// Erreur réseau ou JSON invalide : silencieux (trace seulement avec CLASSROOM_DEBUG=1).
 pub fn check(client: &reqwest::blocking::Client, url: &str, current: &str) -> Option<Update> {
-    let r: Result<LauncherInfo> = crate::download::get_json(client, url);
-    match r {
+    match fetch_info(client, url) {
         Ok(info) => pick(&info, current),
         Err(e) => {
             if std::env::var_os("CLASSROOM_DEBUG").is_some() {
@@ -78,6 +89,15 @@ mod tests {
         let u = pick(&i, "0.1.0").unwrap();
         assert_eq!(u.url, if cfg!(windows) { "https://w" } else { "https://l" });
         assert!(pick(&i, "0.3.0").is_none());
+    }
+
+    #[test]
+    fn detects_changed_pack() {
+        let i = |p: Option<&str>| LauncherInfo { version: "1.0.0".into(), windows: None, linux: None, pack: p.map(str::to_string) };
+        assert!(!pack_changed(&i(Some("ABC")), Some("abc")));
+        assert!(pack_changed(&i(Some("abd")), Some("abc")));
+        assert!(pack_changed(&i(Some("abd")), None));
+        assert!(!pack_changed(&i(None), Some("abc")));
     }
 
     #[test]

@@ -47,8 +47,8 @@ fn run_install_inner(dirs: &Dirs, cfg: &Config, progress: &Arc<Progress>) -> Res
     install::install(&client, &params, progress)
 }
 
-/// Session pour jouer : hors ligne en dev (`CLASSROOM_DEV_OFFLINE=1`), sinon Microsoft via le trousseau.
-pub fn session_for_play(cfg: &Config) -> Result<auth::Session> {
+/// Session pour jouer : hors ligne en dev (`CLASSROOM_DEV_OFFLINE=1`), sinon Microsoft (mémoire, puis trousseau).
+pub fn session_for_play(cfg: &Config, mgr: &auth::AuthManager) -> Result<auth::Session> {
     if auth::dev_offline() {
         return Ok(auth::Session::offline(cfg.nickname.trim()));
     }
@@ -56,12 +56,30 @@ pub fn session_for_play(cfg: &Config) -> Result<auth::Session> {
         bail!("Connexion Microsoft non configurée");
     }
     let client = auth::http_client()?;
-    auth::silent_login(&client, &auth::Endpoints::default(), auth::CLIENT_ID)?.context("connexion Microsoft requise : cliquez sur « Se connecter avec Microsoft »")
+    mgr.ensure_session(&client, &auth::Endpoints::default(), auth::CLIENT_ID, !cfg.no_remember)?
+        .context("connexion Microsoft requise : cliquez sur « Se connecter avec Microsoft »")
+}
+
+/// Adresse du serveur pour cette exécution (`classroom.<suffixe MagicDNS>` si connu). Jamais loggée.
+pub fn resolve_server(suffix: Option<&str>) -> String {
+    let p = config::PackProfile::default();
+    p.server_addr_for(&tailscale::server_host(&p.server_name, suffix))
+}
+
+/// Vérification légère (launcher.json, 5 s) : le pack publié diffère-t-il de l'installé ?
+/// Hors ligne, erreur ou pack local : faux (on joue avec l'installé).
+pub fn pack_update_available(dirs: &Dirs, cfg: &Config) -> bool {
+    if !cfg.pack_dir.trim().is_empty() {
+        return false;
+    }
+    let Ok(inst) = install::load_installed(dirs) else { return false };
+    let Ok(client) = reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(5)).build() else { return false };
+    update::fetch_info(&client, &config::launcher_json_url()).is_ok_and(|i| update::pack_changed(&i, inst.index_hash.as_deref()))
 }
 
 pub fn run_play(dirs: &Dirs, cfg: &Config, session: &auth::Session) -> Result<std::process::Child> {
     let inst = install::load_installed(dirs)?;
-    let server = config::PackProfile::default().server;
+    let server = resolve_server(tailscale::status().magic_dns_suffix.as_deref());
     let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?.unwrap_or(cfg.memory_mb);
     let env = mojang::Env::current(&[("is_quick_play_multiplayer", true)]);
     let cmd = launch::build_command(&launch::LaunchInput {
@@ -126,7 +144,11 @@ fn cli(args: Vec<String>) -> Result<()> {
             r.map(|_| ())
         }
         "play" => {
-            let session = session_for_play(&cfg)?;
+            let mgr = auth::AuthManager::default();
+            let session = session_for_play(&cfg, &mgr)?;
+            if let Some(w) = mgr.take_warning() {
+                eprintln!("avertissement : {w}");
+            }
             let mut child = run_play(&dirs, &cfg, &session)?;
             eprintln!("jeu lancé (pid {}), log : {}", child.id(), dirs.instance().join("logs/launcher-game.log").display());
             child.wait()?;

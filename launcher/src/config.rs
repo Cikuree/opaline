@@ -24,6 +24,8 @@ pub struct Config {
     pub mod_jar: String,
     pub memory_mb: u32,
     pub perf_mode: PerfMode,
+    /// « Ne pas mémoriser la connexion sur ce PC » : le refresh token reste en mémoire, jamais dans le trousseau.
+    pub no_remember: bool,
 }
 
 impl Default for Config {
@@ -34,6 +36,7 @@ impl Default for Config {
             mod_jar: String::new(),
             memory_mb: 4096,
             perf_mode: PerfMode::Balanced,
+            no_remember: false,
         }
     }
 }
@@ -59,32 +62,46 @@ impl Config {
 /// Éléments propres à un pack (MC et loader viennent du manifeste ; instance = `Dirs::instance`).
 /// Classroom Run est le profil par défaut ; le multi-pack passera par un catalogue de profils.
 #[derive(Clone, Debug)]
-#[allow(dead_code)] // name / stats_port : utilisés par le futur catalogue
 pub struct PackProfile {
-    pub name: String,
     pub pack_zip_url: String,
-    pub server: String,
-    pub stats_port: u16,
+    /// Nom d'hôte de base du serveur (le suffixe MagicDNS Tailscale est ajouté à l'exécution).
+    pub server_name: String,
+    pub server_port: u16,
 }
 
 impl Default for PackProfile {
     fn default() -> Self {
-        PackProfile { name: "Classroom Run".into(), pack_zip_url: pack_zip_url(), server: server_addr(), stats_port: STATS_PORT }
+        PackProfile { pack_zip_url: pack_zip_url(), server_name: "classroom".into(), server_port: 25565 }
     }
 }
 
-/// Adresse du serveur (nom MagicDNS Tailscale). Jamais affichée ni saisie par le joueur.
-pub const DEFAULT_SERVER: &str = "classroom:25565";
+impl PackProfile {
+    /// Adresse du serveur, jamais affichée ni saisie : `CLASSROOM_SERVER` (dev), sinon `host:port`
+    /// où `host` est fourni par l'appelant (nom de base + suffixe MagicDNS calculé à l'exécution).
+    pub fn server_addr_for(&self, host: &str) -> String {
+        server_override().unwrap_or_else(|| format!("{host}:{}", self.server_port))
+    }
+
+    /// Adresse sans suffixe MagicDNS (repli).
+    pub fn server_addr(&self) -> String {
+        self.server_addr_for(&self.server_name)
+    }
+}
+
 pub const STATS_PORT: u16 = 25580;
+
+fn server_override() -> Option<String> {
+    std::env::var("CLASSROOM_SERVER").ok().filter(|s| !s.trim().is_empty())
+}
 
 /// `CLASSROOM_SERVER` (dev) ou la constante par défaut.
 pub fn server_addr() -> String {
-    std::env::var("CLASSROOM_SERVER").ok().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| DEFAULT_SERVER.into())
+    PackProfile::default().server_addr()
 }
 
 /// Vrai si l'adresse est surchargée (dev) : Tailscale n'est alors pas exigé.
 pub fn server_overridden() -> bool {
-    std::env::var("CLASSROOM_SERVER").is_ok_and(|s| !s.trim().is_empty())
+    server_override().is_some()
 }
 
 pub fn stats_url(server_host: &str, stats_port: u16) -> String {
@@ -172,7 +189,7 @@ mod tests {
     fn config_roundtrip_and_defaults() {
         let c: Config = serde_json::from_str(r#"{"nickname":"A"}"#).unwrap();
         assert_eq!((c.nickname.as_str(), c.memory_mb), ("A", 4096));
-        assert_eq!(stats_url(DEFAULT_SERVER, STATS_PORT), "http://classroom:25580/stats");
+        assert_eq!(stats_url(&PackProfile::default().server_addr(), STATS_PORT), "http://classroom:25580/stats");
     }
 
     #[test]

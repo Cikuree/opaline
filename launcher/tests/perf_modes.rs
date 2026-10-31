@@ -107,7 +107,8 @@ fn balanced_without_shader_pack_only_sets_enable() {
 #[test]
 fn memory_per_mode_and_quality_cap() {
     assert_eq!(memory_mb(PerfMode::Low, None), Some(2048));
-    assert_eq!(memory_mb(PerfMode::Balanced, Some(2048)), Some(4096));
+    assert_eq!(memory_mb(PerfMode::Balanced, Some(2048)), Some(2048), "plafond 70 % de la RAM pour tous les modes, plancher 2048");
+    assert_eq!(memory_mb(PerfMode::Balanced, Some(4096)), Some(2867), "PC 4 Go");
     assert_eq!(memory_mb(PerfMode::Quality, None), Some(6144));
     assert_eq!(memory_mb(PerfMode::Quality, Some(8192)), Some(5734), "70 % de 8192");
     assert_eq!(memory_mb(PerfMode::Quality, Some(4096)), Some(2867), "70 % de 4096");
@@ -116,7 +117,6 @@ fn memory_per_mode_and_quality_cap() {
 }
 
 #[test]
-#[ignore = "bug perf.rs:107 (merge_file) : un options.txt non UTF-8 est lu comme vide (unwrap_or_default) et réécrit : toutes les lignes de l'utilisateur sont perdues"]
 fn bug_non_utf8_options_lose_user_lines() {
     let d = dir("latin1");
     let mut bytes = b"lang:fr_fr\nrenderDistance:12\nfoo:".to_vec();
@@ -129,7 +129,6 @@ fn bug_non_utf8_options_lose_user_lines() {
 }
 
 #[test]
-#[ignore = "bug perf.rs:58 : le cast en u32 précède le min(6144) ; au-delà de ~6 Po de RAM le résultat est tronqué"]
 fn bug_quality_memory_cast_before_clamp() {
     // 70 % de 6_135_668_995 = 4_294_968_296 : tronqué en u32 à 1000, puis plancher 2048 au lieu de 6144.
     assert_eq!(memory_mb(PerfMode::Quality, Some(6_135_668_995)), Some(6144));

@@ -173,7 +173,6 @@ fn split_host_handles_default_and_explicit_port() {
 }
 
 #[test]
-#[ignore = "bug ping.rs:155 (split_host) : une adresse IPv6 entre crochets avec port garde le port par défaut et le crochet dans l'hôte"]
 fn bug_split_host_ipv6_with_port() {
     assert_eq!(ping::split_host("[2001:db8::1]:25566"), ("2001:db8::1".to_string(), 25566));
 }

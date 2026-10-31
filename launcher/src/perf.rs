@@ -51,12 +51,13 @@ pub fn settings(mode: PerfMode) -> Option<Settings> {
 }
 
 /// Mémoire (Mo) pour `-Xmx` : None = mode Personnalisé (garder la valeur de la config).
-/// Qualité est plafonnée à 70 % de la RAM physique si elle est connue (jamais sous 2048).
+/// Tous les modes sont plafonnés à 70 % de la RAM physique si elle est connue (jamais sous 2048).
 pub fn memory_mb(mode: PerfMode, ram_mb: Option<u64>) -> Option<u32> {
     let s = settings(mode)?;
-    Some(match (mode, ram_mb) {
-        (PerfMode::Quality, Some(r)) => s.memory_mb.min((r * 70 / 100) as u32).max(2048),
-        _ => s.memory_mb,
+    Some(match ram_mb {
+        // clamp avant le cast : pas de troncature sur une valeur énorme
+        Some(r) => s.memory_mb.min((r.saturating_mul(70) / 100).min(u64::from(u32::MAX)) as u32).max(2048),
+        None => s.memory_mb,
     })
 }
 
@@ -105,11 +106,26 @@ pub fn iris_pairs(s: &Settings, shader_pack: Option<&str>) -> Vec<(&'static str,
 }
 
 fn merge_file(path: &Path, sep: char, kv: &[(&str, String)]) -> Result<()> {
-    let old = std::fs::read_to_string(path).unwrap_or_default();
+    let old = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e.into()), // illisible : on n'écrase rien
+    };
+    let out = match String::from_utf8(old) {
+        Ok(text) => merge_lines(&text, sep, kv).into_bytes(),
+        Err(e) => {
+            // Pas de l'UTF-8 (ex. Latin-1) : chaque octet devient un caractère (sans perte), fusion, retour en octets.
+            if kv.iter().any(|(k, v)| k.chars().chain(v.chars()).any(|c| c as u32 > 0xFF)) {
+                anyhow::bail!("{} n'est pas en UTF-8 : non modifié", path.display());
+            }
+            let text: String = e.as_bytes().iter().map(|&b| b as char).collect();
+            merge_lines(&text, sep, kv).chars().map(|c| c as u32 as u8).collect()
+        }
+    };
     if let Some(p) = path.parent() {
         std::fs::create_dir_all(p)?;
     }
-    std::fs::write(path, merge_lines(&old, sep, kv))?;
+    std::fs::write(path, out)?;
     Ok(())
 }
 
@@ -150,7 +166,8 @@ mod tests {
         assert_eq!(memory_mb(PerfMode::Quality, Some(8192)), Some(5734));
         assert_eq!(memory_mb(PerfMode::Quality, Some(32768)), Some(6144));
         assert_eq!(memory_mb(PerfMode::Quality, None), Some(6144));
-        assert_eq!(memory_mb(PerfMode::Balanced, Some(2048)), Some(4096));
+        assert_eq!(memory_mb(PerfMode::Balanced, Some(4096)), Some(2867)); // PC 4 Go
+        assert_eq!(memory_mb(PerfMode::Balanced, Some(2048)), Some(2048)); // plancher
         assert_eq!(memory_mb(PerfMode::Custom, Some(8192)), None);
     }
 

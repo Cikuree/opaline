@@ -4,8 +4,7 @@
 #[path = "../src/tailscale.rs"]
 mod tailscale;
 
-use tailscale::{MSG_DISCONNECTED, MSG_NOT_INSTALLED, MSG_UNREACHABLE, TailscaleState, has_tailscale_addr, message, parse_backend_state};
-use std::net::Ipv4Addr;
+use tailscale::{MSG_DISCONNECTED, MSG_NOT_INSTALLED, MSG_UNREACHABLE, TailscaleState, message, parse_backend_state, parse_magic_dns_suffix, server_host};
 
 fn status(backend: &str) -> String {
     format!(r#"{{"Version":"1.80.0","BackendState":"{backend}","Self":{{"HostName":"poste-eleve-07","TailscaleIPs":["100.101.2.3"]}},"Peer":{{}}}}"#)
@@ -28,7 +27,7 @@ fn stopped_and_needs_login_are_disconnected_with_hint() {
 
 #[test]
 fn invalid_or_incomplete_json_gives_no_state() {
-    // None => le module passe au repli par adresse (pas de faux « connecté » issu d'un JSON cassé).
+    // None => jamais de faux « connecté » issu d'un JSON cassé.
     assert_eq!(parse_backend_state("pas du json"), None);
     assert_eq!(parse_backend_state(""), None);
     assert_eq!(parse_backend_state("{}"), None);
@@ -48,22 +47,10 @@ fn connected_but_server_unreachable_message() {
 }
 
 #[test]
-fn fallback_address_detection_on_ipconfig_and_ip_output() {
-    // Repli quand la CLI est absente de la sortie : une adresse CGNAT Tailscale suffit.
-    assert!(has_tailscale_addr("   Adresse IPv4. . . . . . . . . . . : 100.101.2.3\n"));
-    assert!(has_tailscale_addr("2: tailscale0    inet 100.64.0.1/32 scope global tailscale0"));
-    assert!(!has_tailscale_addr("   Adresse IPv4 : 192.168.1.20\n   Passerelle : 10.0.0.1"));
-    assert!(!has_tailscale_addr("inet 100.63.255.255 inet 100.128.0.1"));
-    assert!(!has_tailscale_addr(""));
-}
-
-#[test]
-fn cgnat_boundaries() {
-    use tailscale::is_tailscale_ip;
-    assert!(is_tailscale_ip(Ipv4Addr::new(100, 64, 0, 0)));
-    assert!(is_tailscale_ip(Ipv4Addr::new(100, 127, 255, 255)));
-    assert!(!is_tailscale_ip(Ipv4Addr::new(100, 128, 0, 0)));
-    assert!(!is_tailscale_ip(Ipv4Addr::new(100, 63, 255, 255)));
+fn magic_dns_suffix_gives_the_server_host() {
+    let j = r#"{"BackendState":"Running","MagicDNSSuffix":"tail1234.ts.net"}"#;
+    assert_eq!(server_host("classroom", parse_magic_dns_suffix(j).as_deref()), "classroom.tail1234.ts.net");
+    assert_eq!(server_host("classroom", parse_magic_dns_suffix(&status("Running")).as_deref()), "classroom");
 }
 
 #[test]

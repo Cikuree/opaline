@@ -9,7 +9,8 @@ use md5::{Digest, Md5};
 use reqwest::blocking::Client;
 use serde_json::{Value, json};
 use std::fmt;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 /// ID client de l'app Azure (public, non secret), fixé à la compilation. Vide = connexion non configurée.
@@ -279,7 +280,8 @@ pub fn poll_device_code(c: &Client, ep: &Endpoints, client_id: &str, dc: &Device
         if Instant::now() > deadline {
             bail!("code expiré : relancez la connexion");
         }
-        let (st, v) = post_form(c, &ep.token, &poll_form(client_id, &dc.device_code))?;
+        // Une erreur réseau ponctuelle ne casse pas le flux : on réessaie jusqu'à l'échéance.
+        let Ok((st, v)) = post_form(c, &ep.token, &poll_form(client_id, &dc.device_code)) else { continue };
         match parse_token_response(st, &v) {
             Poll::Done(t) => return Ok(t),
             Poll::Pending => {}
@@ -347,51 +349,150 @@ fn entry() -> Result<keyring::Entry> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).map_err(|e| anyhow!("trousseau système indisponible : {e}"))
 }
 
+/// Stocké en octets (`set_secret`) : évite la limite de longueur des mots de passe texte du trousseau Windows.
 pub fn store_refresh_token(token: &str) -> Result<()> {
-    entry()?.set_password(token).map_err(|e| anyhow!("écriture dans le trousseau impossible : {e}"))
+    entry()?.set_secret(token.as_bytes()).map_err(|e| anyhow!("écriture dans le trousseau impossible : {e}"))
 }
 
 pub fn load_refresh_token() -> Result<Option<String>> {
-    match entry()?.get_password() {
-        Ok(t) => Ok(Some(t)),
+    match entry()?.get_secret() {
+        Ok(b) => Ok(String::from_utf8(b).ok()),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(e) => bail!("lecture du trousseau impossible : {e}"),
     }
 }
 
-/// Déconnexion : efface le refresh token du trousseau.
-pub fn sign_out() -> Result<()> {
+/// Efface le refresh token du trousseau (sans toucher à la mémoire).
+pub fn clear_stored_token() -> Result<()> {
     match entry()?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => bail!("suppression du trousseau impossible : {e}"),
     }
 }
 
-// ---------- Flux complets ----------
+// ---------- Gestionnaire de session ----------
 
-/// Connexion interactive. `on_code` reçoit le code et l'URL à montrer à l'utilisateur.
-pub fn login_interactive(c: &Client, ep: &Endpoints, client_id: &str, on_code: impl FnOnce(&DeviceCode), cancel: &AtomicBool) -> Result<Session> {
-    let dc = start_device_code(c, ep, client_id)?;
-    on_code(&dc);
-    let t = poll_device_code(c, ep, client_id, &dc, cancel)?;
-    if let Some(r) = &t.refresh_token {
-        store_refresh_token(r)?;
-    }
-    minecraft_login(c, ep, &t.access_token)
+/// Durée de vie conservée pour un jeton Minecraft en mémoire (il en vaut 24 h côté Mojang).
+const SESSION_TTL: Duration = Duration::from_secs(12 * 3600);
+
+struct Inner {
+    session: Option<(Session, Instant)>,
+    refresh_token: Option<String>,
 }
 
-/// Rafraîchissement silencieux depuis le trousseau. Ok(None) = pas de session (à reconnecter) ;
-/// un refresh token rejeté est effacé du trousseau.
-pub fn silent_login(c: &Client, ep: &Endpoints, client_id: &str) -> Result<Option<Session>> {
-    let Some(rt) = load_refresh_token()? else { return Ok(None) };
-    let Some(t) = refresh(c, ep, client_id, &rt)? else {
-        sign_out()?;
-        return Ok(None);
-    };
-    if let Some(r) = &t.refresh_token {
-        store_refresh_token(r)?;
+/// Garde la session et le refresh token en mémoire (jouer ne dépend pas du trousseau dans la même exécution).
+/// `remember = false` : rien n'est écrit dans le trousseau (PC partagé). Pas de `Debug`.
+pub struct AuthManager {
+    inner: Mutex<Inner>,
+    /// Incrémenté par `sign_out` : une connexion ou un rafraîchissement commencé avant ne stocke plus rien.
+    generation: AtomicU64,
+    warning: Mutex<Option<String>>,
+}
+
+impl Default for AuthManager {
+    fn default() -> Self {
+        AuthManager { inner: Mutex::new(Inner { session: None, refresh_token: None }), generation: AtomicU64::new(0), warning: Mutex::new(None) }
     }
-    minecraft_login(c, ep, &t.access_token).map(Some)
+}
+
+impl AuthManager {
+    /// Avertissement non bloquant (trousseau indisponible...), à afficher une fois.
+    pub fn take_warning(&self) -> Option<String> {
+        self.warning.lock().unwrap().take()
+    }
+
+    fn warn(&self, msg: String) {
+        *self.warning.lock().unwrap() = Some(msg);
+    }
+
+    /// Jeton d'accès en cours (pour masquer les logs), s'il y en a un.
+    pub fn current_token(&self) -> Option<String> {
+        self.inner.lock().unwrap().session.as_ref().map(|(s, _)| s.access_token().to_string())
+    }
+
+    /// Mémorise les jetons si la génération n'a pas changé. Faux = déconnexion survenue entre-temps.
+    fn commit(&self, gen_at_start: u64, refresh: Option<&str>, session: Option<&Session>, remember: bool) -> bool {
+        let mut g = self.inner.lock().unwrap();
+        if self.generation.load(Ordering::SeqCst) != gen_at_start {
+            return false;
+        }
+        if let Some(r) = refresh {
+            g.refresh_token = Some(r.to_string());
+            if remember && let Err(e) = store_refresh_token(r) {
+                self.warn(format!("{e} : la connexion ne sera pas mémorisée sur ce PC."));
+            }
+        }
+        if let Some(s) = session {
+            g.session = Some((s.clone(), Instant::now()));
+        }
+        true
+    }
+
+    /// Connexion interactive. `on_code` reçoit le code et l'URL à montrer à l'utilisateur.
+    pub fn login(&self, c: &Client, ep: &Endpoints, client_id: &str, remember: bool, on_code: impl FnOnce(&DeviceCode), cancel: &AtomicBool) -> Result<Session> {
+        let gen_at_start = self.generation.load(Ordering::SeqCst);
+        let dc = start_device_code(c, ep, client_id)?;
+        on_code(&dc);
+        let t = poll_device_code(c, ep, client_id, &dc, cancel)?;
+        if !self.commit(gen_at_start, t.refresh_token.as_deref(), None, remember) {
+            bail!("connexion annulée par une déconnexion");
+        }
+        let session = minecraft_login(c, ep, &t.access_token)?;
+        if !self.commit(gen_at_start, None, Some(&session), remember) {
+            bail!("connexion annulée par une déconnexion");
+        }
+        Ok(session)
+    }
+
+    /// Session valide : en mémoire, sinon rafraîchie (refresh token en mémoire, ou trousseau si `remember`).
+    /// Ok(None) = pas de session (à reconnecter) ; un refresh token rejeté est effacé.
+    pub fn ensure_session(&self, c: &Client, ep: &Endpoints, client_id: &str, remember: bool) -> Result<Option<Session>> {
+        let gen_at_start = self.generation.load(Ordering::SeqCst);
+        let mem_rt = {
+            let g = self.inner.lock().unwrap();
+            if let Some((s, at)) = &g.session
+                && at.elapsed() < SESSION_TTL
+            {
+                return Ok(Some(s.clone()));
+            }
+            g.refresh_token.clone()
+        };
+        let rt = match mem_rt {
+            Some(r) => r,
+            None if remember => match load_refresh_token() {
+                Ok(Some(r)) => r,
+                Ok(None) => return Ok(None),
+                Err(e) => {
+                    self.warn(format!("{e}"));
+                    return Ok(None);
+                }
+            },
+            None => return Ok(None),
+        };
+        let Some(t) = refresh(c, ep, client_id, &rt)? else {
+            let mut g = self.inner.lock().unwrap();
+            if self.generation.load(Ordering::SeqCst) == gen_at_start {
+                g.refresh_token = None;
+                g.session = None;
+                let _ = clear_stored_token();
+            }
+            return Ok(None);
+        };
+        if !self.commit(gen_at_start, t.refresh_token.as_deref(), None, remember) {
+            return Ok(None);
+        }
+        let session = minecraft_login(c, ep, &t.access_token)?;
+        Ok(self.commit(gen_at_start, None, Some(&session), remember).then_some(session))
+    }
+
+    /// Déconnexion : oublie la mémoire et efface le trousseau ; empêche tout stockage en cours.
+    pub fn sign_out(&self) -> Result<()> {
+        let mut g = self.inner.lock().unwrap();
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        g.session = None;
+        g.refresh_token = None;
+        clear_stored_token()
+    }
 }
 
 #[cfg(test)]
