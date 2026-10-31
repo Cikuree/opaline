@@ -272,7 +272,7 @@ button.me{width:100%;text-align:left;border-radius:14px}
   .colmini .col .colx{background:var(--pill);border-radius:0;color:var(--cream);min-height:40px;margin:0}
   .colmini .col .colx:hover{background:#431a21}
   .colmini .col .onl{border-radius:0 0 36px 36px;padding-bottom:20px}
-  .colmini .col .offl{border-radius:36px;margin-top:16px;padding:18px 0 20px}
+  .colmini .col .onl #offline{margin-top:14px!important}
   .colmini .col .chat{display:block;width:22px;height:22px;color:var(--cream);margin-bottom:12px}
   .colmini .col .me{padding:0}
   .colmini .col .me .avatar{box-shadow:0 0 0 3px var(--cream)}
@@ -370,7 +370,7 @@ body:has(.window.max){padding:0}
   <!-- HOME -->
   <section class="view on" id="v-home" aria-labelledby="homeT">
     <div class="bar">
-      <div><h1 id="homeT"><span style="color:#e08a86;font-weight:600">Bonsoir,</span> OddNode</h1><p class="mute small" id="homeSub">Run #20 en cours. Le serveur t&rsquo;attend.</p></div>
+      <div><h1 id="homeT"><span style="color:#f0aaa5;font-weight:600">Bonsoir,</span> OddNode</h1><p class="mute small" id="homeSub">Run #20 en cours. Le serveur t&rsquo;attend.</p></div>
       <label class="search"><svg class="i" style="width:18px;height:18px"><use href="#i-search"/></svg><span class="sr">Rechercher</span><input type="search" placeholder="Rechercher"></label>
     </div>
     <div class="packs" id="packs" role="radiogroup" aria-label="Modpacks du groupe"></div>
@@ -537,8 +537,7 @@ body:has(.window.max){padding:0}
         <button type="button" role="menuitemradio" aria-checked="false" data-s="inv">Invisible</button></div>
     </article>
     <button type="button" class="colx" id="colExpand" aria-expanded="true" aria-controls="col" aria-label="Réduire la liste des amis"><svg class="i"><use href="#i-users"/></svg><span class="lbl">Réduire</span></button>
-    <article class="card onl"><h2>En ligne <span class="mute small" id="onCount">· 3</span></h2><div id="online" style="margin-top:6px"></div></article>
-    <article class="card offl"><svg class="i chat" aria-hidden="true"><use href="#i-chat"/></svg><h2>Amis du serveur</h2><div id="offline" style="margin-top:6px"></div></article>
+    <article class="card onl"><h2 class="sr">Amis du serveur, <span id="onCount"></span> en ligne</h2><div id="online"></div><div id="offline"></div></article>
   </aside>
 
   <div class="prog" id="prog" role="status"><svg class="i" style="color:var(--coral2)"><use href="#i-down"/></svg>
@@ -722,7 +721,7 @@ function renderPack(){
   $('#packNews').innerHTML=p.news.map((n,i)=>`<div class="note"><h3>${n[0]} ${i===0&&p.status!=='no'?'<span class="pill">Nouveau</span>':''}</h3><ul><li>${n[1]}</li></ul></div>`).join('');
   const onl=on?p.on:[];
   $('#online').innerHTML=onl.length?onl.map(x=>playerRow(x,false)).join(''):'<p class="xs mute tx" style="padding:6px 0">Aucun joueur visible.</p>';
-  $('#onCount').textContent='· '+onl.length;
+  $('#onCount').textContent=onl.length;
   $('#offline').innerHTML=p.off.map(x=>playerRow(x,true)).join('');
   $('[data-view=history]').hidden=pk!==0;
   $('#runsCard').closest('.grid2').hidden=pk!==0;
