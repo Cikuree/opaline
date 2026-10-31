@@ -1,0 +1,48 @@
+name: packs
+# Publie packs.json et pack-<id>.zip sur la release permanente « packs » (contrat Opaline §2).
+on:
+  push:
+    branches: [main]
+    paths: ['packs/**', 'scripts/pack-tools.py', '.github/workflows/packs.yml']
+  workflow_dispatch:
+  workflow_call: # appelé par release.yml : un tag publié avec GITHUB_TOKEN ne déclenche pas d'autre workflow
+permissions:
+  contents: write
+concurrency:
+  group: packs
+  cancel-in-progress: false
+jobs:
+  packs:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Jar de la dernière release v*
+        run: |
+          tag=$(gh release list --exclude-pre-releases --limit 100 --json tagName --jq '[.[].tagName | select(test("^v[0-9]+\.[0-9]+\.[0-9]+$"))][0] // empty')
+          if [ -z "$tag" ]; then echo "aucune release v*, jar du pack inchangé"; exit 0; fi
+          mkdir -p dist/jar
+          gh release download "$tag" --pattern 'classroomrun-*.jar' --dir dist/jar
+          jar=$(ls dist/jar/classroomrun-*.jar | grep -v -- '-sources' | head -n1)
+          [ "$(basename "$jar")" = "classroomrun-${tag#v}.jar" ] || { echo "jar inattendu: $jar"; exit 1; }
+          python3 scripts/pack-tools.py add-jar --pack packs/classroom-run --jar "$jar" --version "${tag#v}" --repo "$GITHUB_REPOSITORY"
+      - name: Index, zips et catalogue
+        run: |
+          for d in packs/*/; do python3 scripts/pack-tools.py index --pack "$d"; done
+          mkdir -p dist/stage
+          for d in packs/*/; do
+            id=$(basename "$d")
+            rm -rf dist/stage/pack && cp -r "$d" dist/stage/pack
+            (cd dist/stage && zip -qr "../pack-$id.zip" pack)
+          done
+          python3 scripts/pack-tools.py catalog --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/packs/" --out dist/packs.json
+      - name: Publier sur la release packs
+        run: |
+          ids=$(for d in packs/*/; do printf -- '- %s\n' "$(basename "$d")"; done)
+          notes=$(printf 'Catalogue et packs d Opaline, mis à jour le %s.\n\nPacks :\n%s\n' "$(date -u +%F)" "$ids")
+          gh release view packs >/dev/null 2>&1 || gh release create packs --target main --prerelease --title "Packs Opaline" --notes "$notes"
+          gh release upload packs dist/packs.json dist/pack-*.zip --clobber
+          gh release edit packs --prerelease --title "Packs Opaline" --notes "$notes"

@@ -98,23 +98,14 @@ jobs:
         with:
           path: dist/installers
           merge-multiple: true
-      - name: Packs, catalogue et instance Prism
+      - name: Instance Prism
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           jar=$(ls build/libs/classroomrun-*.jar | grep -v -- '-sources' | head -n1)
           [ "$(basename "$jar")" = "classroomrun-$VERSION.jar" ] || { echo "jar inattendu: $jar"; exit 1; }
           echo "JAR=$jar" >> "$GITHUB_ENV"
+          # le zip Prism embarque le jar de ce tag ; packs.yml republie ensuite le pack avec l'URL de la release
           python3 scripts/pack-tools.py add-jar --pack packs/classroom-run --jar "$jar" --version "$VERSION" --repo "$GITHUB_REPOSITORY"
-          # reindexer tous les packs avant zip et catalogue
-          for d in packs/*/; do python3 scripts/pack-tools.py index --pack "$d"; done
-          # pack-<id>.zip : un dossier pack/ à la racine (contenu de packs/<id>/ publié)
-          mkdir -p dist/stage
-          for d in packs/*/; do
-            id=$(basename "$d")
-            rm -rf dist/stage/pack && cp -r "$d" dist/stage/pack
-            (cd dist/stage && zip -qr "../pack-$id.zip" pack)
-          done
-          python3 scripts/pack-tools.py catalog --tag "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --out dist/packs.json
           python3 scripts/build-prism-instance.py --pack packs/classroom-run --jar "$jar" --out dist/classroom-run-prism.zip
       - name: Release
         env:
@@ -126,5 +117,10 @@ jobs:
           LIN="Opaline_${VERSION}_amd64.AppImage"
           [ -f "dist/installers/$WIN" ] && [ -f "dist/installers/$LIN" ] || { echo "installeur manquant"; ls dist/installers; exit 1; }
           printf '{"version":"%s","windows":"%s/%s","linux":"%s/%s"}\n' "$VERSION" "$BASE" "$WIN" "$BASE" "$LIN" > dist/launcher.json
-          gh release create "$GITHUB_REF_NAME" "$JAR" dist/installers/* dist/pack-*.zip dist/packs.json \
+          gh release create "$GITHUB_REF_NAME" "$JAR" dist/installers/* \
             dist/classroom-run-prism.zip dist/launcher.json --title "$GITHUB_REF_NAME" --generate-notes
+  packs:
+    needs: release
+    permissions:
+      contents: write
+    uses: ./.github/workflows/packs.yml

@@ -19,7 +19,7 @@ jobs:
         run: |
           if [ -f launcher/Cargo.toml ]; then
             cd launcher
-            cargo clippy -- -D warnings
+            cargo clippy --all-targets -- -D warnings
             cargo test
           fi
       - name: Opaline (Tauri)
