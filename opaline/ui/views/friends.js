@@ -1,5 +1,5 @@
 import * as api from '../api.js';
-import { state, current, hasWidget, on } from '../state.js';
+import { state, current, hasWidget, on, who, official } from '../state.js';
 import { $, esc, ago, headHtml, hydrateHeads } from '../util.js';
 
 const row = (f) => {
@@ -8,9 +8,9 @@ const row = (f) => {
 };
 
 export function renderMe() {
-  const p = state.auth.profile, signed = state.auth.state === 'signedIn' && p;
+  const p = who(), signed = !official() && p;
   $('#meName').textContent = p?.name || ''; $('#meAvatar').innerHTML = p ? headHtml(p.name, p.uuid, 44) : '';
-  $('#meDot').hidden = !signed; $('#meGame').hidden = !state.inGame; $('#meSt').textContent = state.inGame ? 'En jeu' : 'En ligne';
+  $('#meDot').hidden = !signed; $('#meGame').hidden = !state.inGame; $('#meSt').textContent = official() ? 'Launcher Minecraft' : state.inGame ? 'En jeu' : 'En ligne';
   hydrateHeads($('#meAvatar'));
 }
 

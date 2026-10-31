@@ -49,6 +49,8 @@ pub struct Installed {
     pub version: VersionJson,
     /// Profil du loader : Fabric ou Quilt (meta), ou `version.json` de l'installeur Forge / NeoForge.
     pub fabric: FabricProfile,
+    /// Identifiant du profil du loader dans `shared/versions` (dossier et `id` du JSON de version).
+    pub profile_id: String,
     /// Zip de shaders installé (pour iris.properties).
     pub shader_pack: Option<String>,
     /// Hash de l'index du pack installé (None pour une installation ancienne).
@@ -205,7 +207,7 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
 
     progress.set_stage("loader");
     let (fabric, profile_id) = install_loader(client, dirs, ep, kind, &mc, &loader, &java_exe, progress)?;
-    let marker = Marker { profile_id: Some(profile_id), ..marker };
+    let marker = Marker { profile_id: Some(profile_id.clone()), ..marker };
 
     progress.set_stage("mods");
     install_mods(client, dirs, &pack, &p.pack_dir, mod_jar.as_deref(), progress)?;
@@ -213,7 +215,7 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
     crate::changelog::save_snapshot(dirs, &crate::changelog::snapshot_of(&pack))?;
     fs::create_dir_all(dirs.instance())?;
     fs::write(dirs.install_marker(), serde_json::to_vec_pretty(&marker)?)?;
-    Ok(Installed { java: java_exe, version, fabric, shader_pack: marker.shader_pack, index_hash: marker.index_hash })
+    Ok(Installed { java: java_exe, version, fabric, profile_id, shader_pack: marker.shader_pack, index_hash: marker.index_hash })
 }
 
 pub fn fetch_version_json(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str) -> Result<VersionJson> {
@@ -276,8 +278,40 @@ fn install_meta_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: Loade
     let id = fabric_profile_id(kind.name(), loader, mc);
     let jp = dirs.versions().join(&id).join(format!("{id}.json"));
     fs::create_dir_all(jp.parent().unwrap())?;
-    fs::write(&jp, &text)?;
+    write_atomic(&jp, text.as_bytes())?;
     Ok((profile, id))
+}
+
+/// Écriture atomique (fichier temporaire voisin puis renommage) : un JSON de version n'est jamais à moitié écrit.
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, bytes)?;
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Liste des fichiers de `shared/libraries` que le Launcher officiel ne peut pas télécharger (sorties des processors, fichiers
+/// `data` `[coords]` côté client, libraries sans URL) : `versions/<id>/opaline-loader-files.json`, lue par le mode officiel.
+fn write_loader_files(dirs: &Dirs, id: &str, libs_dir: &Path, ctx: &Ctx, profile: &InstallProfile, local: &[(String, PathBuf, Option<String>)]) -> Result<()> {
+    let mut files: Vec<(String, Option<String>)> = local.iter().map(|(rel, _, sha)| (rel.clone(), sha.clone())).collect();
+    let rel = |p: &Path| p.strip_prefix(libs_dir).ok().map(|r| r.to_string_lossy().replace('\\', "/"));
+    for p in loader::client_processors(profile) {
+        for (file, sha) in &p.outputs {
+            if let (Ok(f), Ok(s)) = (ctx.resolve(file), ctx.resolve(sha)) {
+                files.extend(rel(Path::new(&f)).map(|r| (r, Some(s))));
+            }
+        }
+        files.extend(ctx.processor_files(p).iter().filter_map(|f| rel(f)).map(|r| (r, None)));
+    }
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    let mut seen = HashSet::new();
+    files.sort_by_key(|(_, sha)| sha.is_none()); // une entrée avec sha1 l'emporte sur la même sans
+    for (path, sha1) in files {
+        if seen.insert(path.clone()) {
+            out.push(serde_json::json!({ "path": path, "sha1": sha1 }));
+        }
+    }
+    write_atomic(&dirs.versions().join(id).join(crate::official::LOADER_FILES), &serde_json::to_vec_pretty(&out)?)
 }
 
 /// URL de l'installeur officiel (Forge : la version peut être donnée avec ou sans le préfixe `<mc>-`).
@@ -380,7 +414,8 @@ fn install_installer_loader(dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &
         fs::rename(&tmp, &dst)?;
     }
     let jp = dirs.versions().join(&id).join(format!("{id}.json"));
-    fs::write(&jp, ver_bytes)?;
+    write_atomic(&jp, &ver_bytes)?;
+    write_loader_files(dirs, &id, &libs_dir, &ctx, &profile, &local)?;
     Ok((ver.into_profile(mc)?, id))
 }
 
@@ -408,7 +443,7 @@ pub fn load_installed(dirs: &Dirs) -> Result<Installed> {
         LoaderKind::NeoForge | LoaderKind::Forge => serde_json::from_slice::<LoaderVersion>(&profile_json)?.into_profile(mc)?,
     };
     let java = java::find_java(&dirs.java(version.java_version.major_version)).context("Java absent : lancez d'abord l'installation")?;
-    Ok(Installed { java, version, fabric, shader_pack: have.shader_pack, index_hash: have.index_hash })
+    Ok(Installed { java, version, fabric, profile_id: id, shader_pack: have.shader_pack, index_hash: have.index_hash })
 }
 
 fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_jar: Option<&Path>, progress: &Arc<Progress>) -> Result<()> {

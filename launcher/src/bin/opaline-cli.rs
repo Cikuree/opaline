@@ -1,4 +1,4 @@
-//! CLI de développement : `opaline-cli install <id> [--pack <dossier packwiz>]`, `opaline-cli play <id>`,
+//! CLI de développement : `opaline-cli install <id> [--pack <dossier packwiz>]`, `opaline-cli play <id>`, `opaline-cli official <id>` (profil dans le Launcher Minecraft),
 //! options `--root <dossier de données>` et `--nick <pseudo hors ligne>`.
 use anyhow::{Context, Result, bail};
 use opaline_core::config::{Config, Dirs};
@@ -61,6 +61,13 @@ fn main() -> Result<()> {
             l.child.wait()?;
             Ok(())
         }
-        other => bail!("commande inconnue : {other} (install | play)"),
+        "official" => {
+            let mc = opaline_core::official::minecraft_dir().context("dossier .minecraft introuvable")?;
+            let e = service::entry(&dirs, id)?;
+            let l = service::launch_official(&dirs, &e, &Config::load(&dirs), &mc, true)?;
+            eprintln!("profil « {} » écrit ; Launcher ouvert : {}", l.profile_name, l.opened);
+            Ok(())
+        }
+        other => bail!("commande inconnue : {other} (install | play | official)"),
     }
 }

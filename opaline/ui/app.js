@@ -1,5 +1,5 @@
 import * as api from './api.js';
-import { state, current, hasWidget, emit, on } from './state.js';
+import { state, current, hasWidget, emit, on, usable } from './state.js';
 import { $, toast, copy, setProgress, LS, refreshTextures } from './util.js';
 import { STAGES, STAGE_ORDER } from './data.js';
 import { initChrome, show, currentView } from './views/chrome.js';
@@ -11,7 +11,7 @@ import { initHistory, renderHistory, openDeath } from './views/history.js';
 import { initNews, renderNews } from './views/news.js';
 import { initFriends, renderMe, refreshFriends } from './views/friends.js';
 
-const signed = () => state.auth.state === 'signedIn';
+const signed = usable; // connecté, ou mode officiel choisi
 
 async function loadPacks() {
   try { state.packs = await api.packsList(); } catch (e) { state.packs = []; toast(api.errMsg(e)); }

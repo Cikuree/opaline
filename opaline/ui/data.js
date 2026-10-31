@@ -1,4 +1,6 @@
 // Données statiques : libellés, noms de textures du client.jar (liste miroir : `UI_TEXTURES`, launcher/src/textures.rs), notes de version.
+export const MOJANG_PENDING = 'Opaline attend la validation de Mojang. En attendant, tu joues via le Launcher Minecraft : ton compte et ton skin y sont gérés.';
+export const SKIN_LOCKED = 'Changer de skin depuis Opaline sera possible quand Mojang aura validé l’app ; en attendant, minecraft.net ou le Launcher Minecraft.';
 export const SPLITS = [
   { k: 'PICKAXE', label: 'Pioche', tex: 'wooden_pickaxe' },
   { k: 'IRON_INGOT', label: 'Lingot de fer', tex: 'iron_ingot' },

@@ -1,5 +1,5 @@
 import * as api from '../api.js';
-import { state, current, hasWidget, statsMissing, emit, on } from '../state.js';
+import { state, current, hasWidget, statsMissing, emit, on, who } from '../state.js';
 import { $, esc, toast, tex, hms, headHtml, hydrateHeads } from '../util.js';
 import { SPLITS, splitByKey, HELP, STAGE_ORDER, loaderName } from '../data.js';
 import { causeInfo, loadRecent } from './history.js';
@@ -144,7 +144,7 @@ export function changelogHtml(c) {
 export function renderHome() {
   const p = current(); if (!p) return;
   const st = statusOf(p), cr = hasWidget(p, 'classroomRun'), srv = hasWidget(p, 'server'), news = hasWidget(p, 'news');
-  const name = state.auth.profile?.name || '';
+  const name = who()?.name || '';
   $('#greet').textContent = new Date().getHours() >= 18 || new Date().getHours() < 5 ? 'Bonsoir,' : 'Bonjour,';
   $('#homeName').textContent = name;
   const s = state.stats, sv = servers.get(p.id);
@@ -178,6 +178,7 @@ export function initHome() {
       const r = await api.play(p.id);
       if (!r.started) return toast(r.reason || 'Le jeu n’a pas pu démarrer.');
       if (r.serverListed) listed.add(p.id); else listed.delete(p.id);
+      if (r.via === 'official') return toast(r.message || 'Profil prêt dans le Launcher Minecraft : clique sur Jouer'); // pas de processus à suivre : jamais « en jeu »
       state.inGame = true; emit('game'); renderHome(); toast('Lancement de ' + p.name + '…');
     } catch (e) { toast(api.errMsg(e)); }
   });

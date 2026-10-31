@@ -1,6 +1,7 @@
 import * as api from '../api.js';
-import { state, emit } from '../state.js';
-import { $, $$, esc, toast, copy, headHtml, hydrateHeads } from '../util.js';
+import { state, emit, who, official } from '../state.js';
+import { MOJANG_PENDING, SKIN_LOCKED } from '../data.js';
+import { $, $$, esc, toast, copy, headHtml, hydrateHeads, LS } from '../util.js';
 
 export async function refreshAuth() {
   try { state.auth = await api.authStatus(); } catch (e) { toast(api.errMsg(e)); }
@@ -54,8 +55,27 @@ async function loadWardrobe() {
   renderSkins(); renderCapes();
 }
 
+// Mode officiel : pas de jeton, donc ni cape ni changement de skin ; le skin du pseudo saisi est affiché (lecture seule).
+async function renderOfficial(pr) {
+  $('#accSessionT').textContent = 'Launcher Minecraft'; $('#accPill').textContent = 'Via le Launcher Minecraft';
+  $('#accName').textContent = pr?.name || 'Pseudo non renseigné'; $('#accUuid').textContent = pr?.uuid || '—';
+  $('#accAvatar').innerHTML = pr ? headHtml(pr.name, pr.uuid, 56) : ''; hydrateHeads($('#accAvatar'));
+  $('#btnLogout').hidden = true; $('#btnLoginAcc').hidden = false; $('#accPseudo').hidden = false; $('#accMcName').value = pr?.name || '';
+  $('#capeCard').hidden = true; $('#wardrobe').hidden = true; $('#wrOff').hidden = false; $('#wrOff').textContent = SKIN_LOCKED;
+  $('#sessionList').innerHTML = `<li class="row"><span class="mute">Compte Microsoft</span><span>Géré par le Launcher Minecraft</span></li>
+   ${state.auth.mojangPending ? `<li class="row"><span class="mute">Mojang</span><span style="color:var(--warn);font-weight:700">${esc(MOJANG_PENDING)}</span></li>` : ''}`;
+  let skin = null;
+  if (pr) { try { skin = await api.identitySkin(); } catch { /* skin indisponible : aperçu vide */ } }
+  $('#fullSkin').replaceChildren(...(skin ? [skinCanvas(skin.dataUrl, skin.model === 'slim', 7)] : []));
+}
+
 export async function renderAccount() {
-  const pr = state.auth.profile; if (!pr) return;
+  const pr = who();
+  if (official()) return renderOfficial(pr);
+  if (!pr) return;
+  $('#accSessionT').textContent = 'Session active'; $('#accPill').textContent = 'Connecté avec Microsoft';
+  $('#btnLogout').hidden = false; $('#btnLoginAcc').hidden = true; $('#accPseudo').hidden = true;
+  $('#capeCard').hidden = false; $('#wardrobe').hidden = false; $('#wrOff').hidden = true;
   $('#accName').textContent = pr.name; $('#accUuid').textContent = pr.uuid;
   $('#accAvatar').innerHTML = headHtml(pr.name, pr.uuid, 56); hydrateHeads($('#accAvatar'));
   $('#sessionList').innerHTML = `<li class="row"><span class="mute">Compte Microsoft</span><span class="ok">Connecté</span></li>
@@ -83,12 +103,16 @@ const loginMsg = (t) => { const m = $('#loginMsg'); m.hidden = !t; m.textContent
 export function renderLogin() {
   const nc = state.auth.state === 'notConfigured';
   $('#btnLogin').disabled = nc; $('#btnDevice').disabled = nc;
-  loginMsg(nc ? 'La connexion Microsoft n’est pas configurée dans cette version d’Opaline.' : '');
+  loginMsg(nc ? 'La connexion Microsoft n’est pas configurée dans cette version d’Opaline.' : state.auth.mojangPending ? MOJANG_PENDING : '');
+  if (state.auth.identity && !$('#mcName').value) $('#mcName').value = state.auth.identity.name;
 }
 function stopLogin() { clearInterval(expTimer); $('#codeBox').hidden = true; $('#browserBox').hidden = true; $('#btnLogin').hidden = false; $('#btnDevice').hidden = false; }
 export function onAuthDone(p) {
   if (attempt === null || p.attempt !== attempt) return; // tentative périmée ou annulée
   attempt = null; stopLogin();
+  if (!p.ok && p.mojangPending) { // Mojang n'a pas encore approuvé l'app : on continue via le Launcher officiel
+    LS.set('opaline.official', '1'); state.skip = true; loginMsg(MOJANG_PENDING); toast(MOJANG_PENDING); refreshAuth(); return;
+  }
   if (!p.ok) { loginMsg(p.error || 'La connexion a échoué.'); return; }
   refreshAuth(); toast('Connecté en tant que ' + (p.profile?.name || ''));
 }
@@ -110,6 +134,16 @@ export function initAccount() {
     } catch (e) { loginMsg(api.errMsg(e)); $('#btnLogin').hidden = false; $('#btnDevice').hidden = false; }
   };
   $('#btnLogin').addEventListener('click', () => start('browser'));
+  const saveName = async (name) => { const r = await api.identitySet(name); state.auth = { ...state.auth, identity: r }; };
+  $('#btnOfficial').addEventListener('click', async () => {
+    const n = $('#mcName').value.trim();
+    try { if (n) await saveName(n); } catch (e) { loginMsg(api.errMsg(e)); return; }
+    LS.set('opaline.official', '1'); state.skip = true; await refreshAuth();
+  });
+  $('#accMcSave').addEventListener('click', async () => {
+    try { await saveName($('#accMcName').value.trim()); toast('Pseudo enregistré'); } catch (e) { toast(api.errMsg(e)); return; }
+    emit('auth'); renderAccount();
+  });
   const device = async () => { if (attempt !== null) { attempt = null; try { await api.authCancel(); } catch { /* déjà terminé */ } stopLogin(); } start('device'); };
   $('#btnDevice').addEventListener('click', device); $('#btnDevice2').addEventListener('click', device);
   $('#reopenPage').addEventListener('click', async () => { try { await api.openUrl($('#browserBox').dataset.uri); } catch { toast('Impossible d’ouvrir le navigateur : copie l’adresse depuis Opaline ou utilise un code.'); } });
@@ -117,6 +151,7 @@ export function initAccount() {
   $('#openUri').addEventListener('click', () => api.openUrl($('#codeBox').dataset.uri));
   for (const id of ['#cancelLogin', '#cancelBrowser']) $(id).addEventListener('click', async () => { attempt = null; try { await api.authCancel(); } catch { /* déjà terminé */ } stopLogin(); $('#btnLogin').focus(); });
   $('#btnLogout').addEventListener('click', async () => {
+    state.skip = false; LS.set('opaline.official', '0');
     try { const r = await api.authSignOut(); if (r?.warning) toast(r.warning); else toast('Déconnecté'); } catch (e) { toast(api.errMsg(e)); }
     await refreshAuth();
   });

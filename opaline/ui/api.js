@@ -17,6 +17,8 @@ export const appInfo = () => call('app_info');
 export const authStatus = () => call('auth_status');
 export const authStart = (mode = 'browser') => call('auth_start', { mode });
 export const authCancel = () => call('auth_cancel');
+export const identitySet = (name) => call('identity_set', { name });
+export const identitySkin = () => call('identity_skin');
 export const authSignOut = () => call('auth_sign_out');
 export const packsList = () => call('packs_list');
 export const packInstall = (id) => call('pack_install', { id });

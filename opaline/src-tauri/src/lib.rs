@@ -6,7 +6,7 @@ use base64::Engine;
 use opaline_core::config::{Config, Dirs};
 use opaline_core::download::Progress;
 use opaline_core::perf::PerfMode;
-use opaline_core::{auth, auth_browser, friends, head, service, skins};
+use opaline_core::{auth, auth_browser, friends, head, identity, official, service, skins};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -24,11 +24,18 @@ pub struct Services {
     pub install: opaline_core::install::Endpoints,
     pub skins: skins::Endpoints,
     pub session_server: String,
+    /// API publique Mojang pseudo -> UUID (mode officiel).
+    pub profile_api: String,
 }
 
 impl Default for Services {
     fn default() -> Services {
-        Services { install: Default::default(), skins: Default::default(), session_server: head::SESSION_SERVER.to_string() }
+        Services {
+            install: Default::default(),
+            skins: Default::default(),
+            session_server: head::SESSION_SERVER.to_string(),
+            profile_api: identity::PROFILE_API.to_string(),
+        }
     }
 }
 
@@ -56,6 +63,8 @@ struct Inner {
     /// Dernière adresse de serveur résolue (à masquer des erreurs).
     last_server: Mutex<Option<String>>,
     skins_synced: AtomicBool,
+    /// Dernière connexion refusée par Mojang (app Azure non approuvée) : l'interface l'explique (mémoire seulement : le prochain essai tranche).
+    mojang_pending: AtomicBool,
 }
 
 #[derive(Clone)]
@@ -137,6 +146,18 @@ fn profile_json(p: Option<Profile>) -> Value {
     p.map_or(Value::Null, |p| json!({ "name": p.name, "uuid": p.uuid }))
 }
 
+/// `mode` : `direct` (session Opaline) ou `official` (Launcher Minecraft). `identity` : pseudo mémorisé (mode officiel seulement).
+fn status_json(s: &S, state: &str, profile: Option<Profile>, warning: Option<String>) -> Value {
+    let direct = state == "signedIn";
+    let identity = if direct { None } else { service::identity_get(&s.0.root) };
+    json!({
+        "state": state, "profile": profile_json(profile), "warning": warning,
+        "mode": if direct { "direct" } else { "official" },
+        "mojangPending": !direct && s.0.mojang_pending.load(Ordering::SeqCst),
+        "identity": identity,
+    })
+}
+
 #[tauri::command]
 async fn auth_status(state: State<'_, S>) -> CmdResult<Value> {
     let s = state.inner().clone();
@@ -146,10 +167,10 @@ async fn auth_status(state: State<'_, S>) -> CmdResult<Value> {
             let cfg = s2.config();
             if auth::dev_offline() {
                 let p = Profile { name: cfg.nickname.clone(), uuid: auth::offline_uuid(&cfg.nickname) };
-                return Ok(json!({ "state": "signedIn", "profile": profile_json(Some(p)), "warning": null }));
+                return Ok(status_json(&s2, "signedIn", Some(p), None));
             }
             if !auth::configured() {
-                return Ok(json!({ "state": "notConfigured", "profile": null, "warning": null }));
+                return Ok(status_json(&s2, "notConfigured", None, None));
             }
             let c = auth::http_client()?;
             let session = s2.0.auth.ensure_session(&c, &auth::Endpoints::default(), auth::CLIENT_ID, !cfg.no_remember).ok().flatten();
@@ -158,7 +179,7 @@ async fn auth_status(state: State<'_, S>) -> CmdResult<Value> {
                 s2.sync_skins_once();
             }
             let p = session.map(|s| Profile { name: s.username, uuid: s.uuid });
-            Ok(json!({ "state": if p.is_some() { "signedIn" } else { "signedOut" }, "profile": profile_json(p), "warning": warning }))
+            Ok(status_json(&s2, if p.is_some() { "signedIn" } else { "signedOut" }, p, warning))
         })
         .await?;
     Ok(out)
@@ -214,11 +235,16 @@ async fn auth_start(app: AppHandle, state: State<'_, S>, mode: Option<String>) -
         }
         let payload = match result {
             Ok(session) => {
+                s2.0.mojang_pending.store(false, Ordering::SeqCst);
                 s2.0.skins_synced.store(false, Ordering::SeqCst);
                 s2.sync_skins_once();
-                json!({ "attempt": attempt, "ok": true, "profile": { "name": session.username, "uuid": session.uuid }, "error": null })
+                json!({ "attempt": attempt, "ok": true, "profile": { "name": session.username, "uuid": session.uuid }, "error": null, "mojangPending": false })
             }
-            Err(e) => json!({ "attempt": attempt, "ok": false, "profile": null, "error": s2.sanitize(e) }),
+            Err(e) => {
+                let pending = auth::is_not_approved(&format!("{e:#}"));
+                s2.0.mojang_pending.store(pending, Ordering::SeqCst);
+                json!({ "attempt": attempt, "ok": false, "profile": null, "error": s2.sanitize(e), "mojangPending": pending })
+            }
         };
         let _ = app.emit("auth://done", payload);
     });
@@ -227,6 +253,27 @@ async fn auth_start(app: AppHandle, state: State<'_, S>, mode: Option<String>) -
         .map_err(|_| "erreur interne".to_string())?
         .map_err(|_| "Connexion Microsoft impossible : vérifiez votre réseau".to_string())
         .and_then(|r| r)
+}
+
+/// Pseudo Minecraft (mode officiel) : résolu via l'API publique Mojang, mémorisé dans la config ; vide = l'oublier.
+#[tauri::command]
+async fn identity_set(state: State<'_, S>, name: String) -> CmdResult<Value> {
+    let s = state.inner().clone();
+    let api = s.0.svc.profile_api.clone();
+    let id = state.blocking(move |r| service::identity_set(r, &name, &api)).await?;
+    Ok(json!(id))
+}
+
+/// Skin complet du pseudo mémorisé (sessionserver public, sans authentification).
+#[tauri::command]
+async fn identity_skin(state: State<'_, S>) -> CmdResult<Option<identity::SkinOf>> {
+    let ss = state.0.svc.session_server.clone();
+    state
+        .blocking(move |r| match service::identity_get(r) {
+            Some(i) => Ok(Some(identity::skin_of(&auth::http_client()?, &ss, &i.uuid)?)),
+            None => Ok(None),
+        })
+        .await
 }
 
 #[tauri::command]
@@ -363,23 +410,40 @@ async fn textures_dir(state: State<'_, S>) -> CmdResult<Value> {
 
 // ---------- Jeu ----------
 
+/// Réponse de `play` : `via` et `serverListed` sont toujours présents (contrat §4).
+fn refused(reason: impl Into<String>, via: &str) -> Value {
+    json!({ "started": false, "reason": reason.into(), "serverListed": false, "via": via })
+}
+
 #[tauri::command]
 async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Value> {
     let s = state.inner().clone();
+    // Session Opaline valide : lancement direct ; sinon Launcher Minecraft officiel.
+    let s2 = s.clone();
+    let session = match s.blocking(move |_| service::try_session(&s2.config(), &s2.0.auth)).await {
+        Ok(v) => v,
+        Err(reason) => return Ok(refused(reason, "direct")),
+    };
+    let via = if session.is_some() { "direct" } else { "official" };
+    // Une seule vérification, et l'id est réservé pour toute la préparation (double-clic, installation concurrente).
     {
         let mut a = s.0.activity.lock().unwrap();
         if a.installing.contains(&id) {
-            return Ok(json!({ "started": false, "reason": "Une installation ou une réparation de ce pack est en cours : attendez la fin" }));
+            return Ok(refused("Une installation ou une réparation de ce pack est en cours : attendez la fin", via));
         }
         if !a.running.insert(id.clone()) {
-            return Ok(json!({ "started": false, "reason": "Le jeu est déjà lancé pour ce pack" }));
+            return Ok(refused(if session.is_some() { "Le jeu est déjà lancé pour ce pack" } else { "Le lancement de ce pack est déjà en cours" }, via));
         }
     }
+    let Some(session) = session else {
+        let r = play_official(s.clone(), id.clone()).await;
+        s.0.activity.lock().unwrap().running.remove(&id); // on ne possède pas le processus : pas de verrou de jeu
+        return Ok(r);
+    };
     let (s2, id2) = (s.clone(), id.clone());
     let launched = s
         .blocking(move |root| {
             let cfg = s2.config();
-            let session = service::session_for_play(&cfg, &s2.0.auth)?;
             let e = service::entry(root, &id2)?;
             let l = service::launch_pack(root, &e, &cfg, &session)?;
             *s2.0.last_server.lock().unwrap() = Some(l.server.clone()).filter(|a| !a.is_empty());
@@ -389,7 +453,7 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
     match launched {
         Err(reason) => {
             s.0.activity.lock().unwrap().running.remove(&id);
-            Ok(json!({ "started": false, "reason": reason }))
+            Ok(refused(reason, "direct"))
         }
         Ok((mut l, token)) => {
             let listed = l.server_listed;
@@ -399,7 +463,31 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
                 s.0.activity.lock().unwrap().running.remove(&id);
                 let _ = app.emit("game://exited", json!({ "packId": id, "code": code, "logTail": tail }));
             });
-            Ok(json!({ "started": true, "reason": null, "serverListed": listed }))
+            Ok(json!({ "started": true, "reason": null, "serverListed": listed, "via": "direct" }))
+        }
+    }
+}
+
+async fn play_official(s: S, id: String) -> Value {
+    let s2 = s.clone();
+    let r = s
+        .blocking(move |root| {
+            let mc = official::minecraft_dir().context("dossier .minecraft introuvable")?;
+            let e = service::entry(root, &id)?;
+            let l = service::launch_official(root, &e, &s2.config(), &mc, true)?;
+            *s2.0.last_server.lock().unwrap() = Some(l.server.clone()).filter(|a| !a.is_empty());
+            Ok(l)
+        })
+        .await;
+    match r {
+        Err(reason) => refused(reason, "official"),
+        Ok(l) => {
+            let message = if l.opened {
+                "Profil prêt dans le Launcher Minecraft : clique sur Jouer".to_string()
+            } else {
+                format!("Ouvre le Launcher Minecraft et choisis le profil {}", l.profile_name)
+            };
+            json!({ "started": true, "reason": null, "serverListed": l.server_listed, "via": "official", "message": message })
         }
     }
 }
@@ -506,6 +594,7 @@ pub fn run_with(svc: Services) {
         login: Mutex::default(),
         last_server: Mutex::default(),
         skins_synced: AtomicBool::new(false),
+        mojang_pending: AtomicBool::new(false),
     }));
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -531,6 +620,8 @@ pub fn run_with(svc: Services) {
             auth_status,
             auth_start,
             auth_cancel,
+            identity_set,
+            identity_skin,
             auth_sign_out,
             packs_list,
             pack_install,
