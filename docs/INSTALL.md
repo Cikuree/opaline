@@ -27,7 +27,7 @@ Serveur Fabric 26.3, loader 0.20.1, Java 25. Dans `mods/` :
 
 ### Sécurité de l'endpoint HTTP
 
-`GET /stats` n'a **aucune authentification** : quiconque peut joindre le port lit les stats de la run.
+`GET /stats`, `GET /history` et `GET /history/<n>` n'ont **aucune authentification** : quiconque peut joindre le port lit les stats de la run, l'index des runs, et les noms de joueurs et causes de mort (déjà visibles en jeu).
 
 - Dans `config/classroomrun/config.json`, mets `httpBind` sur l'interface LAN voulue (pas `0.0.0.0` si le serveur est exposé sur Internet), ou `httpPort` à `0` pour désactiver l'endpoint (l'historique des morts reste visible).
 
