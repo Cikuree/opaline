@@ -79,7 +79,7 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/packs.j
 | `settings_get` | – | `{perfMode: "low" \| "balanced" \| "quality" \| "custom", memoryMb, noRemember, systemRamMb}` |
 | `settings_set` | `{perfMode?, memoryMb?, noRemember?}` | settings à jour |
 | `open_folder` | `{id, kind: "mods" \| "shaderpacks" \| "screenshots" \| "logs" \| "instance"}` | – |
-| `textures_dir` | – | `{dir: string \| null}` (null tant qu'aucun client.jar n'est installé). Les PNG sont nommés `<nom>.png` et servis par `convertFileSrc` |
+| `textures_dir` | – | `{dir: string \| null}`. Au démarrage, si les textures manquent, Opaline télécharge le client.jar officiel (hash vérifié, conservé dans `shared/`) et les extrait, puis émet `textures://ready`. `null` tant que ce n'est pas fait. Les PNG sont nommés `<nom>.png` et servis par `convertFileSrc` |
 | `skins_list` | – | `[{id, name, model: "classic" \| "slim", active, dataUrl}]` |
 | `skin_import` | `{name, model, pngBase64}` | `SkinView` (PNG 64×64 ou 64×32 validé) |
 | `skin_apply` | `{id}` | – (API officielle `POST /minecraft/profile/skins`) |
@@ -116,6 +116,7 @@ SkinView = {id, name, model, active, dataUrl}
 | `auth://done` | `{attempt: number, ok: bool, profile: null \| {name, uuid}, error: null \| string}`, jamais émis pour une tentative annulée |
 | `install://progress` | `{packId, stage, done, total}`, avec les étapes toujours émises dans cet ordre : `java`, `minecraft`, `assets`, `loader`, `mods`, `textures` |
 | `install://done` | `{packId, ok: bool, error: null \| string}` |
+| `textures://ready` | `{dir: string}` : textures disponibles (émis au démarrage dès qu'elles sont extraites, y compris avant toute installation de pack) |
 | `game://exited` | `{packId, code: number \| null, logTail: null \| string}` (log filtré : ni jeton ni adresse) |
 
 ## 7. Fenêtre
