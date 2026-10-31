@@ -2,7 +2,7 @@
 """Construit classroom-run-prism.zip (instance Prism Launcher importable).
 
 Usage: build-prism-instance.py --jar build/libs/classroomrun-0.1.0.jar [--out dist/classroom-run-prism.zip]
-Mods client/both lus dans pack/mods/*.pw.toml, telecharges et verifies (hash du manifeste).
+Mods et shaderpacks client/both lus dans pack/{mods,shaderpacks}/*.pw.toml, telecharges et verifies (hash du manifeste).
 """
 import argparse, hashlib, json, sys, tomllib, urllib.request, zipfile
 from pathlib import Path
@@ -23,12 +23,14 @@ def fetch(url, algo, expected):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--jar", required=True, type=Path)
+    ap.add_argument("--pack", type=Path, default=ROOT / "pack")
     ap.add_argument("--out", type=Path, default=ROOT / "dist" / "classroom-run-prism.zip")
     a = ap.parse_args()
     if not a.jar.is_file():
         sys.exit(f"jar introuvable: {a.jar}")
 
-    pack = tomllib.loads((ROOT / "pack" / "pack.toml").read_text("utf-8"))
+    pack_dir = a.pack
+    pack = tomllib.loads((a.pack / "pack.toml").read_text("utf-8"))
     mc, loader = pack["versions"]["minecraft"], pack["versions"]["fabric"]
     name = pack["name"]
 
@@ -46,13 +48,15 @@ def main():
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("instance.cfg", cfg)
         z.writestr("mmc-pack.json", json.dumps(mmc, indent=4))
-        for f in sorted((ROOT / "pack" / "mods").glob("*.pw.toml")):
-            m = tomllib.loads(f.read_text("utf-8"))
-            if m.get("side", "both") not in SIDES:
-                continue
-            d = m["download"]
-            z.writestr(f".minecraft/mods/{m['filename']}", fetch(d["url"], d["hash-format"], d["hash"]))
-            print("mod:", m["filename"])
+        for sub in ("mods", "shaderpacks"):
+            for f in sorted((pack_dir / sub).glob("*.pw.toml")):
+                m = tomllib.loads(f.read_text("utf-8"))
+                # le jar passe par --jar (l'URL publique n'existe pas encore pendant la CI)
+                if m.get("side", "both") not in SIDES or m["filename"] == a.jar.name:
+                    continue
+                d = m["download"]
+                z.writestr(f".minecraft/{sub}/{m['filename']}", fetch(d["url"], d["hash-format"], d["hash"]))
+                print(f"{sub}:", m["filename"])
         z.write(a.jar, f".minecraft/mods/{a.jar.name}")
         print("mod:", a.jar.name)
     tmp.replace(a.out)
