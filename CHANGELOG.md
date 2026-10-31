@@ -1,5 +1,11 @@
 # Changelog
 
+## Correctif : salle de classe vide
+- La palette de `classroom.nbt` utilisait l'ancien format (`Name` / `Properties`). Minecraft 26.3 lit `id` / `properties`, et tous les blocs étaient chargés comme de l'air, sans erreur.
+- Le générateur écrit désormais le nouveau format et le `.nbt` est régénéré.
+- Un `classroom.nbt` externe à l'ancien format est converti au chargement.
+- Le serveur journalise le nombre de blocs posés, et une erreur si aucun ne l'est.
+
 ## Retrait du replay
 - Retrait complet de ServerReplay et de ReplayMod : plus d'enregistrement, de marqueurs, de route `GET /replay`, de téléchargement ni de bouton « Voir le replay ».
 - `HistoryPayload` perd `httpPort` et le JSON de détail perd le champ `replay` (`CONTRACT.md` mis à jour). Les anciens journaux qui contiennent `replay` restent lisibles : le champ est ignoré.
