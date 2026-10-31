@@ -485,13 +485,15 @@ impl AuthManager {
         Ok(self.commit(gen_at_start, None, Some(&session), remember).then_some(session))
     }
 
-    /// Déconnexion : oublie la mémoire et efface le trousseau ; empêche tout stockage en cours.
+    /// Déconnexion : efface d'abord le trousseau, puis la mémoire (vidée même si le trousseau échoue) ;
+    /// empêche tout stockage en cours.
     pub fn sign_out(&self) -> Result<()> {
         let mut g = self.inner.lock().unwrap();
         self.generation.fetch_add(1, Ordering::SeqCst);
+        let r = clear_stored_token();
         g.session = None;
         g.refresh_token = None;
-        clear_stored_token()
+        r
     }
 }
 

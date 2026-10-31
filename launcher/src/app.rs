@@ -36,7 +36,8 @@ struct Net {
 }
 
 enum PlayOutcome {
-    Started(Child),
+    /// Le jeton utilisé au lancement est gardé avec le processus (pour masquer la fin du log).
+    Started(Child, String),
     /// Un autre pack est publié : proposer la mise à jour avant de lancer.
     PackUpdate,
     Failed(String),
@@ -48,7 +49,7 @@ pub struct App {
     progress: Arc<Progress>,
     /// Some(None) = installation en cours ; Some(Some(r)) = terminée.
     install: Arc<Mutex<InstallState>>,
-    game: Option<(Child, Instant)>,
+    game: Option<(Child, Instant, String)>,
     message: String,
     stats: Arc<Mutex<StatsResult>>,
     stats_url: Arc<Mutex<String>>,
@@ -186,8 +187,8 @@ impl App {
             let r = if check_pack && crate::pack_update_available(&dirs, &cfg) {
                 PlayOutcome::PackUpdate
             } else {
-                match crate::session_for_play(&cfg, &mgr).and_then(|s| crate::run_play(&dirs, &cfg, &s)) {
-                    Ok(c) => PlayOutcome::Started(c),
+                match crate::session_for_play(&cfg, &mgr).and_then(|s| crate::run_play(&dirs, &cfg, &s).map(|c| (c, s.access_token().to_string()))) {
+                    Ok((c, token)) => PlayOutcome::Started(c, token),
                     Err(e) => PlayOutcome::Failed(format!("{e:#}")),
                 }
             };
@@ -236,8 +237,8 @@ impl eframe::App for App {
         if let Some(r) = self.play_slot.lock().unwrap().take() {
             self.play_busy = false;
             match r {
-                PlayOutcome::Started(c) => {
-                    self.game = Some((c, Instant::now()));
+                PlayOutcome::Started(c, token) => {
+                    self.game = Some((c, Instant::now(), token));
                     self.message = "Jeu lancé.".into();
                 }
                 PlayOutcome::PackUpdate => {
@@ -250,13 +251,13 @@ impl eframe::App for App {
         if let Some(w) = self.mgr.take_warning() {
             self.message = w;
         }
-        if let Some((c, started)) = &mut self.game
+        if let Some((c, started, token)) = &mut self.game
             && !matches!(c.try_wait(), Ok(None))
         {
             // Mort dans les premières secondes : on montre la fin du log pour comprendre pourquoi.
             self.message = if started.elapsed() < Duration::from_secs(30) {
                 let addr = self.net.lock().unwrap().as_ref().map(|n| n.addr.clone()).unwrap_or_default();
-                format!("Le jeu s'est arrêté au démarrage. Fin du log :\n{}", log_tail(&self.dirs, 15, &self.mgr.current_token().unwrap_or_default(), &addr))
+                format!("Le jeu s'est arrêté au démarrage. Fin du log :\n{}", log_tail(&self.dirs, 15, token, &addr))
             } else {
                 "Le jeu est fermé.".into()
             };
@@ -323,9 +324,10 @@ impl eframe::App for App {
                             ui.label(format!("Connecté : {name}"));
                             if ui.button("Se déconnecter").clicked() {
                                 match self.mgr.sign_out() {
-                                    Ok(()) => *self.auth.lock().unwrap() = AuthUi::SignedOut,
-                                    Err(e) => self.message = format!("{e:#}"),
+                                    Ok(()) => {}
+                                    Err(_) => self.message = "Déconnecté, mais l'identifiant enregistré n'a pas pu être effacé.".into(),
                                 }
+                                *self.auth.lock().unwrap() = AuthUi::SignedOut;
                             }
                         });
                     }
@@ -361,9 +363,14 @@ impl eframe::App for App {
                         ui.selectable_value(&mut self.cfg.perf_mode, m, m.label());
                     }
                 });
-                if !auth::dev_offline() && ui.checkbox(&mut self.cfg.no_remember, "Ne pas mémoriser la connexion sur ce PC").changed() && self.cfg.no_remember {
-                    // Oublie aussi ce qui a pu être mémorisé avant.
-                    let _ = auth::clear_stored_token();
+                if !auth::dev_offline() && ui.checkbox(&mut self.cfg.no_remember, "Ne pas mémoriser la connexion sur ce PC").changed() {
+                    // Persisté tout de suite ; cocher oublie aussi ce qui a pu être mémorisé avant.
+                    if let Err(e) = self.cfg.save(&self.dirs) {
+                        self.message = format!("Configuration non enregistrée : {e}");
+                    }
+                    if self.cfg.no_remember && let Err(e) = auth::clear_stored_token() {
+                        self.message = format!("{e:#}");
+                    }
                 }
                 ui.collapsing("Options avancées (dev)", |ui| {
                     ui.label("Dossier du pack local (vide = pack de la release)");
