@@ -4,43 +4,77 @@ on:
     tags: ['v*']
 permissions:
   contents: read
+env:
+  LINUX_DEPS: >-
+    libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev
+    libayatana-appindicator3-dev librsvg2-dev
 jobs:
-  launcher:
+  opaline:
     strategy:
       matrix:
         include:
           - os: windows-latest
-            bin: classroom-launcher.exe
-            asset: classroom-launcher-windows.exe
+            bundle: nsis
+            asset: Opaline_VERSION_x64-setup.exe
+            glob: '*-setup.exe'
           - os: ubuntu-latest
-            bin: classroom-launcher
-            asset: classroom-launcher-linux
+            bundle: appimage
+            asset: Opaline_VERSION_amd64.AppImage
+            glob: '*.AppImage'
     runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v7
-      - name: Verifier version launcher == tag
+      - name: Verifier version Opaline == tag
         run: |
-          v=$(sed -n 's/^version = "\(.*\)"/\1/p' launcher/Cargo.toml | head -n1 | tr -d '\r')
-          [ "${GITHUB_REF_NAME#v}" = "$v" ] || { echo "tag $GITHUB_REF_NAME != launcher $v"; exit 1; }
-      - name: Build launcher
+          tag="${GITHUB_REF_NAME#v}"
+          # Tolérant : un fichier absent est ignoré, un fichier présent doit porter la version du tag.
+          check() { # fichier, extraction sed
+            [ -f "$1" ] || { echo "$1 absent, ignoré"; return 0; }
+            v=$(sed -n "$2" "$1" | head -n1 | tr -d '\r')
+            [ "$tag" = "$v" ] || { echo "tag $GITHUB_REF_NAME != $1 ($v)"; exit 1; }
+          }
+          check opaline/src-tauri/tauri.conf.json 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+          check opaline/src-tauri/Cargo.toml 's/^version = "\(.*\)"/\1/p'
+          check launcher/Cargo.toml 's/^version = "\(.*\)"/\1/p'
+          [ -f opaline/src-tauri/tauri.conf.json ] || { echo "opaline/src-tauri absent"; exit 1; }
+      - name: Dépendances Linux (Tauri 2)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y $LINUX_DEPS
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            opaline/src-tauri/target
+          key: opaline-${{ matrix.os }}-${{ hashFiles('opaline/src-tauri/Cargo.lock') }}
+      - name: tauri-cli
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Build Opaline
         env:
           # ID client de l app Azure (public, pas un secret) : variable de dépôt MS_CLIENT_ID
           CLASSROOM_MS_CLIENT_ID: ${{ vars.MS_CLIENT_ID }}
+          NO_STRIP: 'true' # linuxdeploy : évite l'échec de strip sur les binaires récents
         run: |
-          cd launcher
-          cargo build --release --locked
-          mkdir -p ../dist
-          cp "target/release/${{ matrix.bin }}" "../dist/${{ matrix.asset }}"
+          VERSION="${GITHUB_REF_NAME#v}"
+          cd opaline/src-tauri
+          cargo tauri build --bundles ${{ matrix.bundle }} -- --locked
+          mkdir -p ../../dist
+          src=$(find target/release/bundle -type f -name '${{ matrix.glob }}' | head -n1)
+          [ -n "$src" ] || { echo "installeur introuvable"; exit 1; }
+          asset="${{ matrix.asset }}"
+          cp "$src" "../../dist/${asset/VERSION/$VERSION}"
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset }}
-          path: dist/${{ matrix.asset }}
+          name: opaline-${{ matrix.os }}
+          path: dist/Opaline_*
           if-no-files-found: error
   release:
-    needs: launcher
+    needs: opaline
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -58,26 +92,33 @@ jobs:
       - run: ./gradlew build
       - uses: actions/download-artifact@v4
         with:
-          path: dist/launchers
+          path: dist/installers
           merge-multiple: true
-      - name: Manifeste et instance Prism
+      - name: Packs, catalogue et instance Prism
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           jar=$(ls build/libs/classroomrun-*.jar | grep -v -- '-sources' | head -n1)
           [ "$(basename "$jar")" = "classroomrun-$VERSION.jar" ] || { echo "jar inattendu: $jar"; exit 1; }
           echo "JAR=$jar" >> "$GITHUB_ENV"
-          python3 scripts/pack-tools.py add-jar --jar "$jar" --version "$VERSION" --repo "$GITHUB_REPOSITORY"
-          python3 scripts/build-prism-instance.py --jar "$jar" --out dist/classroom-run-prism.zip
+          python3 scripts/pack-tools.py add-jar --pack packs/classroom-run --jar "$jar" --version "$VERSION" --repo "$GITHUB_REPOSITORY"
+          # pack-<id>.zip : un dossier pack/ à la racine (contenu de packs/<id>/ publié)
+          mkdir -p dist/stage
+          for d in packs/*/; do
+            id=$(basename "$d")
+            rm -rf dist/stage/pack && cp -r "$d" dist/stage/pack
+            (cd dist/stage && zip -qr "../pack-$id.zip" pack)
+          done
+          python3 scripts/pack-tools.py catalog --tag "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --out dist/packs.json
+          python3 scripts/build-prism-instance.py --pack packs/classroom-run --jar "$jar" --out dist/classroom-run-prism.zip
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
-          # pack.zip : dossier pack/ (avec classroomrun.pw.toml et index recalcules)
-          zip -qr dist/pack.zip pack
-          PACK_HASH=$(python3 -c "import tomllib;print(tomllib.load(open('pack/pack.toml','rb'))['index']['hash'])")
-          printf '{"version":"%s","windows":"%s/classroom-launcher-windows.exe","linux":"%s/classroom-launcher-linux","pack":"%s/pack.zip","pack_hash":"%s"}\n' \
-            "$VERSION" "$BASE" "$BASE" "$BASE" "$PACK_HASH" > dist/launcher.json
-          gh release create "$GITHUB_REF_NAME" "$JAR" dist/launchers/* dist/classroom-run-prism.zip dist/pack.zip dist/launcher.json \
-            --title "$GITHUB_REF_NAME" --generate-notes
+          WIN="Opaline_${VERSION}_x64-setup.exe"
+          LIN="Opaline_${VERSION}_amd64.AppImage"
+          [ -f "dist/installers/$WIN" ] && [ -f "dist/installers/$LIN" ] || { echo "installeur manquant"; ls dist/installers; exit 1; }
+          printf '{"version":"%s","windows":"%s/%s","linux":"%s/%s"}\n' "$VERSION" "$BASE" "$WIN" "$BASE" "$LIN" > dist/launcher.json
+          gh release create "$GITHUB_REF_NAME" "$JAR" dist/installers/* dist/pack-*.zip dist/packs.json \
+            dist/classroom-run-prism.zip dist/launcher.json --title "$GITHUB_REF_NAME" --generate-notes
