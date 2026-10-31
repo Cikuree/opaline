@@ -60,9 +60,9 @@ pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
         ("auth_player_name", i.session.username.clone()),
         ("auth_uuid", i.session.uuid.clone()),
         ("auth_access_token", i.session.access_token().to_string()),
-        ("auth_xuid", String::new()),
+        ("auth_xuid", i.session.xuid.clone()),
         ("user_type", i.session.user_type.to_string()),
-        ("clientid", String::new()),
+        ("clientid", i.session.client_id.clone()),
         ("version_name", i.version.id.clone()),
         ("version_type", "release".into()),
         ("game_directory", i.dirs.instance().to_string_lossy().into_owned()),
@@ -90,15 +90,18 @@ pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
     Ok(cmd)
 }
 
-/// Pour les logs : masque la valeur qui suit `--accessToken`, et le token où qu'il apparaisse
-/// (ignoré s'il ne fait qu'un caractère, comme le token factice hors ligne).
-pub fn redact(cmd: &[String], token: &str) -> String {
+/// Pour les logs : masque la valeur qui suit `--accessToken`, le token où qu'il apparaisse
+/// (ignoré s'il ne fait qu'un caractère, comme le token factice hors ligne) et l'adresse du serveur.
+pub fn redact(cmd: &[String], token: &str, server: Option<&str>) -> String {
     let mut out = Vec::with_capacity(cmd.len());
     let mut hide = false;
     for a in cmd {
         let mut shown = if hide { "<masqué>".to_string() } else { a.clone() };
         if token.len() > 1 {
             shown = shown.replace(token, "<masqué>");
+        }
+        if let Some(sv) = server.filter(|s| !s.is_empty()) {
+            shown = shown.replace(sv, "<serveur>");
         }
         out.push(shown);
         hide = a == "--accessToken";
@@ -196,12 +199,19 @@ mod tests {
     fn redacts_token() {
         let c = cmd("windows", None);
         assert!(c.iter().any(|a| a == "0")); // le token factice est bien dans la commande
-        let r = redact(&c, "0");
+        let r = redact(&c, "0", None);
         assert!(r.contains("--accessToken <masqué> --assetIndex"));
         // token long présent ailleurs (ex. propriété -D) : masqué par valeur
         let mut c2 = c.clone();
         c2.push("-Dx=secrettoken123".into());
-        assert!(!redact(&c2, "secrettoken123").contains("secrettoken123"));
+        assert!(!redact(&c2, "secrettoken123", None).contains("secrettoken123"));
+    }
+
+    #[test]
+    fn redacts_server_address() {
+        let c = cmd("windows", Some("secret.host:25565"));
+        assert!(c.iter().any(|a| a == "secret.host:25565"));
+        assert!(!redact(&c, "0", Some("secret.host:25565")).contains("secret.host"));
     }
 
     #[test]

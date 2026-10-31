@@ -39,6 +39,8 @@ pub struct Installed {
     pub java: PathBuf,
     pub version: VersionJson,
     pub fabric: FabricProfile,
+    /// Zip de shaders installé (pour iris.properties).
+    pub shader_pack: Option<String>,
 }
 
 pub struct InstallParams {
@@ -80,6 +82,8 @@ struct Marker {
     pack: String,
     minecraft: String,
     fabric: String,
+    #[serde(default)]
+    shader_pack: Option<String>,
 }
 
 fn marker_for(pack: &Pack) -> Result<Marker> {
@@ -87,6 +91,7 @@ fn marker_for(pack: &Pack) -> Result<Marker> {
         pack: pack.version.clone(),
         minecraft: pack.versions.minecraft.clone(),
         fabric: pack.versions.fabric.clone().context("pack.toml : version de Fabric absente")?,
+        shader_pack: pack.shader_pack().map(str::to_string),
     })
 }
 
@@ -119,7 +124,12 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
     let marker = marker_for(&pack)?;
     let (mc, loader) = (marker.minecraft.clone(), marker.fabric.clone());
     validate_ids(&mc, &loader)?;
-    let mod_jar = find_mod_jar(p.mod_jar.as_deref(), &p.pack_dir)?;
+    // Le jar classroomrun vient du pack s'il y est ; sinon (pack local de dev) repli sur build/libs.
+    let mod_jar = if pack.mods.iter().any(|m| m.dir == "mods" && m.filename.starts_with("classroomrun")) {
+        None
+    } else {
+        Some(find_mod_jar(p.mod_jar.as_deref(), &p.pack_dir)?)
+    };
 
     progress.set_stage("Minecraft : métadonnées");
     let version = fetch_version_json(client, dirs, ep, &mc)?;
@@ -162,12 +172,12 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
     let fabric = install_fabric(client, dirs, ep, &mc, &loader, progress)?;
 
     progress.set_stage("Mods");
-    install_mods(client, dirs, &pack, &p.pack_dir, &mod_jar, progress)?;
+    install_mods(client, dirs, &pack, &p.pack_dir, mod_jar.as_deref(), progress)?;
 
     fs::create_dir_all(&dirs.root)?;
     fs::write(dirs.install_marker(), serde_json::to_vec_pretty(&marker)?)?;
     progress.set_stage("Terminé");
-    Ok(Installed { java: java_exe, version, fabric })
+    Ok(Installed { java: java_exe, version, fabric, shader_pack: marker.shader_pack })
 }
 
 fn fetch_version_json(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str) -> Result<VersionJson> {
@@ -218,35 +228,33 @@ fn install_fabric(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str, loader
     Ok(profile)
 }
 
-/// Lit le profil Fabric déjà installé (lancement sans réinstaller).
-pub fn load_installed(dirs: &Dirs, pack: &Pack) -> Result<Installed> {
-    let want = marker_for(pack)?;
-    let (mc, loader) = (&want.minecraft, &want.fabric);
-    validate_ids(mc, loader)?;
-    let marker_path = dirs.install_marker();
-    let have: Marker = serde_json::from_slice(&fs::read(&marker_path).with_context(|| "installation absente ou incomplète : lancez l'installation".to_string())?)
+/// Lit l'installation existante d'après `installed.ok` (lancement sans réseau ni lecture du pack).
+pub fn load_installed(dirs: &Dirs) -> Result<Installed> {
+    let have: Marker = serde_json::from_slice(&fs::read(dirs.install_marker()).with_context(|| "installation absente ou incomplète : lancez l'installation".to_string())?)
         .context("installed.ok illisible : relancez l'installation")?;
-    if have != want {
-        bail!("le pack a changé (installé : {} / MC {} / Fabric {}) : relancez l'installation", have.pack, have.minecraft, have.fabric);
-    }
+    let (mc, loader) = (&have.minecraft, &have.fabric);
+    validate_ids(mc, loader)?;
     let id = fabric_profile_id(loader, mc);
     let read = |p: PathBuf| fs::read(&p).with_context(|| format!("{} absent : lancez d'abord l'installation", p.display()));
     let version: VersionJson = serde_json::from_slice(&read(dirs.version_json(mc))?)?;
     validate_version(&version, mc)?;
     let fabric: FabricProfile = serde_json::from_slice(&read(dirs.versions().join(&id).join(format!("{id}.json")))?)?;
     let java = java::find_java(&dirs.java(version.java_version.major_version)).context("Java absent : lancez d'abord l'installation")?;
-    Ok(Installed { java, version, fabric })
+    Ok(Installed { java, version, fabric, shader_pack: have.shader_pack })
 }
 
-fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_jar: &Path, progress: &Arc<Progress>) -> Result<()> {
+fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_jar: Option<&Path>, progress: &Arc<Progress>) -> Result<()> {
     let mods_dir = dirs.instance().join("mods");
     fs::create_dir_all(&mods_dir)?;
-    let jar_name = crate::safe::safe_file_name(mod_jar.file_name().and_then(|n| n.to_str()).unwrap_or(""))?.to_string();
-    let mut keep: HashSet<String> = HashSet::from([jar_name.clone()]);
+    let jar_name = mod_jar.map(|j| crate::safe::safe_file_name(j.file_name().and_then(|n| n.to_str()).unwrap_or("")).map(str::to_string)).transpose()?;
+    let mut keep: HashSet<String> = jar_name.iter().cloned().collect();
     let mut jobs = Vec::new();
     for m in &pack.mods {
-        keep.insert(m.filename.clone());
-        jobs.push(Job { url: m.url.clone(), dest: safe_join(&mods_dir, &m.filename)?, hash: m.hash.clone(), size: None });
+        let dir = safe_join(&dirs.instance(), &m.dir)?;
+        if m.dir == "mods" {
+            keep.insert(m.filename.clone());
+        }
+        jobs.push(Job { url: m.url.clone(), dest: safe_join(&dir, &m.filename)?, hash: m.hash.clone(), size: None });
     }
     download::fetch_all(client, jobs, CONCURRENCY, progress)?;
     // Fichiers non-méta de l'index (configs...) : copiés depuis le dossier du pack après vérification du hash.
@@ -262,7 +270,9 @@ fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_
         }
         fs::write(&dest, &bytes)?;
     }
-    fs::copy(mod_jar, mods_dir.join(&jar_name)).with_context(|| format!("copie de {}", mod_jar.display()))?;
+    if let (Some(j), Some(n)) = (mod_jar, &jar_name) {
+        fs::copy(j, mods_dir.join(n)).with_context(|| format!("copie de {}", j.display()))?;
+    }
     // Ménage dans NOTRE dossier mods uniquement : anciens jars retirés du manifeste.
     for e in fs::read_dir(&mods_dir)?.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
@@ -336,10 +346,10 @@ mod tests {
             files: vec![],
         };
         let client = crate::download::http_client().unwrap();
-        install_mods(&client, &dirs, &pack, &d, &d.join("classroomrun-1.jar"), &Arc::default()).unwrap();
+        install_mods(&client, &dirs, &pack, &d, Some(&d.join("classroomrun-1.jar")), &Arc::default()).unwrap();
         assert!(mods.join("dir.jar").is_dir() && !mods.join("old.jar").exists() && mods.join("classroomrun-1.jar").is_file());
         // sans installed.ok, load_installed refuse
-        assert!(load_installed(&dirs, &pack).is_err());
+        assert!(load_installed(&dirs).is_err());
         fs::remove_dir_all(&d).unwrap();
     }
 }

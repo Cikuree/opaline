@@ -8,8 +8,13 @@ mod java;
 mod launch;
 mod mojang;
 mod packwiz;
+mod perf;
+mod ping;
 mod safe;
 mod stats;
+mod sysmem;
+mod tailscale;
+mod update;
 
 use anyhow::{Context, Result, bail};
 use config::{Config, Dirs};
@@ -26,45 +31,60 @@ pub fn run_install(dirs: &Dirs, cfg: &Config, progress: &Arc<Progress>) -> Resul
 
 fn run_install_inner(dirs: &Dirs, cfg: &Config, progress: &Arc<Progress>) -> Result<install::Installed> {
     let client = download::http_client()?;
+    // Pack local (option avancée, dev) ou pack.zip de la dernière release.
+    let pack_dir = if cfg.pack_dir.trim().is_empty() {
+        progress.set_stage("Téléchargement du pack");
+        packwiz::fetch_remote_pack(&client, dirs, &config::PackProfile::default().pack_zip_url)?
+    } else {
+        PathBuf::from(&cfg.pack_dir)
+    };
     let params = install::InstallParams {
         dirs: dirs.clone(),
-        pack_dir: PathBuf::from(&cfg.pack_dir),
+        pack_dir,
         mod_jar: (!cfg.mod_jar.trim().is_empty()).then(|| PathBuf::from(&cfg.mod_jar)),
         endpoints: install::Endpoints::default(),
     };
     install::install(&client, &params, progress)
 }
 
-pub fn run_play(dirs: &Dirs, cfg: &Config, with_server: bool) -> Result<std::process::Child> {
-    let pack = packwiz::load_pack(&PathBuf::from(&cfg.pack_dir))?;
-    let inst = install::load_installed(dirs, &pack)?;
-    let session = auth::Session::offline(cfg.nickname.trim()); // étape 3 : session Microsoft ici
-    let server = cfg.server_host.trim();
-    let quick_play = with_server && !server.is_empty();
-    let env = mojang::Env::current(&[("is_quick_play_multiplayer", quick_play)]);
+/// Session pour jouer : hors ligne en dev (`CLASSROOM_DEV_OFFLINE=1`), sinon Microsoft via le trousseau.
+pub fn session_for_play(cfg: &Config) -> Result<auth::Session> {
+    if auth::dev_offline() {
+        return Ok(auth::Session::offline(cfg.nickname.trim()));
+    }
+    if !auth::configured() {
+        bail!("Connexion Microsoft non configurée");
+    }
+    let client = auth::http_client()?;
+    auth::silent_login(&client, &auth::Endpoints::default(), auth::CLIENT_ID)?.context("connexion Microsoft requise : cliquez sur « Se connecter avec Microsoft »")
+}
+
+pub fn run_play(dirs: &Dirs, cfg: &Config, session: &auth::Session) -> Result<std::process::Child> {
+    let inst = install::load_installed(dirs)?;
+    let server = config::PackProfile::default().server;
+    let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?.unwrap_or(cfg.memory_mb);
+    let env = mojang::Env::current(&[("is_quick_play_multiplayer", true)]);
     let cmd = launch::build_command(&launch::LaunchInput {
         java: &inst.java,
         version: &inst.version,
         fabric: &inst.fabric,
         dirs,
-        session: &session,
-        server: quick_play.then_some(server),
-        memory_mb: cfg.memory_mb,
+        session,
+        server: Some(&server),
+        memory_mb,
         env: &env,
     })?;
-    eprintln!("{}", launch::redact(&cmd, session.access_token()));
+    eprintln!("{}", launch::redact(&cmd, session.access_token(), Some(&server)));
     launch::spawn(&cmd, dirs)
 }
 
 fn cli(args: Vec<String>) -> Result<()> {
     let mut root = Dirs::default_root();
     let mut overrides: Vec<(String, String)> = Vec::new();
-    let mut no_server = false;
     let mut it = args.iter().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--no-server" => no_server = true,
-            "--root" | "--pack" | "--mod-jar" | "--nick" | "--host" => {
+            "--root" | "--pack" | "--mod-jar" | "--nick" => {
                 let v = it.next().with_context(|| format!("{a} attend une valeur"))?.clone();
                 if a == "--root" {
                     root = PathBuf::from(v);
@@ -82,7 +102,7 @@ fn cli(args: Vec<String>) -> Result<()> {
             "--pack" => cfg.pack_dir = v,
             "--mod-jar" => cfg.mod_jar = v,
             "--nick" => cfg.nickname = v,
-            _ => cfg.server_host = v,
+            _ => {}
         }
     }
     match args[1].as_str() {
@@ -106,7 +126,8 @@ fn cli(args: Vec<String>) -> Result<()> {
             r.map(|_| ())
         }
         "play" => {
-            let mut child = run_play(&dirs, &cfg, !no_server)?;
+            let session = session_for_play(&cfg)?;
+            let mut child = run_play(&dirs, &cfg, &session)?;
             eprintln!("jeu lancé (pid {}), log : {}", child.id(), dirs.instance().join("logs/launcher-game.log").display());
             child.wait()?;
             Ok(())

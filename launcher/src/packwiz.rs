@@ -1,4 +1,4 @@
-//! Lecture du manifeste packwiz depuis un dossier local.
+//! Lecture du manifeste packwiz depuis un dossier local (ou le pack.zip de la release, extrait puis lu ici).
 use crate::safe::{Hash, safe_file_name, safe_join};
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
@@ -54,6 +54,8 @@ struct MetaDownload {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModEntry {
+    /// Dossier d'instance de destination, d'après le dossier du métafichier (`mods`, `shaderpacks`...).
+    pub dir: String,
     pub filename: String,
     pub url: String,
     pub hash: Hash,
@@ -72,6 +74,13 @@ pub struct Pack {
     pub versions: Versions,
     pub mods: Vec<ModEntry>,
     pub files: Vec<PackFile>,
+}
+
+impl Pack {
+    /// Nom du zip de shaders (premier fichier .zip du dossier `shaderpacks`).
+    pub fn shader_pack(&self) -> Option<&str> {
+        self.mods.iter().find(|m| m.dir == "shaderpacks" && m.filename.ends_with(".zip")).map(|m| m.filename.as_str())
+    }
 }
 
 /// Packwiz : `side` absent = both ; on garde client et both.
@@ -122,7 +131,10 @@ pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> R
         let Some(url) = m.download.url else {
             bail!("{} : pas de download.url (CurseForge non supporté)", f.file);
         };
+        let dir = f.file.rsplit_once('/').map_or("mods", |(d, _)| d).to_string();
+        safe_join(Path::new("x"), &dir)?;
         mods.push(ModEntry {
+            dir,
             filename: safe_file_name(&m.filename)?.to_string(),
             url,
             hash: Hash::new(&m.download.hash_format, &m.download.hash)?,
@@ -131,9 +143,27 @@ pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> R
     Ok((mods, files))
 }
 
+/// Télécharge `pack.zip` (release), l'extrait dans `<downloads>/pack-remote` (extraction sûre : zip-slip refusé)
+/// et renvoie le dossier contenant `pack.toml`. Les hashes sont vérifiés ensuite par `load_pack`.
+pub fn fetch_remote_pack(client: &reqwest::blocking::Client, dirs: &crate::config::Dirs, url: &str) -> Result<std::path::PathBuf> {
+    let r = client.get(url).send().with_context(|| format!("requête {url}"))?;
+    if !r.status().is_success() {
+        bail!("HTTP {} pour {url}", r.status());
+    }
+    let bytes = r.bytes()?;
+    let work = dirs.downloads().join("pack-remote");
+    let _ = std::fs::remove_dir_all(&work); // notre propre dossier de travail
+    std::fs::create_dir_all(&work)?;
+    let zip = work.with_extension("zip");
+    std::fs::write(&zip, &bytes)?;
+    crate::java::extract(&zip, &work)?;
+    let _ = std::fs::remove_file(&zip);
+    [work.join("pack"), work.clone()].into_iter().find(|d| d.join("pack.toml").is_file()).context("pack.zip : pack.toml introuvable")
+}
+
 pub fn load_pack(dir: &Path) -> Result<Pack> {
     if dir.as_os_str().is_empty() {
-        anyhow::bail!("dossier du pack non renseigné : indiquez le dossier qui contient pack.toml");
+        anyhow::bail!("dossier du pack non renseigné");
     }
     let read_in = |rel: &str| -> Result<String> {
         let p = safe_join(dir, rel)?;
