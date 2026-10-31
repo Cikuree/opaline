@@ -39,4 +39,4 @@ Serveur Fabric 26.3, loader 0.20.1, Java 25. Dans `mods/` :
 
 1. Mettre le même numéro `X.Y.Z` dans `version` de `gradle.properties` et de `launcher/Cargo.toml`, puis commit.
 2. Créer le tag et le pousser : `git tag vX.Y.Z` puis `git push origin vX.Y.Z`.
-3. La CI (`release.yml`) vérifie version == tag, construit le mod et le launcher (Windows et Linux), génère `pack/mods/classroomrun.pw.toml` (sha512 du jar, URL vers l'asset de release du dépôt courant), puis crée la release avec le jar, les deux launchers, `classroom-run-prism.zip` et `launcher.json`.
+3. La CI (`release.yml`) vérifie version == tag, construit le mod et le launcher (Windows et Linux), génère `pack/mods/classroomrun.pw.toml` (sha512 du jar, URL vers l'asset de release du dépôt courant), puis crée la release avec le jar, les deux launchers, `classroom-run-prism.zip`, `pack.zip` (contenu de `pack/` publié, avec `classroomrun.pw.toml` et l'index recalculé) et `launcher.json`. Rien n'est commité sur `main` par la CI.
