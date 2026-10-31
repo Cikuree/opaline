@@ -64,7 +64,7 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/packs.j
 |---|---|---|
 | `app_info` | – | `{version, update: null \| {version, url}}` |
 | `auth_status` | – | `{state: "signedOut" \| "signedIn" \| "notConfigured", profile: null \| {name, uuid}, warning: null \| string}` |
-| `auth_start` | – | `{attempt, userCode, verificationUri, expiresIn}`, puis événement `auth://done` portant le même `attempt` |
+| `auth_start` | `{mode: "browser" \| "device"}` (défaut `browser`) | `browser` : `{attempt, mode: "browser", authorizeUrl}`. Opaline ouvre lui-même la page Microsoft dans le navigateur par défaut (code d'autorisation + PKCE, redirection vers `http://localhost:<port>` sur 127.0.0.1). `device` (secours) : `{attempt, mode: "device", userCode, verificationUri, expiresIn}`. Dans les deux cas, événement `auth://done` portant le même `attempt` |
 | `auth_cancel` | – | – |
 | `auth_sign_out` | – | `{warning: null \| string}` |
 | `packs_list` | – | `[PackView]` (§5) |
