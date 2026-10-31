@@ -1,5 +1,29 @@
 # Changelog
 
+## Launcher en ligne, shaders et distribution
+- Pack : Sodium 0.9.2, Iris 1.11.7 et Complementary Reimagined r5.9.3 côté client. Le shaderpack est référencé par lien Modrinth et crédité dans `CREDITS.md`.
+- Release unique (tag `v*`), avec ces fichiers :
+  - le jar du mod ;
+  - les launchers Windows et Linux ;
+  - le zip Prism ;
+  - `pack.zip`, qui contient le jar référencé avec son sha512 ;
+  - `launcher.json` (version, URLs, `pack_hash`).
+- Launcher, installation et mises à jour :
+  - pack téléchargé depuis la dernière release, avec vérification des hashes de bout en bout et taille comme décompression bornées ;
+  - bandeau de mise à jour du launcher ;
+  - détection d'une nouvelle version du pack au moment de Jouer.
+- Launcher, connexion Microsoft obligatoire :
+  - connexion par code d'appareil, vérification de la possession du jeu ;
+  - jeton de renouvellement dans le trousseau système, option « Ne pas mémoriser » ;
+  - jetons absents des logs et des erreurs ;
+  - l'ID client Azure est injecté à la compilation (variable `MS_CLIENT_ID`).
+- Launcher, réglages et serveur :
+  - modes de performance Faible, Équilibré, Qualité et Personnalisé, avec fusion non destructive de `options.txt` et d'`iris.properties`, et RAM plafonnée à 70 % ;
+  - statut du serveur par ping Minecraft. L'adresse `classroom.<suffixe MagicDNS>` est calculée à l'exécution et n'est jamais affichée. Jouer n'est autorisé que si le MOTD contient « Classroom Run ».
+- HUD : barre des splits centrée en haut, sous les barres de boss.
+- Tableau de la salle sur trois lignes, splits en français.
+- Maquette de l'interface Opaline dans `design/launcher-mockup/`.
+
 ## Correctif : salle de classe vide
 - La palette de `classroom.nbt` utilisait l'ancien format (`Name` / `Properties`). Minecraft 26.3 lit `id` / `properties`, et tous les blocs étaient chargés comme de l'air, sans erreur.
 - Le générateur écrit désormais le nouveau format et le `.nbt` est régénéré.
