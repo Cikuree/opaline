@@ -273,9 +273,11 @@ body:has(.window.max){padding:0}
   .col h2{display:none}
   .col .me{display:flex;flex-direction:row;align-items:center;gap:12px;padding:0 14px;height:44px;width:100%;border-radius:0}
   .col .me .avatar{width:44px;height:44px;box-shadow:0 0 0 3px var(--cream)}
-  .col .colx{justify-content:flex-start;gap:12px;padding:0 26px;margin-top:8px;min-height:40px;background:none;border-radius:0;color:var(--cream)}
+  .col .colx{justify-content:flex-start;gap:4px;padding:0 18px;margin-top:8px;min-height:40px;background:none;border-radius:0;color:var(--cream)}
   .col .colx:hover{background:rgba(255,255,255,.05)}
   .col .colx .lbl{display:none}
+  .col .colx .chev{width:10px;height:10px;stroke-width:2.6;flex:none;transition:transform .2s var(--ease)}
+  .window:not(.colmini) .col .colx .chev{transform:rotate(180deg)}
   .col .tx,.col .mtx,.col .colx .lbl{opacity:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;transition:opacity .18s}
   .window.colmini .col .tx,.window.colmini .col .mtx,.window.colmini .col .colx .lbl{opacity:0;pointer-events:none}
   .col #online,.col #offline{display:flex;flex-direction:column;gap:14px;margin-top:14px!important}
@@ -312,6 +314,7 @@ body:has(.window.max){padding:0}
  <symbol id="i-min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
  <symbol id="i-max" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
  <symbol id="i-restore" viewBox="0 0 24 24"><path d="M9 8V7a1.5 1.5 0 011.5-1.5H17A1.5 1.5 0 0118.5 7v6.5A1.5 1.5 0 0117 15h-1"/><rect x="5.5" y="9" width="10" height="10" rx="1.5"/></symbol>
+ <symbol id="i-chev" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></symbol>
 </svg>
 
@@ -529,7 +532,7 @@ body:has(.window.max){padding:0}
         <button type="button" role="menuitemradio" aria-checked="false" data-s="away">Absent</button>
         <button type="button" role="menuitemradio" aria-checked="false" data-s="inv">Invisible</button></div>
     </article>
-    <button type="button" class="colx" id="colExpand" aria-expanded="true" aria-controls="col" aria-label="Réduire la liste des amis"><svg class="i"><use href="#i-users"/></svg><span class="lbl">Réduire</span></button>
+    <button type="button" class="colx" id="colExpand" aria-expanded="true" aria-controls="col" aria-label="Réduire la liste des amis"><svg class="i"><use href="#i-users"/></svg><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg><span class="lbl">Réduire</span></button>
     <article class="card onl"><h2 class="sr">Amis du serveur, <span id="onCount"></span> en ligne</h2><div id="online"></div><div id="offline"></div></article>
   </aside>
 
