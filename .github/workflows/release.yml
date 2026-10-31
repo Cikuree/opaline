@@ -54,6 +54,10 @@ jobs:
           key: opaline-${{ matrix.os }}-${{ hashFiles('opaline/src-tauri/Cargo.lock') }}
       - name: tauri-cli
         run: cargo install tauri-cli --version "^2" --locked
+      - name: Avertir si l'ID client Microsoft manque
+        env:
+          CLASSROOM_MS_CLIENT_ID: ${{ vars.MS_CLIENT_ID }}
+        run: '[ -n "$CLASSROOM_MS_CLIENT_ID" ] || echo "::warning::Opaline publié sans ID client Microsoft : la connexion sera désactivée"'
       - name: Build Opaline
         env:
           # ID client de l app Azure (public, pas un secret) : variable de dépôt MS_CLIENT_ID

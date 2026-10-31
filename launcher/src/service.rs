@@ -219,10 +219,11 @@ fn mask_tailnet_hosts(s: &str) -> String {
     s.split_inclusive(|c: char| c.is_whitespace() || "()\"',;<>".contains(c))
         .map(|w| {
             let core = w.trim_end_matches(|c: char| !(c.is_ascii_alphanumeric() || c == '.' || c == '-'));
-            let host = core.split(':').next().unwrap_or(core).to_ascii_lowercase();
+            let (scheme, rest) = core.rsplit_once("://").map_or(("", core), |(sch, r)| (&core[..sch.len() + 3], r));
+            let host = rest.split([':', '/']).next().unwrap_or(rest).to_ascii_lowercase();
             if host.len() > 7 && host.ends_with(".ts.net") {
-                let port = core.find(':').map_or("", |i| &core[i..]);
-                format!("<serveur>{port}{}", &w[core.len()..])
+                let tail = &rest[host.len()..];
+                format!("{scheme}<serveur>{tail}{}", &w[core.len()..])
             } else {
                 w.to_string()
             }
@@ -314,6 +315,12 @@ mod tests {
         assert_eq!(refusal_message(Some("noAccess")), tailscale::MSG_UNREACHABLE);
         assert!(refusal_message(Some("unexpectedServer")).contains("pas celui du pack"));
         assert!(refusal_message(None).contains("pas celui du pack"));
+    }
+
+    #[test]
+    fn mask_tailnet_hosts_with_scheme() {
+        assert_eq!(mask_tailnet_hosts("GET http://classroom.tail1.ts.net:25580/stats a échoué"), "GET http://<serveur>:25580/stats a échoué");
+        assert_eq!(mask_tailnet_hosts("vers classroom.tail1.ts.net:25565"), "vers <serveur>:25565");
     }
 
     #[test]

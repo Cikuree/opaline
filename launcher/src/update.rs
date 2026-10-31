@@ -57,7 +57,7 @@ pub fn check(client: &reqwest::blocking::Client, url: &str, current: &str) -> Op
     match fetch_info(client, url) {
         Ok(info) => pick(&info, current),
         Err(e) => {
-            if std::env::var_os("CLASSROOM_DEBUG").is_some() {
+            if crate::config::dev_env("CLASSROOM_DEBUG").is_some() {
                 eprintln!("[debug] vérification de mise à jour : {e:#}");
             }
             None

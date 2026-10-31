@@ -39,7 +39,7 @@ export function initFiles() {
   });
   $('#packCard').addEventListener('click', (e) => { if (e.target.closest('[data-act]')) startInstall(current().id); });
   $('#btnRepair').addEventListener('click', async () => {
-    const p = current(); if (busy()) return toast('Ferme le jeu avant de réparer.'); state.install = { packId: p.id, stage: 'mods', done: 0, total: 1 }; emit('install');
+    const p = current(); if (busy()) return toast('Ferme le jeu avant de réparer.'); state.install = { packId: p.id, stage: 'java', done: 0, total: 1 }; emit('install');
     try { await api.packRepair(p.id); } catch (e) { state.install = null; emit('install'); toast(api.errMsg(e)); }
   });
 }

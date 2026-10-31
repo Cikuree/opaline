@@ -153,7 +153,7 @@ async fn auth_status(state: State<'_, S>) -> CmdResult<Value> {
             }
             let c = auth::http_client()?;
             let session = s2.0.auth.ensure_session(&c, &auth::Endpoints::default(), auth::CLIENT_ID, !cfg.no_remember).ok().flatten();
-            let warning = s2.0.auth.take_warning();
+            let warning = s2.0.auth.take_warning().map(|w| s2.sanitize(anyhow!(w)));
             if session.is_some() {
                 s2.sync_skins_once();
             }
