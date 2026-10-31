@@ -6,10 +6,11 @@ pub const QUILT_META: &str = "https://meta.quiltmc.org/v3/versions/loader";
 pub const NEOFORGE_METADATA: &str = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
 pub const FORGE_PROMOTIONS: &str = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json";
 
-/// Réponse de `…/versions/loader/{mc}` (Fabric et Quilt) : `[{"loader":{"version":"…"}}]`, ordre du serveur (récent d'abord).
+/// Réponse de `…/versions/loader/{mc}` (Fabric et Quilt) : `[{"loader":{"version":"…"}}]`. Le serveur Quilt ne trie pas
+/// par version (beta.9 avant 0.31.0) : on trie, la plus récente d'abord.
 pub fn parse_meta_loaders(json: &str) -> Vec<String> {
     let Ok(Value::Array(a)) = serde_json::from_str::<Value>(json) else { return vec![] };
-    a.iter().filter_map(|e| Some(e.get("loader")?.get("version")?.as_str()?.to_string())).collect()
+    sorted_desc(a.iter().filter_map(|e| Some(e.get("loader")?.get("version")?.as_str()?.to_string())).collect())
 }
 
 /// Les `<version>` d'un `maven-metadata.xml`.
@@ -32,18 +33,22 @@ pub fn neoforge_prefix(mc: &str) -> Option<String> {
     }
 }
 
-/// Clé de tri : composantes numériques de tête, puis « sans suffixe » (une release passe avant `-beta`).
-fn version_key(v: &str) -> (Vec<u64>, bool) {
-    let core = v.split(['-', '+']).next().unwrap_or(v);
-    (core.split('.').map_while(|s| s.parse().ok()).collect(), core.len() == v.len())
+/// Clé de tri : composantes numériques de tête, « sans suffixe » (une release passe avant `-beta`), puis nombres du suffixe.
+fn version_key(v: &str) -> (Vec<u64>, bool, Vec<u64>) {
+    let (core, suffix) = v.split_once(['-', '+']).unwrap_or((v, ""));
+    let nums = suffix.split(|c: char| !c.is_ascii_digit()).filter_map(|s| s.parse().ok()).collect();
+    (core.split('.').map_while(|s| s.parse().ok()).collect(), suffix.is_empty(), nums)
+}
+
+fn sorted_desc(mut v: Vec<String>) -> Vec<String> {
+    v.sort_by_key(|x| std::cmp::Reverse(version_key(x)));
+    v
 }
 
 /// Versions NeoForge de ce Minecraft, la plus récente d'abord.
 pub fn neoforge_versions(metadata_xml: &str, mc: &str) -> Vec<String> {
     let Some(prefix) = neoforge_prefix(mc) else { return vec![] };
-    let mut v: Vec<String> = parse_maven_versions(metadata_xml).into_iter().filter(|x| x.starts_with(&prefix)).collect();
-    v.sort_by_key(|x| std::cmp::Reverse(version_key(x)));
-    v
+    sorted_desc(parse_maven_versions(metadata_xml).into_iter().filter(|x| x.starts_with(&prefix)).collect())
 }
 
 /// `promotions_slim.json` : « recommended » puis « latest » (sans doublon) pour ce Minecraft.
@@ -51,10 +56,10 @@ pub fn forge_versions(promotions_json: &str, mc: &str) -> Vec<String> {
     let Ok(v) = serde_json::from_str::<Value>(promotions_json) else { return vec![] };
     let mut out: Vec<String> = Vec::new();
     for kind in ["recommended", "latest"] {
-        if let Some(s) = v.get("promos").and_then(|p| p.get(format!("{mc}-{kind}"))).and_then(Value::as_str) {
-            if !out.iter().any(|o| o == s) {
-                out.push(s.to_string());
-            }
+        if let Some(s) = v.get("promos").and_then(|p| p.get(format!("{mc}-{kind}"))).and_then(Value::as_str)
+            && !out.iter().any(|o| o == s)
+        {
+            out.push(s.to_string());
         }
     }
     out
@@ -66,8 +71,9 @@ mod tests {
 
     #[test]
     fn meta_list_for_fabric_and_quilt() {
-        let j = r#"[{"loader":{"version":"0.20.0-beta.9","build":9},"launcherMeta":{}},{"loader":{"version":"0.20.0-beta.8"}},{"nope":1}]"#;
-        assert_eq!(parse_meta_loaders(j), ["0.20.0-beta.9", "0.20.0-beta.8"]);
+        let j = r#"[{"loader":{"version":"0.20.0-beta.9","build":9},"launcherMeta":{}},{"loader":{"version":"0.31.0-beta.2"}},
+                    {"loader":{"version":"0.31.0-beta.10"}},{"loader":{"version":"0.20.1"}},{"nope":1}]"#;
+        assert_eq!(parse_meta_loaders(j), ["0.31.0-beta.10", "0.31.0-beta.2", "0.20.1", "0.20.0-beta.9"]);
         assert!(parse_meta_loaders("pas du json").is_empty());
     }
 

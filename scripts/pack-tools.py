@@ -24,6 +24,8 @@ def sha256(p):
 
 
 RESERVED = {"pack.toml", "index.toml", "opaline.toml"}  # a la racine du pack seulement
+# Cles de [versions] de pack.toml reconnues comme loader (core/pack.go de packwiz : fabric, quilt, forge, neoforge).
+LOADERS = ("fabric", "quilt", "neoforge", "forge")
 MAX_ZIP_BYTES, MAX_ENTRIES = 50 * 1024 * 1024, 5000  # launcher/src/packwiz.rs PACK_ZIP_MAX_BYTES, PACK_MAX_ENTRIES
 
 
@@ -148,9 +150,10 @@ def catalog(root, base, out):
         verify(d, pt)
         make_zip(d)  # limites de taille et d'entrees
         v = pt["versions"]
-        loaders = [k for k in v if k != "minecraft"]
-        if len(loaders) != 1:
-            sys.exit(f"{d.name}/pack.toml: un seul loader attendu dans [versions], trouve {loaders}")
+        unknown = [k for k in v if k != "minecraft" and k not in LOADERS]
+        loaders = [k for k in v if k in LOADERS]
+        if unknown or len(loaders) != 1:
+            sys.exit(f"{d.name}/pack.toml: un seul loader parmi {'/'.join(LOADERS)} attendu dans [versions], trouve {loaders + unknown}")
         packs.append({
             "id": d.name, "name": o["name"], "description": o["description"],
             "mc": v["minecraft"], "loader": loaders[0], "loaderVersion": v[loaders[0]],

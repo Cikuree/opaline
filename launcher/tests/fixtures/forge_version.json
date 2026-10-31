@@ -1,0 +1,71 @@
+{
+ "_comment": [
+  "Please do not automate the download and installation of Forge.",
+  "Our efforts are supported by ads from the download page.",
+  "If you MUST automate this, please consider supporting the project through https://www.patreon.com/LexManos/"
+ ],
+ "id": "26.3-forge-66.1.0",
+ "time": "2026-10-21T18:04:06Z",
+ "releaseTime": "2026-10-21T18:04:06Z",
+ "inheritsFrom": "26.3",
+ "type": "release",
+ "logging": {},
+ "mainClass": "net.minecraftforge.bootstrap.ForgeBootstrap",
+ "libraries": [
+  {
+   "name": "net.minecraftforge:forge:26.3-66.1.0:universal",
+   "downloads": {
+    "artifact": {
+     "path": "net/minecraftforge/forge/26.3-66.1.0/forge-26.3-66.1.0-universal.jar",
+     "url": "https://maven.minecraftforge.net/net/minecraftforge/forge/26.3-66.1.0/forge-26.3-66.1.0-universal.jar",
+     "sha1": "aed3e71afc72d8751b76ce8c4c27756692e56be4",
+     "size": 2772257
+    }
+   }
+  },
+  {
+   "name": "net.minecraftforge:forge:26.3-66.1.0:client",
+   "downloads": {
+    "artifact": {
+     "path": "net/minecraftforge/forge/26.3-66.1.0/forge-26.3-66.1.0-client.jar",
+     "url": "",
+     "sha1": "9581d4977f841f7ce33bde86954d586981a30c5b",
+     "size": 82957733
+    }
+   }
+  },
+  {
+   "name": "net.minecraftforge:JarJarFileSystems:0.4.2",
+   "downloads": {
+    "artifact": {
+     "path": "net/minecraftforge/JarJarFileSystems/0.4.2/JarJarFileSystems-0.4.2.jar",
+     "url": "https://maven.minecraftforge.net/net/minecraftforge/JarJarFileSystems/0.4.2/JarJarFileSystems-0.4.2.jar",
+     "sha1": "b47957ee0163282fc1116ab71e56c3d5e305d786",
+     "size": 33497
+    }
+   }
+  },
+  {
+   "name": "net.minecraftforge:forge:26.3-66.1.0:client",
+   "downloads": {
+    "artifact": {
+     "path": "net/minecraftforge/forge/26.3-66.1.0/forge-26.3-66.1.0-client.jar",
+     "url": "",
+     "sha1": "9581d4977f841f7ce33bde86954d586981a30c5b",
+     "size": 82957733
+    }
+   }
+  }
+ ],
+ "arguments": {
+  "game": [
+   "--launchTarget",
+   "forge_client"
+  ],
+  "jvm": [
+   "-Djava.net.preferIPv6Addresses=system",
+   "-XX:+UseCompactObjectHeaders",
+   "-XX:StackShadowPages=32"
+  ]
+ }
+}

@@ -600,3 +600,35 @@ fn known_bug_duplicate_destinations_race_on_same_part_file() {
         assert_eq!(fs::read(tmp.0.join("f.bin")).unwrap(), body);
     }
 }
+
+// ---------- Quilt : meta v3, libraries vérifiées par le .sha1 du Maven, hôte non autorisé refusé ----------
+
+#[test]
+fn quilt_install_uses_maven_sha1_and_refuses_unknown_hosts() {
+    let fx = Fx::new("quilt");
+    let toml = fx.pack.join("pack.toml");
+    fs::write(&toml, fs::read_to_string(&toml).unwrap().replace("fabric = ", "quilt = ")).unwrap();
+    let b = fx.srv.url("");
+    let jar = b"quilt-loader-jar".to_vec();
+    let profile = |url: &str| {
+        format!(
+            r#"{{"id":"quilt-loader-{LOADER}-{MC}","inheritsFrom":"{MC}","mainClass":"org.quiltmc.loader.impl.launch.knot.KnotClient","arguments":{{"game":[]}},
+            "libraries":[{{"name":"org.quiltmc:quilt-loader:{LOADER}","url":"{url}"}}]}}"#
+        )
+    };
+    let path = format!("/quilt/v3/versions/loader/{MC}/{LOADER}/profile/json");
+    fx.srv.put(&path, profile("https://evil.example/"));
+    let e = format!("{:#}", fx.install().unwrap_err());
+    assert!(e.contains("hôte non autorisé"), "{e}");
+    assert!(!fx.dirs.install_marker().exists());
+
+    fx.srv.put(&path, profile(&format!("{}/maven/", b.trim_end_matches('/'))));
+    fx.srv.put(&format!("/maven/org/quiltmc/quilt-loader/{LOADER}/quilt-loader-{LOADER}.jar"), jar.clone());
+    fx.srv.put(&format!("/maven/org/quiltmc/quilt-loader/{LOADER}/quilt-loader-{LOADER}.jar.sha1"), sha1_hex(&jar));
+    fx.install().expect("installation Quilt sur fixtures");
+    let lib = fx.dirs.libraries().join(format!("org/quiltmc/quilt-loader/{LOADER}/quilt-loader-{LOADER}.jar"));
+    assert!(Hash::new("sha1", &sha1_hex(&jar)).unwrap().matches_file(&lib).unwrap());
+    assert!(fx.dirs.versions().join(format!("quilt-loader-{LOADER}-{MC}/quilt-loader-{LOADER}-{MC}.json")).is_file());
+    let loaded = install::load_installed(&fx.dirs).unwrap();
+    assert_eq!(loaded.fabric.main_class, "org.quiltmc.loader.impl.launch.knot.KnotClient");
+}
