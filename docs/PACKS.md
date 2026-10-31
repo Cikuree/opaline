@@ -1,6 +1,18 @@
 # Ajouter un modpack dans Opaline
 
-Guide pour l'hôte. Un pack est un dossier `packs/<id>/` : un manifeste [packwiz](https://packwiz.infra.link/) plus un fichier `opaline.toml`. Opaline lit le catalogue `packs.json` généré par la CI à chaque release.
+Un pack est un dossier `packs/<id>/` : un manifeste [packwiz](https://packwiz.infra.link/) plus un fichier `opaline.toml`. Un push sur `main` dans `packs/` suffit : la CI publie le catalogue et le zip sur la release permanente `packs`, sans tag.
+
+## Parcours simple : Opaline Atelier
+
+1. Ouvre Opaline Atelier (application de bureau pour l'hôte).
+2. Dépose le dossier du pack (mods, configs, `options.txt`).
+3. Remplis la fiche : nom, description, vignette, serveur.
+4. Clique sur Publier.
+5. Les joueurs voient le pack dans Opaline après quelques minutes.
+
+## Annexe : méthode manuelle (packwiz)
+
+Les sections ci-dessous décrivent la même chose à la main.
 
 Outils : [packwiz](https://packwiz.infra.link/installation/) (installation), [tutoriel](https://packwiz.infra.link/tutorials/creating/getting-started/), [ajout de mods](https://packwiz.infra.link/tutorials/creating/adding-mods/), [mise à jour](https://packwiz.infra.link/tutorials/updating/updating-mods/).
 
@@ -47,7 +59,7 @@ motd = "Mon pack"             # le MOTD du serveur doit contenir ce texte
 statsPort = 0                 # 0 : pas d'endpoint HTTP (le widget classroomRun n'est utile que pour Classroom Run)
 ```
 
-Valider : `python3 scripts/pack-tools.py catalog --tag v0.0.0 --repo Cikuree/opaline --out /tmp/packs.json`. Une erreur nomme le fichier et le champ fautif. L'adresse du serveur n'est jamais affichée aux joueurs.
+Valider : `python3 scripts/pack-tools.py catalog --base-url https://github.com/Cikuree/opaline/releases/download/packs/ --out /tmp/packs.json`. Une erreur nomme le fichier et le champ fautif. L'adresse du serveur n'est jamais affichée aux joueurs.
 
 ## 4. Serveur du pack (machine Linux + Tailscale)
 
@@ -63,9 +75,9 @@ Sans publier : lancer Opaline en développement avec un `packs.json` local ou co
 
 ## 6. Publier
 
-1. Commit des fichiers de `packs/<id>/`.
-2. Même numéro de version dans `gradle.properties` et dans Opaline, puis tag `vX.Y.Z` (voir `docs/INSTALL.md`, « Publier une version »).
-3. La CI publie `pack-<id>.zip` pour chaque pack et regénère `packs.json` (nombre de mods, `packHash`).
+1. Fichiers hors Modrinth (configs, `options.txt`, mods introuvables) : les mettre dans `packs/<id>/` (ex. `config/…`) ; ils sont indexés par hash et inclus dans le zip.
+2. Commit des fichiers de `packs/<id>/` et push sur `main`. Aucun tag n'est nécessaire.
+3. `packs.yml` publie `pack-<id>.zip` et regénère `packs.json` (nombre de mods, `packHash`) sur la release `packs`.
 
 `packHash` ancre `index.toml`, donc tous les fichiers du pack (chaque métafichier est vérifié par son hash). Les versions MC et loader viennent du `pack.toml` publié dans le même zip, lui-même vérifié par ce hash. `catalog` refuse un pack dont `index.toml` ou un métafichier ne correspond pas aux hashes ; la CI réindexe tous les packs avant le catalogue.
 
@@ -73,11 +85,11 @@ Sans publier : lancer Opaline en développement avec un `packs.json` local ou co
 
 - Mise à jour : `packwiz update <slug>` (ou `packwiz update --all`), puis `packwiz refresh`.
 - Retrait : `packwiz remove <slug>`, puis `packwiz refresh`.
-- Commit, nouveau tag. Au lancement, Opaline détecte la nouvelle version (`packHash` différent) et propose la mise à jour ; son journal liste ajouts, retraits et mises à jour.
+- Commit et push sur `main`. Au lancement, Opaline détecte la nouvelle version (`packHash` différent) et propose la mise à jour ; son journal liste ajouts, retraits et mises à jour.
 
 ## Supprimer un pack
 
-`git rm -r packs/<id>`, commit, nouveau tag. Il disparaît du catalogue. Les installations déjà faites restent sur le disque des joueurs ; ils les suppriment depuis le dossier de données d'Opaline. Arrêter aussi le serveur du pack.
+`git rm -r packs/<id>`, commit et push sur `main`. Il disparaît du catalogue. Les installations déjà faites restent sur le disque des joueurs ; ils les suppriment depuis le dossier de données d'Opaline. Arrêter aussi le serveur du pack.
 
 ## Crédits
 

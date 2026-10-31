@@ -5,8 +5,10 @@
       Regenere index.toml (tous les *.pw.toml de mods/ et shaderpacks/) puis le hash d'index de pack.toml.
   pack-tools.py add-jar --jar J --version X.Y.Z --repo OWNER/REPO [--pack packs/classroom-run]
       Ecrit mods/classroomrun.pw.toml (side both, url = asset de release du depot --repo, sha512 du jar), puis reindexe.
-  pack-tools.py catalog --tag vX.Y.Z --repo OWNER/REPO [--out packs.json]
+  pack-tools.py catalog --base-url https://github.com/OWNER/REPO/releases/download/packs/ [--out packs.json]
       Genere packs.json (contrat Opaline §3) depuis tous les packs/<id>/ ; valide chaque opaline.toml.
+Fichiers bruts (configs, options.txt, mods hors Modrinth...) : tout fichier de packs/<id>/ hors pack.toml, index.toml,
+opaline.toml, *.pw.toml et fichiers caches est indexe (metafile = false, sha256).
 Hashes sha256 sur les octets exacts (packs/ doit rester en LF).
 """
 import argparse, hashlib, json, re, sys, tomllib
@@ -19,11 +21,23 @@ def sha256(p):
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+RESERVED = {"pack.toml", "index.toml", "opaline.toml"}
+
+
+def raw_files(pack):
+    """Fichiers non-metafichier a indexer, tries (ordre stable)."""
+    return sorted(f for f in pack.rglob("*") if f.is_file() and f.name not in RESERVED
+                  and not f.name.endswith(".pw.toml")
+                  and not any(x.startswith(".") for x in f.relative_to(pack).parts))
+
+
 def reindex(pack):
     out = ['hash-format = "sha256"', ""]
     for d in ("mods", "shaderpacks"):
         for f in sorted((pack / d).glob("*.pw.toml")):
             out += ["[[files]]", f'file = "{d}/{f.name}"', f'hash = "{sha256(f)}"', "metafile = true", ""]
+    for f in raw_files(pack):
+        out += ["[[files]]", f'file = "{f.relative_to(pack).as_posix()}"', f'hash = "{sha256(f)}"', ""]
     idx = pack / "index.toml"
     idx.write_bytes("\n".join(out).encode())
     pt = pack / "pack.toml"
@@ -87,11 +101,10 @@ def verify(d, pt):
             sys.exit(f"{d.name}: fichier {e['file']} absent ou different du hash de index.toml (lancer `pack-tools.py index --pack packs/{d.name}`)")
 
 
-def catalog(root, tag, repo, out):
-    if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
-        sys.exit(f"tag invalide: {tag}")
-    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
-        sys.exit(f"depot invalide: {repo}")
+def catalog(root, base, out):
+    if not re.fullmatch(r"https://[\w.-]+/[\w./-]+", base):
+        sys.exit(f"base d'URL invalide: {base}")
+    base = base.rstrip("/") + "/"
     packs = []
     for d in sorted(p for p in root.iterdir() if p.is_dir()):
         if not (d / "pack.toml").is_file():
@@ -107,7 +120,7 @@ def catalog(root, tag, repo, out):
             "mc": v["minecraft"], "loader": loaders[0], "loaderVersion": v[loaders[0]],
             "modsCount": len(list((d / "mods").glob("*.pw.toml"))),
             "thumbnail": o["thumbnail"], "widgets": o["widgets"],
-            "pack": f"https://github.com/{repo}/releases/download/{tag}/pack-{d.name}.zip",
+            "pack": f"{base}pack-{d.name}.zip",
             "packHash": pt["index"]["hash"], "server": o["server"],
         })
     out.write_text(json.dumps({"packs": packs}, ensure_ascii=False, indent=2) + "\n", "utf-8")
@@ -130,16 +143,16 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["index", "add-jar", "catalog"])
     ap.add_argument("--pack", type=Path, default=ROOT / "packs" / "classroom-run")
-    ap.add_argument("--tag")
+    ap.add_argument("--base-url")
     ap.add_argument("--out", type=Path, default=Path("packs.json"))
     ap.add_argument("--jar", type=Path)
     ap.add_argument("--version")
     ap.add_argument("--repo", help="OWNER/REPO des releases (ex. $GITHUB_REPOSITORY)")
     a = ap.parse_args()
     if a.cmd == "catalog":
-        if not (a.tag and a.repo):
-            sys.exit("--tag et --repo requis")
-        catalog(ROOT / "packs", a.tag, a.repo, a.out)
+        if not a.base_url:
+            sys.exit("--base-url requis")
+        catalog(ROOT / "packs", a.base_url, a.out)
         sys.exit(0)
     if a.cmd == "add-jar":
         if not (a.jar and a.jar.is_file() and a.version and a.repo):

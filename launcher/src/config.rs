@@ -3,7 +3,7 @@ use crate::perf::PerfMode;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-/// Dépôt public unique (releases : packs.json, pack-<id>.zip, launcher.json, installeurs).
+/// Dépôt public unique (releases : launcher.json, installeurs ; packs.json et pack-<id>.zip sur la release « packs »).
 pub const REPO: &str = "Cikuree/opaline";
 
 fn release_asset(name: &str) -> String {

@@ -7,6 +7,12 @@ Mods et shaderpacks client/both lus dans packs/<id>/{mods,shaderpacks}/*.pw.toml
 import argparse, hashlib, json, sys, tomllib, urllib.request, zipfile
 from pathlib import Path
 
+import importlib.util
+_spec = importlib.util.spec_from_file_location("pack_tools", Path(__file__).resolve().parent / "pack-tools.py")
+_tools = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_tools)
+raw_files = _tools.raw_files
+
 ROOT = Path(__file__).resolve().parent.parent
 SIDES = {"client", "both"}
 
@@ -58,6 +64,9 @@ def main():
                 z.writestr(f".minecraft/{sub}/{m['filename']}", fetch(d["url"], d["hash-format"], d["hash"]))
                 print(f"{sub}:", m["filename"])
         z.write(a.jar, f".minecraft/mods/{a.jar.name}")
+        # fichiers bruts du pack (configs, options.txt...), memes regles que l'index
+        for f in raw_files(pack_dir):
+            z.write(f, f".minecraft/{f.relative_to(pack_dir).as_posix()}")
         print("mod:", a.jar.name)
     tmp.replace(a.out)
     print("ecrit:", a.out)
