@@ -22,6 +22,11 @@ pub struct Friend {
     pub last_seen: Option<String>,
 }
 
+/// Pseudo Minecraft : 1 à 16 caractères `[A-Za-z0-9_]`.
+pub fn is_mc_name(n: &str) -> bool {
+    (1..=16).contains(&n.len()) && n.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 /// UUID en forme à tirets, minuscules ; `None` si invalide.
 pub fn dashed(u: &str) -> Option<String> {
     let s = crate::head::normalize_uuid(u).ok()?;
@@ -57,7 +62,7 @@ pub fn record(dirs: &Dirs, seen: &[(String, String)], now: u64) -> Vec<Friend> {
     let mut st = load(dirs);
     let mut online = std::collections::BTreeSet::new();
     for (name, uuid) in seen {
-        let (Some(id), true) = (dashed(uuid), !name.is_empty() && name.len() <= 16) else {
+        let (Some(id), true) = (dashed(uuid), is_mc_name(name)) else {
             continue;
         };
         st.players.insert(id.clone(), (name.clone(), now));

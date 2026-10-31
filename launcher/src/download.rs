@@ -157,19 +157,51 @@ fn download_part(client: &Client, url: &str, part: &Path, expected: Option<u64>)
     Ok(())
 }
 
-/// Compteurs partagés avec l'interface.
+/// Compteurs partagés avec l'interface. Les étapes passées gardent leurs compteurs finaux (`finished`) :
+/// un lecteur lent ne rate jamais une étape courte.
 #[derive(Default)]
 pub struct Progress {
     pub done: AtomicUsize,
     pub total: AtomicUsize,
     pub stage: Mutex<String>,
+    finished: Mutex<Vec<(String, usize, usize)>>,
 }
 
 impl Progress {
+    /// Passe à l'étape `s` (clé du contrat : java, minecraft, assets, loader, mods, textures). Même étape : sans effet.
     pub fn set_stage(&self, s: &str) {
-        *self.stage.lock().unwrap() = s.to_string();
+        let mut cur = self.stage.lock().unwrap();
+        if *cur == s {
+            return;
+        }
+        if !cur.is_empty() {
+            // Passer à l'étape suivante = celle-ci est terminée : compteurs finaux cohérents (done = total, au moins 1).
+            let t = self.total.load(Ordering::Relaxed).max(1);
+            self.finished.lock().unwrap().push((cur.clone(), t, t));
+        }
+        *cur = s.to_string();
         self.done.store(0, Ordering::Relaxed);
         self.total.store(0, Ordering::Relaxed);
+    }
+
+    /// Marque l'étape courante comme complète (done = total, au moins 1).
+    pub fn complete_stage(&self) {
+        let t = self.total.load(Ordering::Relaxed).max(1);
+        self.total.store(t, Ordering::Relaxed);
+        self.done.store(t, Ordering::Relaxed);
+    }
+
+    /// Événements à émettre : étapes terminées pas encore lues (ordre d'exécution, compteurs finaux), puis l'étape
+    /// courante (à dédoublonner par l'appelant si elle n'a pas changé).
+    pub fn pending(&self, cursor: &mut usize) -> Vec<(String, usize, usize)> {
+        let cur = self.stage.lock().unwrap().clone();
+        let fin = self.finished.lock().unwrap();
+        let mut out: Vec<_> = fin.iter().skip(*cursor).cloned().collect();
+        *cursor = fin.len();
+        if !cur.is_empty() {
+            out.push((cur, self.done.load(Ordering::Relaxed), self.total.load(Ordering::Relaxed)));
+        }
+        out
     }
 }
 
@@ -255,6 +287,28 @@ mod tests {
         assert!(!already_valid(&job(bad)));
         assert_eq!(part_path(&p).file_name().unwrap(), "a.bin.part");
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn stages_are_reported_once_in_order() {
+        let p = Progress::default();
+        let mut cur = 0;
+        assert!(p.pending(&mut cur).is_empty());
+        p.set_stage("java");
+        p.total.store(2, Ordering::Relaxed);
+        p.done.store(2, Ordering::Relaxed);
+        p.set_stage("java"); // idempotent : ne remet rien à zéro
+        assert_eq!(p.total.load(Ordering::Relaxed), 2);
+        p.set_stage("minecraft");
+        p.set_stage("assets");
+        p.complete_stage();
+        let ev = p.pending(&mut cur);
+        let names: Vec<&str> = ev.iter().map(|e| e.0.as_str()).collect();
+        assert_eq!(names, ["java", "minecraft", "assets"]);
+        assert_eq!(ev[0], ("java".to_string(), 2, 2));
+        assert_eq!(ev[2], ("assets".to_string(), 1, 1));
+        // seule l'étape courante revient ensuite
+        assert_eq!(p.pending(&mut cur).iter().map(|e| e.0.as_str()).collect::<Vec<_>>(), ["assets"]);
     }
 
     #[test]

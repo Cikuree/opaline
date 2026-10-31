@@ -84,6 +84,16 @@ pub fn crop_head(skin_png: &[u8]) -> Result<Vec<u8>> {
     Ok(png_out)
 }
 
+/// PNG décodable de 8×8 pixels.
+fn valid_head(b: &[u8]) -> bool {
+    let Ok(mut r) = png::Decoder::new(std::io::Cursor::new(b)).read_info() else { return false };
+    if (r.info().width, r.info().height) != (8, 8) {
+        return false;
+    }
+    let Some(n) = r.output_buffer_size() else { return false };
+    r.next_frame(&mut vec![0; n]).is_ok()
+}
+
 pub fn data_url(png: &[u8]) -> String {
     format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png))
 }
@@ -93,7 +103,8 @@ pub fn player_head(dirs: &Dirs, client: &Client, uuid: &str, session_server: &st
     let id = normalize_uuid(uuid)?;
     let dir = dirs.cache().join("heads");
     let file = dir.join(format!("{id}.png"));
-    let cached = std::fs::read(&file).ok();
+    // Un cache illisible ou de mauvaise taille est ignoré (puis réécrit après rechargement).
+    let cached = std::fs::read(&file).ok().filter(|b| valid_head(b));
     let fresh =
         std::fs::metadata(&file).and_then(|m| m.modified()).ok().and_then(|t| SystemTime::now().duration_since(t).ok()).is_some_and(|age| age < CACHE_TTL);
     if let (true, Some(b)) = (fresh, &cached) {

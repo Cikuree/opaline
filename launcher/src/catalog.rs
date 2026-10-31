@@ -114,7 +114,7 @@ fn cache_file(dirs: &Dirs) -> std::path::PathBuf {
 
 /// Surcharge de développement : `OPALINE_PACKS_URL` (URL ou chemin de fichier) remplace l'URL de la release.
 fn source() -> String {
-    std::env::var("OPALINE_PACKS_URL").ok().filter(|s| !s.trim().is_empty()).unwrap_or_else(crate::config::packs_json_url)
+    crate::config::dev_env("OPALINE_PACKS_URL").unwrap_or_else(crate::config::packs_json_url)
 }
 
 /// Catalogue publié, sinon dernier catalogue en cache (hors ligne).

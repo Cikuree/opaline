@@ -25,7 +25,7 @@ pub fn configured() -> bool {
 
 /// Mode hors ligne : réservé au développement, activé par `CLASSROOM_DEV_OFFLINE=1`.
 pub fn dev_offline() -> bool {
-    std::env::var("CLASSROOM_DEV_OFFLINE").is_ok_and(|v| v == "1")
+    crate::config::dev_env("CLASSROOM_DEV_OFFLINE").is_some_and(|v| v == "1")
 }
 
 const KEYRING_SERVICE: &str = "Opaline";
@@ -376,6 +376,17 @@ pub fn load_refresh_token() -> Result<Option<String>> {
     }
 }
 
+/// Entrée héritée de l'ancien launcher : effacée à la déconnexion, jamais lue.
+const LEGACY_KEYRING_SERVICE: &str = "ClassroomRunLauncher";
+
+pub fn clear_legacy_token() -> Result<()> {
+    let e = keyring::Entry::new(LEGACY_KEYRING_SERVICE, KEYRING_USER).map_err(|e| anyhow!("trousseau système indisponible : {e}"))?;
+    match e.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => bail!("suppression du trousseau impossible : {e}"),
+    }
+}
+
 /// Efface le refresh token du trousseau (sans toucher à la mémoire).
 pub fn clear_stored_token() -> Result<()> {
     match entry()?.delete_credential() {
@@ -512,7 +523,7 @@ impl AuthManager {
     pub fn sign_out(&self) -> Result<()> {
         let mut g = self.inner.lock().unwrap();
         self.generation.fetch_add(1, Ordering::SeqCst);
-        let r = clear_stored_token();
+        let r = clear_stored_token().and(clear_legacy_token());
         g.session = None;
         g.refresh_token = None;
         r

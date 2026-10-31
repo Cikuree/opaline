@@ -70,12 +70,7 @@ fn order_is_online_first_then_name_case_insensitive() {
 fn invalid_samples_are_skipped() {
     let t = Tmp::new("fr-invalid");
     let d = Dirs::new(t.0.join("root"));
-    let seen = vec![
-        ("trop-long-pour-un-pseudo".into(), uuid(1)),
-        (String::new(), uuid(2)),
-        ("Ok".into(), "pas-un-uuid".into()),
-        ("Valide".into(), uuid(4)),
-    ];
+    let seen = vec![("trop-long-pour-un-pseudo".into(), uuid(1)), (String::new(), uuid(2)), ("Ok".into(), "pas-un-uuid".into()), ("Valide".into(), uuid(4))];
     let out = friends::record(&d, &seen, 10);
     assert_eq!(names(&out), [("Valide", true)]);
 }

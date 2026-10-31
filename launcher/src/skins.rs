@@ -133,6 +133,13 @@ pub struct SkinView {
     pub data_url: String,
 }
 
+/// Verrou de l'index : toute lecture-modification-écriture est atomique (commandes concurrentes de l'interface).
+static INDEX_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn locked() -> std::sync::MutexGuard<'static, ()> {
+    INDEX_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 pub struct Wardrobe {
     dir: PathBuf,
 }
@@ -152,7 +159,9 @@ impl Wardrobe {
 
     fn save(&self, i: &Index) -> Result<()> {
         std::fs::create_dir_all(&self.dir)?;
-        std::fs::write(self.dir.join("index.json"), serde_json::to_vec_pretty(i)?)?;
+        let tmp = self.dir.join("index.json.part");
+        std::fs::write(&tmp, serde_json::to_vec_pretty(i)?)?;
+        std::fs::rename(&tmp, self.dir.join("index.json"))?;
         Ok(())
     }
 
@@ -185,6 +194,11 @@ impl Wardrobe {
     }
 
     pub fn import(&self, name: &str, model: &str, png: &[u8]) -> Result<SkinView> {
+        let _g = locked();
+        self.import_unlocked(name, model, png)
+    }
+
+    fn import_unlocked(&self, name: &str, model: &str, png: &[u8]) -> Result<SkinView> {
         validate_png(png)?;
         let model = parse_model(model)?;
         let mut i = self.index();
@@ -207,12 +221,14 @@ impl Wardrobe {
     }
 
     pub fn rename(&self, id: &str, name: &str) -> Result<()> {
+        let _g = locked();
         let mut i = self.index();
         i.skins.iter_mut().find(|s| s.id == id).context("skin inconnu")?.name = clean_name(name);
         self.save(&i)
     }
 
     pub fn delete(&self, id: &str) -> Result<()> {
+        let _g = locked();
         let mut i = self.index();
         let before = i.skins.len();
         i.skins.retain(|s| s.id != id);
@@ -227,6 +243,11 @@ impl Wardrobe {
     }
 
     pub fn set_active(&self, id: Option<&str>) -> Result<()> {
+        let _g = locked();
+        self.set_active_unlocked(id)
+    }
+
+    fn set_active_unlocked(&self, id: Option<&str>) -> Result<()> {
         let mut i = self.index();
         i.active = id.map(str::to_string);
         self.save(&i)
@@ -234,11 +255,12 @@ impl Wardrobe {
 
     /// Ajoute le skin actuel du compte (s'il n'y est pas déjà) et le marque actif.
     pub fn adopt_current(&self, png: &[u8], model: &str) -> Result<()> {
+        let _g = locked();
         let id = Self::id_of(png);
         if !self.index().skins.iter().any(|s| s.id == id) {
-            self.import("Skin actuel", model, png)?;
+            self.import_unlocked("Skin actuel", model, png)?;
         }
-        self.set_active(Some(&id))
+        self.set_active_unlocked(Some(&id))
     }
 }
 

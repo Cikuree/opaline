@@ -186,7 +186,6 @@ fn profile_with_foreign_texture_is_refused_and_not_cached() {
 }
 
 #[test]
-#[ignore = "bug: le cache des têtes n'est pas validé à la lecture (launcher/src/head.rs:96-100), à corriger côté code"]
 fn bug_corrupt_head_cache_should_be_ignored_and_refetched() {
     let t = Tmp::new("head-bug");
     let dirs = Dirs::new(t.0.join("root"));

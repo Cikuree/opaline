@@ -47,9 +47,17 @@ impl Config {
     }
 }
 
+/// Variable d'environnement de développement : lue seulement dans un build debug (jamais en release).
+pub fn dev_env(name: &str) -> Option<String> {
+    if !cfg!(debug_assertions) {
+        return None;
+    }
+    std::env::var(name).ok().filter(|s| !s.trim().is_empty())
+}
+
 /// Surcharge de développement : `CLASSROOM_SERVER` (`hôte[:port]`) remplace l'adresse de tout serveur de pack.
 fn server_override() -> Option<String> {
-    std::env::var("CLASSROOM_SERVER").ok().filter(|s| !s.trim().is_empty())
+    dev_env("CLASSROOM_SERVER")
 }
 
 /// Vrai si l'adresse est surchargée (dev) : Tailscale n'est alors pas exigé.
@@ -102,7 +110,7 @@ impl Dirs {
     /// `%APPDATA%/Opaline` (Windows), `~/.local/share/Opaline` (Linux), etc.
     /// Surcharge possible par la variable d'environnement `OPALINE_HOME`.
     pub fn default_root() -> PathBuf {
-        if let Some(p) = std::env::var_os("OPALINE_HOME") {
+        if let Some(p) = dev_env("OPALINE_HOME") {
             return PathBuf::from(p);
         }
         directories::BaseDirs::new().map(|d| d.data_dir().join("Opaline")).unwrap_or_else(|| PathBuf::from("Opaline"))

@@ -24,7 +24,10 @@ fn valid_catalog_gives_supported_fabric_and_refused_other_loader() {
     let f = t.0.join("packs.json");
     write_catalog(
         &f,
-        &[catalog_entry("classroom-run", "fabric", "https://github.com/x/pack.zip", HASH), catalog_entry("neo", "neoforge", "https://github.com/x/neo.zip", HASH)],
+        &[
+            catalog_entry("classroom-run", "fabric", "https://github.com/x/pack.zip", HASH),
+            catalog_entry("neo", "neoforge", "https://github.com/x/neo.zip", HASH),
+        ],
     );
     set_env("OPALINE_PACKS_URL", f.to_str().unwrap());
     let dirs = Dirs::new(t.0.join("data"));

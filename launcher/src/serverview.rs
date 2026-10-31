@@ -66,10 +66,18 @@ pub fn build(st: Option<&ServerStatus>, motd: &str, ts: TailscaleState, overridd
     }
 }
 
+/// État Tailscale pour cette exécution (adresse de dev : Tailscale non exigé).
+pub fn tailscale_info() -> tailscale::TailscaleInfo {
+    if crate::config::server_overridden() { tailscale::TailscaleInfo { state: TailscaleState::Connected, magic_dns_suffix: None } } else { tailscale::status() }
+}
+
 /// Une vérification : Tailscale (3 s au plus) puis ping du serveur du pack (3 s au plus).
 pub fn check(e: &PackEntry) -> (ServerView, Option<ServerStatus>) {
+    check_with(e, &tailscale_info())
+}
+
+pub fn check_with(e: &PackEntry, info: &tailscale::TailscaleInfo) -> (ServerView, Option<ServerStatus>) {
     let overridden = crate::config::server_overridden();
-    let info = if overridden { tailscale::TailscaleInfo { state: TailscaleState::Connected, magic_dns_suffix: None } } else { tailscale::status() };
     let st = if !overridden && info.state != TailscaleState::Connected {
         None
     } else {

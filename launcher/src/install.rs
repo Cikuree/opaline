@@ -126,7 +126,7 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
         _ => {}
     }
-    progress.set_stage("mods");
+    progress.set_stage("java");
     let pack = packwiz::load_pack(&p.pack_dir)?;
     let marker = marker_for(&pack)?;
     let (mc, loader) = (marker.minecraft.clone(), marker.fabric.clone());
@@ -138,7 +138,6 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
         p.mod_jar.as_deref().map(|j| find_mod_jar(Some(j), &p.pack_dir)).transpose()?
     };
 
-    progress.set_stage("minecraft");
     let version = fetch_version_json(client, dirs, ep, &mc)?;
 
     validate_version(&version, &mc)?;
@@ -148,6 +147,7 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
         None => install_java(client, dirs, ep, major, progress)?,
     };
 
+    progress.complete_stage();
     progress.set_stage("minecraft");
     let env = Env::current(&[]);
     let mut jobs = vec![sha1_job(&version.downloads.client.url, dirs.client_jar(&version.id), &version.downloads.client.sha1, version.downloads.client.size)?];
