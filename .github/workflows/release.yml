@@ -73,7 +73,8 @@ jobs:
           BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
           # pack.zip : contenu de pack/ a la racine, avec classroomrun.pw.toml et index recalcules
           zip -qr dist/pack.zip pack
-          printf '{"version":"%s","windows":"%s/classroom-launcher-windows.exe","linux":"%s/classroom-launcher-linux","pack":"%s/pack.zip"}\n' \
-            "$VERSION" "$BASE" "$BASE" "$BASE" > dist/launcher.json
+          PACK_HASH=$(python3 -c "import tomllib;print(tomllib.load(open('pack/pack.toml','rb'))['index']['hash'])")
+          printf '{"version":"%s","windows":"%s/classroom-launcher-windows.exe","linux":"%s/classroom-launcher-linux","pack":"%s/pack.zip","pack_hash":"%s"}\n' \
+            "$VERSION" "$BASE" "$BASE" "$BASE" "$PACK_HASH" > dist/launcher.json
           gh release create "$GITHUB_REF_NAME" "$JAR" dist/launchers/* dist/classroom-run-prism.zip dist/pack.zip dist/launcher.json \
             --title "$GITHUB_REF_NAME" --generate-notes
