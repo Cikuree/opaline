@@ -180,7 +180,7 @@ public final class RunManager {
 			return;
 		}
 		try {
-			this.http = new StatsHttpServer(this.config.httpBind, port);
+			this.http = new StatsHttpServer(this.config.httpBind, port, this.journal.store());
 			this.http.start();
 			ClassroomRun.LOGGER.info("Stats endpoint listening on {}:{}", this.config.httpBind, port);
 		} catch (IOException | RuntimeException e) {

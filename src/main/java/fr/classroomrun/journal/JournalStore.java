@@ -121,4 +121,16 @@ public final class JournalStore {
 		out.sort(Comparator.comparingInt(RunSummary::run).reversed());
 		return out;
 	}
+
+	/** Index JSON (CONTRACT.md "Index"), same generator as {@code HistoryPayload}. */
+	public String indexJson(int maxChars) {
+		return HistoryJson.index(summaries(), maxChars);
+	}
+
+	/** Detail JSON of one run (CONTRACT.md "Détail"); an unknown run gives an empty {@code deaths}. */
+	public String detailJson(int run, int maxChars) {
+		JournalReader.Parsed p = run(run);
+		return p == null ? HistoryJson.detail(run, "", List.of(), maxChars)
+				: HistoryJson.detail(run, p.summary().startedAt(), p.deaths(), maxChars);
+	}
 }

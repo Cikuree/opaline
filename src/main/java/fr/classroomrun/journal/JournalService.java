@@ -220,6 +220,10 @@ public final class JournalService {
 		this.limiter.forget(player.getUUID());
 	}
 
+	public JournalStore store() {
+		return this.store;
+	}
+
 	// ---------------------------------------------------------------- history requests
 
 	private void onRequest(ServerPlayer player, int runNumber) {
@@ -227,14 +231,8 @@ public final class JournalService {
 			return;
 		}
 		this.io.execute(() -> {
-			String json;
-			if (runNumber == HistoryRequestPayload.INDEX) {
-				json = HistoryJson.index(this.store.summaries(), HistoryPayload.MAX_JSON);
-			} else {
-				JournalReader.Parsed p = this.store.run(runNumber);
-				json = p == null ? HistoryJson.detail(runNumber, "", List.of(), HistoryPayload.MAX_JSON)
-						: HistoryJson.detail(runNumber, p.summary().startedAt(), p.deaths(), HistoryPayload.MAX_JSON);
-			}
+			String json = runNumber == HistoryRequestPayload.INDEX ? this.store.indexJson(HistoryPayload.MAX_JSON)
+					: this.store.detailJson(runNumber, HistoryPayload.MAX_JSON);
 			HistoryPayload payload = new HistoryPayload(runNumber, json);
 			this.server.execute(() -> {
 				if (!player.hasDisconnected()) {
