@@ -1,7 +1,7 @@
 //! Construction de la ligne de commande Java et lancement du jeu.
 use crate::auth::Session;
 use crate::config::Dirs;
-use crate::fabric::{FabricProfile, maven_path};
+use crate::fabric::FabricProfile;
 use crate::mojang::{Env, VersionJson, applicable_libraries, expand_args};
 use crate::safe::safe_join;
 use anyhow::{Context, Result};
@@ -43,16 +43,18 @@ pub fn classpath(i: &LaunchInput) -> Result<Vec<PathBuf>> {
         push(lib_key(&l.name), safe_join(&libs, &a.path)?);
     }
     for l in &i.fabric.libraries {
-        push(lib_key(&l.name), safe_join(&libs, &maven_path(&l.name)?)?);
+        push(lib_key(&l.name), safe_join(&libs, &l.rel_path()?)?);
     }
     let mut cp: Vec<PathBuf> = entries.into_iter().map(|(_, p)| p).collect();
-    cp.push(i.dirs.client_jar(&i.version.id));
+    // Forge / NeoForge : le jar client porte le nom du loader (`${version_name}.jar` de leur ignoreList), copié à l'installation.
+    cp.push(i.dirs.client_jar(i.fabric.version_name.as_deref().unwrap_or(&i.version.id)));
     Ok(cp)
 }
 
 /// Retourne `[java, args...]`. Fonction pure (aucun accès disque ni réseau).
 pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
     let sep = if i.env.os == "windows" { ";" } else { ":" };
+    let libs = i.dirs.libraries();
     let cp = classpath(i)?.iter().map(|p| p.to_string_lossy().into_owned()).collect::<Vec<_>>().join(sep);
     let vars: HashMap<&str, String> = HashMap::from([
         ("auth_player_name", i.session.username.clone()),
@@ -61,7 +63,9 @@ pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
         ("auth_xuid", i.session.xuid.clone()),
         ("user_type", i.session.user_type.to_string()),
         ("clientid", i.session.client_id.clone()),
-        ("version_name", i.version.id.clone()),
+        ("version_name", i.fabric.version_name.clone().unwrap_or_else(|| i.version.id.clone())),
+        ("library_directory", libs.to_string_lossy().into_owned()),
+        ("classpath_separator", sep.into()),
         ("version_type", "release".into()),
         ("game_directory", i.dirs.instance().to_string_lossy().into_owned()),
         ("assets_root", i.dirs.assets().to_string_lossy().into_owned()),

@@ -169,6 +169,9 @@ pub fn install_endpoints(srv: &Server) -> Endpoints {
     Endpoints {
         mojang_manifest: format!("{b}/manifest.json"),
         fabric_meta: format!("{b}/fabric"),
+        quilt_meta: format!("{b}/quilt"),
+        neoforge_maven: format!("{b}/neoforge"),
+        forge_maven: format!("{b}/forge"),
         adoptium: format!("{b}/adoptium"),
         assets: format!("{b}/assets"),
     }

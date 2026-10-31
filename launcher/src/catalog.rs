@@ -62,9 +62,9 @@ pub struct PackView {
 }
 
 impl PackEntry {
-    /// Seul Fabric est installable pour l'instant.
+    /// Fabric, Quilt, NeoForge et Forge sont installables.
     pub fn supported(&self) -> bool {
-        self.loader.eq_ignore_ascii_case("fabric")
+        crate::loader::LoaderKind::parse(&self.loader).is_some()
     }
 
     pub fn view(&self, installed_hash: Option<&str>, installed: bool) -> PackView {
@@ -161,7 +161,7 @@ mod tests {
        "thumbnail":"ender_eye","widgets":["classroomRun","server"],"pack":"https://github.com/x/pack-classroom-run.zip","packHash":"ABCDEF0123",
        "server":{"host":"home-server","port":25565,"motd":"Classroom Run","statsPort":25580}},
       {"id":"../evil","name":"x","mc":"1","loader":"fabric","pack":"https://x","packHash":"abcdef0123","server":{"host":"a","port":1,"motd":"m"}},
-      {"id":"neo","name":"Neo","mc":"1","loader":"neoforge","pack":"https://x/n.zip","packHash":"abcdef0123","server":{"host":"neo","port":1,"motd":"m"}},
+      {"id":"neo","name":"Neo","mc":"1","loader":"bedrock","pack":"https://x/n.zip","packHash":"abcdef0123","server":{"host":"neo","port":1,"motd":"m"}},
       {"id":"http","name":"x","mc":"1","loader":"fabric","pack":"http://evil/x.zip","packHash":"abcdef0123","server":{"host":"a","port":1,"motd":"m"}},
       {"id":"nosrv","name":"Sans","mc":"1","loader":"fabric","pack":"https://x/s.zip","packHash":"abcdef0123","server":null},
       {"id":"nosrv2","name":"Sans2","mc":"1","loader":"fabric","pack":"https://x/s.zip","packHash":"abcdef0123"},

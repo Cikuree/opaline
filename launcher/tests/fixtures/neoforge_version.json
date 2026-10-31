@@ -1,0 +1,61 @@
+{
+ "id": "neoforge-26.3.0.100",
+ "time": "2026-10-31T03:57:52.065034214",
+ "releaseTime": "2026-10-31T03:57:52.065034214",
+ "type": "release",
+ "mainClass": "net.neoforged.fml.startup.Client",
+ "inheritsFrom": "26.3",
+ "arguments": {
+  "game": [
+   "--fml.neoForgeVersion",
+   "26.3.0.100",
+   "--fml.mcVersion",
+   "26.3",
+   "--fml.neoFormVersion",
+   "1"
+  ],
+  "jvm": [
+   "-Djava.net.preferIPv6Addresses=system",
+   "-DlibraryDirectory=${library_directory}",
+   "--add-opens",
+   "java.base/java.lang.invoke=ALL-UNNAMED",
+   "--add-exports",
+   "jdk.naming.dns/com.sun.jndi.dns=java.naming"
+  ]
+ },
+ "libraries": [
+  {
+   "name": "net.neoforged.fancymodloader:earlydisplay:12.0.12",
+   "downloads": {
+    "artifact": {
+     "sha1": "08437387fd35033b1ea0d3fac7cc28ced4efdc6b",
+     "size": 393248,
+     "url": "https://maven.neoforged.net/releases/net/neoforged/fancymodloader/earlydisplay/12.0.12/earlydisplay-12.0.12.jar",
+     "path": "net/neoforged/fancymodloader/earlydisplay/12.0.12/earlydisplay-12.0.12.jar"
+    }
+   }
+  },
+  {
+   "name": "net.neoforged.fancymodloader:loader:12.0.12",
+   "downloads": {
+    "artifact": {
+     "sha1": "f097a25d6289aa0b289e7cdb6de83a5c8c72f77e",
+     "size": 664069,
+     "url": "https://maven.neoforged.net/releases/net/neoforged/fancymodloader/loader/12.0.12/loader-12.0.12.jar",
+     "path": "net/neoforged/fancymodloader/loader/12.0.12/loader-12.0.12.jar"
+    }
+   }
+  },
+  {
+   "name": "net.neoforged:accesstransformers:11.0.2",
+   "downloads": {
+    "artifact": {
+     "sha1": "25dcb69c78b16669935f0ab91dff830ce192379d",
+     "size": 20292,
+     "url": "https://maven.neoforged.net/releases/net/neoforged/accesstransformers/11.0.2/accesstransformers-11.0.2.jar",
+     "path": "net/neoforged/accesstransformers/11.0.2/accesstransformers-11.0.2.jar"
+    }
+   }
+  }
+ ]
+}

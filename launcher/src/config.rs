@@ -201,8 +201,9 @@ impl Dirs {
     }
 }
 
-pub fn fabric_profile_id(loader: &str, mc: &str) -> String {
-    format!("fabric-loader-{loader}-{mc}")
+/// Identifiant du profil Fabric ou Quilt (`<kind>-loader-<version>-<mc>`, comme dans leurs JSON).
+pub fn fabric_profile_id(kind: &str, loader: &str, mc: &str) -> String {
+    format!("{kind}-loader-{loader}-{mc}")
 }
 
 #[cfg(test)]

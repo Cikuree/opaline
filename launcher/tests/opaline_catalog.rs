@@ -18,7 +18,7 @@ fn write_catalog(path: &std::path::Path, entries: &[String]) {
 }
 
 #[test]
-fn valid_catalog_gives_supported_fabric_and_refused_other_loader() {
+fn valid_catalog_gives_supported_fabric_and_refused_unknown_loader() {
     let _g = env_lock();
     let t = Tmp::new("cat-valid");
     let f = t.0.join("packs.json");
@@ -26,7 +26,7 @@ fn valid_catalog_gives_supported_fabric_and_refused_other_loader() {
         &f,
         &[
             catalog_entry("classroom-run", "fabric", "https://github.com/x/pack.zip", HASH),
-            catalog_entry("neo", "neoforge", "https://github.com/x/neo.zip", HASH),
+            catalog_entry("neo", "bedrock", "https://github.com/x/neo.zip", HASH),
         ],
     );
     set_env("OPALINE_PACKS_URL", f.to_str().unwrap());
@@ -38,24 +38,24 @@ fn valid_catalog_gives_supported_fabric_and_refused_other_loader() {
     let cr = views.iter().find(|v| v.id == "classroom-run").unwrap();
     assert!(cr.supported && !cr.installed && !cr.update_available && cr.installed_version_hash.is_none());
     let neo = views.iter().find(|v| v.id == "neo").unwrap();
-    assert!(!neo.supported, "neoforge doit être non pris en charge");
+    assert!(!neo.supported, "un loader inconnu doit être non pris en charge");
     let j = serde_json::to_value(cr).unwrap();
     assert!(j.get("updateAvailable").is_some() && j.get("installedVersionHash").is_some());
     unset_env("OPALINE_PACKS_URL");
 }
 
 #[test]
-fn non_fabric_pack_install_is_refused_before_any_download() {
+fn unknown_loader_pack_install_is_refused_before_any_download() {
     let _g = env_lock();
     let srv = Server::start();
     let t = Tmp::new("cat-neo");
     let f = t.0.join("packs.json");
-    write_catalog(&f, &[catalog_entry("neo", "neoforge", &srv.url("/pack.zip"), HASH)]);
+    write_catalog(&f, &[catalog_entry("neo", "bedrock", &srv.url("/pack.zip"), HASH)]);
     set_env("OPALINE_PACKS_URL", f.to_str().unwrap());
     let dirs = Dirs::new(t.0.join("data"));
 
     let err = service::install_pack(&dirs, "neo", &Arc::new(Progress::default()), None).unwrap_err().to_string();
-    assert!(err.contains("pas pris en charge") && err.contains("neoforge"), "{err}");
+    assert!(err.contains("pas pris en charge") && err.contains("bedrock"), "{err}");
     assert_eq!(srv.count("/pack.zip"), 0, "aucun téléchargement pour un loader refusé");
     assert!(!dirs.for_pack("neo").unwrap().install_marker().exists());
     unset_env("OPALINE_PACKS_URL");

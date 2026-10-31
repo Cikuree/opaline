@@ -1,4 +1,5 @@
 //! Lecture du manifeste packwiz depuis un dossier local (ou le pack.zip de la release, extrait puis lu ici).
+use crate::loader::LoaderKind;
 use crate::safe::{Hash, safe_file_name, safe_join};
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
@@ -20,6 +21,30 @@ struct PackIndex {
 pub struct Versions {
     pub minecraft: String,
     pub fabric: Option<String>,
+    pub quilt: Option<String>,
+    pub forge: Option<String>,
+    pub neoforge: Option<String>,
+}
+
+impl Versions {
+    /// Loader du pack : clés `fabric`, `quilt`, `forge`, `neoforge` de `[versions]` (core/pack.go de packwiz). Une seule attendue.
+    pub fn loader(&self) -> Result<(LoaderKind, String)> {
+        let found: Vec<(LoaderKind, String)> = [
+            (LoaderKind::Fabric, &self.fabric),
+            (LoaderKind::Quilt, &self.quilt),
+            (LoaderKind::NeoForge, &self.neoforge),
+            (LoaderKind::Forge, &self.forge),
+        ]
+        .into_iter()
+        .filter_map(|(k, v)| Some((k, v.as_ref()?.trim().to_string())))
+        .filter(|(_, v)| !v.is_empty())
+        .collect();
+        match found.as_slice() {
+            [one] => Ok(one.clone()),
+            [] => bail!("pack.toml : aucun loader dans [versions] (fabric, quilt, neoforge ou forge)"),
+            _ => bail!("pack.toml : un seul loader attendu dans [versions]"),
+        }
+    }
 }
 #[derive(Deserialize)]
 struct IndexToml {
@@ -287,6 +312,7 @@ mod tests {
         let t = "[index]\nfile=\"index.toml\"\nhash-format=\"sha256\"\nhash=\"AB\"\n[versions]\nfabric=\"0.20.1\"\nminecraft=\"26.3\"\n";
         let (v, f, h) = parse_pack(t).unwrap();
         assert_eq!((v.minecraft.as_str(), v.fabric.as_deref(), f.as_str()), ("26.3", Some("0.20.1"), "index.toml"));
+        assert_eq!(v.loader().unwrap(), (LoaderKind::Fabric, "0.20.1".to_string()));
         assert_eq!(h.expected(), "ab");
     }
 }
