@@ -1,5 +1,7 @@
-//! Serveur HTTP de fixtures local (std uniquement) : Range honoré/ignoré, coupure, 404/500.
-use std::collections::HashMap;
+//! Serveur HTTP de fixtures local (std uniquement) : Range honoré/ignoré, coupure, 404/500,
+//! réponses scriptées par chemin (file d'attente) et requêtes journalisées avec corps et `Authorization`.
+#![allow(dead_code)]
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
@@ -13,6 +15,8 @@ pub enum Mode {
     TruncateOnce(usize),
     /// Répond ce code HTTP sans contenu utile.
     Status(u16),
+    /// Répond ce code HTTP avec le corps de la route (JSON pour les API).
+    Reply(u16),
 }
 
 struct Route {
@@ -22,32 +26,48 @@ struct Route {
 
 #[derive(Clone, Debug)]
 pub struct Req {
+    pub method: String,
     pub path: String,
     pub range: Option<String>,
+    /// En-tête `Authorization` brut (ex. `Bearer ...`).
+    pub auth: Option<String>,
+    /// Corps de la requête (formulaire ou JSON pour les POST).
+    pub body: Vec<u8>,
 }
 
-type Routes = Arc<Mutex<HashMap<String, Route>>>;
+impl Req {
+    pub fn body_text(&self) -> String {
+        String::from_utf8_lossy(&self.body).into_owned()
+    }
+}
+
+type Queue = VecDeque<(u16, Vec<u8>)>;
+
+#[derive(Default)]
+struct Shared {
+    routes: Mutex<HashMap<String, Route>>,
+    queues: Mutex<HashMap<String, Queue>>,
+    log: Mutex<Vec<Req>>,
+}
 
 pub struct Server {
     pub base: String,
-    routes: Routes,
-    log: Arc<Mutex<Vec<Req>>>,
+    shared: Arc<Shared>,
 }
 
 impl Server {
     pub fn start() -> Server {
         let l = TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", l.local_addr().unwrap());
-        let routes: Routes = Arc::default();
-        let log: Arc<Mutex<Vec<Req>>> = Arc::default();
-        let (r, g) = (routes.clone(), log.clone());
+        let shared = Arc::new(Shared::default());
+        let s2 = shared.clone();
         std::thread::spawn(move || {
             for s in l.incoming().flatten() {
-                let (r, g) = (r.clone(), g.clone());
-                std::thread::spawn(move || handle(s, &r, &g));
+                let sh = s2.clone();
+                std::thread::spawn(move || handle(s, &sh));
             }
         });
-        Server { base, routes, log }
+        Server { base, shared }
     }
 
     pub fn url(&self, path: &str) -> String {
@@ -59,11 +79,17 @@ impl Server {
     }
 
     pub fn put_mode(&self, path: &str, body: impl Into<Vec<u8>>, mode: Mode) {
-        self.routes.lock().unwrap().insert(path.to_string(), Route { body: body.into(), mode });
+        self.shared.routes.lock().unwrap().insert(path.to_string(), Route { body: body.into(), mode });
+    }
+
+    /// Réponses successives pour `path` (code, corps) ; une fois la file vide, la route reprend.
+    pub fn queue(&self, path: &str, replies: &[(u16, &str)]) {
+        let q = replies.iter().map(|(c, b)| (*c, b.as_bytes().to_vec())).collect();
+        self.shared.queues.lock().unwrap().insert(path.to_string(), q);
     }
 
     pub fn requests(&self) -> Vec<Req> {
-        self.log.lock().unwrap().clone()
+        self.shared.log.lock().unwrap().clone()
     }
 
     pub fn count(&self, prefix: &str) -> usize {
@@ -77,28 +103,47 @@ pub fn dead_base() -> String {
     format!("http://{}", l.local_addr().unwrap())
 }
 
-fn handle(mut s: TcpStream, routes: &Routes, log: &Arc<Mutex<Vec<Req>>>) {
+fn handle(mut s: TcpStream, sh: &Shared) {
     let mut buf = Vec::new();
     let mut tmp = [0u8; 1024];
-    while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+    let head_end = loop {
+        if let Some(i) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+            break i + 4;
+        }
         let n = s.read(&mut tmp).unwrap_or(0);
         if n == 0 {
             return;
         }
         buf.extend_from_slice(&tmp[..n]);
-    }
-    let text = String::from_utf8_lossy(&buf).into_owned();
-    let mut lines = text.lines();
-    let target = lines.next().unwrap_or("").split(' ').nth(1).unwrap_or("/").to_string();
+    };
+    let head = String::from_utf8_lossy(&buf[..head_end]).into_owned();
+    let mut lines = head.lines();
+    let mut first = lines.next().unwrap_or("").split(' ');
+    let method = first.next().unwrap_or("").to_string();
+    let target = first.next().unwrap_or("/").to_string();
     let path = target.split('?').next().unwrap_or("/").to_string();
-    let range = lines.find_map(|l| {
-        let (k, v) = l.split_once(':')?;
-        k.eq_ignore_ascii_case("range").then(|| v.trim().to_string())
-    });
-    log.lock().unwrap().push(Req { path: path.clone(), range: range.clone() });
+    let headers: Vec<(String, String)> =
+        lines.filter_map(|l| l.split_once(':').map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string()))).collect();
+    let get = |k: &str| headers.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+    let range = get("range");
+    let len: usize = get("content-length").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let mut body = buf[head_end..].to_vec();
+    while body.len() < len {
+        let n = s.read(&mut tmp).unwrap_or(0);
+        if n == 0 {
+            break;
+        }
+        body.extend_from_slice(&tmp[..n]);
+    }
+    body.truncate(len);
+    sh.log.lock().unwrap().push(Req { method, path: path.clone(), range: range.clone(), auth: get("authorization"), body });
 
+    let queued = sh.queues.lock().unwrap().get_mut(&path).and_then(|q| q.pop_front());
+    if let Some((c, b)) = queued {
+        return reply(&mut s, &format!("{c} Fixture"), &[], &b, None);
+    }
     let found = {
-        let mut m = routes.lock().unwrap();
+        let mut m = sh.routes.lock().unwrap();
         m.get_mut(&path).map(|r| {
             let snapshot = (r.body.clone(), r.mode.clone());
             if matches!(r.mode, Mode::TruncateOnce(_)) {
@@ -112,6 +157,9 @@ fn handle(mut s: TcpStream, routes: &Routes, log: &Arc<Mutex<Vec<Req>>>) {
     };
     if let Mode::Status(c) = mode {
         return reply(&mut s, &format!("{c} Fixture"), &[], b"status", None);
+    }
+    if let Mode::Reply(c) = mode {
+        return reply(&mut s, &format!("{c} Fixture"), &[], &body, None);
     }
     let start = range
         .filter(|_| !matches!(mode, Mode::IgnoreRange))
