@@ -32,4 +32,4 @@ jobs:
             cargo test --locked
           fi
       - name: Packs
-        run: python3 scripts/pack-tools.py catalog --tag v0.0.0 --repo Cikuree/opaline --out "$RUNNER_TEMP/packs.json"
+        run: python3 scripts/pack-tools.py catalog --base-url https://github.com/Cikuree/opaline/releases/download/packs/ --out "$RUNNER_TEMP/packs.json"
