@@ -76,9 +76,11 @@ function renderHero(p, st, cr) {
   $('#heroStats').innerHTML = cr
     ? `<div><b id="chrono">${s ? hms(s.totalTimeMs) : '—'}</b><span>Chrono total</span></div><div><b>${s ? Number(s.deaths) : '—'}</b><span>Morts cumulées</span></div><div><b style="font-size:clamp(14px,4cqi,18px);line-height:1.4">${best ? esc(best.label) : '—'}</b><span>Meilleur split</span></div>`
     : `<div><b>${Number(p.modsCount)}</b><span>Mods</span></div><div><b>${esc(p.mc)}</b><span>Minecraft</span></div><div><b style="font-size:18px;line-height:1.4">${esc(loaderName(p.loader))}</b><span>Chargeur</span></div>`;
-  $('#heroArt').innerHTML = cr
+  const art = cr
     ? tex('ender_eye', 96, 'dragon sm') + tex('blaze_rod', 48, 'eye') + tex('diamond', 48, 'dia') + tex('ender_pearl', 32, 'p3') + tex('end_stone', 32, 'p4')
     : tex(p.thumbnail, 80, 'dragon sm') + tex('diamond', 48, 'eye') + tex('diamond_pickaxe', 48, 'dia');
+  // Réécrire le même contenu relancerait l'animation de flottement (saut visible à chaque rafraîchissement).
+  if ($('#heroArt').dataset.art !== art) { $('#heroArt').innerHTML = art; $('#heroArt').dataset.art = art; }
   const play = $('#btnPlay'), busy = !!state.install;
   $('.bl', play).textContent = st === 'no' ? 'INSTALLER' : st === 'unsupported' ? 'INDISPONIBLE' : state.inGame ? 'EN JEU' : 'JOUER';
   play.firstElementChild.firstElementChild.setAttribute('href', st === 'no' ? '#i-down' : '#i-play');
