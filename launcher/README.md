@@ -14,7 +14,7 @@ Les chemins issus des manifestes sont normalisés et refusés s'ils sortent du d
 
 ## Pack, mods et shaders
 
-- Par défaut le pack vient de `https://github.com/Cikuree/classroom-run/releases/latest/download/pack.zip`
+- Par défaut le pack vient de `https://github.com/Cikuree/opaline/releases/latest/download/pack.zip`
   (constante `config::REPO`). Le zip est extrait dans `downloads/pack-remote` (zip-slip refusé), puis les hashes sont
   vérifiés : `pack.toml` -> `index.toml` -> chaque `.pw.toml` -> fichier téléchargé.
 - Option avancée (dev) : `pack_dir` (config.json, ou `--pack`) = dossier local contenant `pack.toml`, qui remplace le zip.

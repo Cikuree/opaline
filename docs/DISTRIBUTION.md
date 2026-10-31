@@ -1,6 +1,6 @@
 # Distribution
 
-Tout le projet vit dans un seul dépôt public : https://github.com/Cikuree/classroom-run (code, pack, CI, releases). L'ancien dépôt privé `OddNode-design/classroom-run` est archivé.
+Tout le projet vit dans un seul dépôt public : https://github.com/Cikuree/opaline (code, pack, CI, releases). L'ancien dépôt privé `OddNode-design/classroom-run` est archivé.
 
 ## Releases (tag `vX.Y.Z`, publiées par la CI avec `GITHUB_TOKEN`)
 
@@ -15,7 +15,7 @@ Tout le projet vit dans un seul dépôt public : https://github.com/Cikuree/clas
 
 ## Fonctionnement du launcher
 
-- Il lit `https://github.com/Cikuree/classroom-run/releases/latest/download/launcher.json` et `.../latest/download/pack.zip`.
+- Il lit `https://github.com/Cikuree/opaline/releases/latest/download/launcher.json` et `.../latest/download/pack.zip`.
 - Les hashes sont vérifiés de bout en bout : `pack.toml` → `index.toml` → chaque `.pw.toml` → fichier téléchargé.
 - Le shaderpack Complementary Reimagined n'est référencé que par son lien Modrinth. Le zip n'est jamais redistribué (crédits dans `CREDITS.md`).
 

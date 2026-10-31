@@ -4,7 +4,7 @@ use crate::perf::PerfMode;
 use std::path::PathBuf;
 
 /// Dépôt public unique (releases : pack.zip, launcher.json, binaires).
-pub const REPO: &str = "Cikuree/classroom-run";
+pub const REPO: &str = "Cikuree/opaline";
 
 pub fn pack_zip_url() -> String {
     format!("https://github.com/{REPO}/releases/latest/download/pack.zip")
