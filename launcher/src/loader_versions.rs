@@ -6,6 +6,11 @@ pub const QUILT_META: &str = "https://meta.quiltmc.org/v3/versions/loader";
 pub const NEOFORGE_METADATA: &str = "https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml";
 pub const FORGE_PROMOTIONS: &str = "https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json";
 
+/// Version (Minecraft ou loader) utilisable comme nom de dossier et d'URL : `[0-9A-Za-z._+-]+`, sans `..`.
+pub fn valid_version(v: &str) -> bool {
+    !v.is_empty() && !v.contains("..") && v.chars().all(|c| c.is_ascii_alphanumeric() || "._+-".contains(c))
+}
+
 /// Réponse de `…/versions/loader/{mc}` (Fabric et Quilt) : `[{"loader":{"version":"…"}}]`. Le serveur Quilt ne trie pas
 /// par version (beta.9 avant 0.31.0) : on trie, la plus récente d'abord.
 pub fn parse_meta_loaders(json: &str) -> Vec<String> {

@@ -43,15 +43,79 @@ impl LoaderKind {
 /// Seuls hôtes depuis lesquels du code (libraries, installeurs, processors) est téléchargé.
 pub const TRUSTED_HOSTS: [&str; 5] = ["maven.neoforged.net", "maven.minecraftforge.net", "libraries.minecraft.net", "maven.fabricmc.net", "maven.quiltmc.org"];
 
-/// https vers un hôte de `TRUSTED_HOSTS` ; http seulement vers la boucle locale (serveurs de test, comme pour le catalogue).
+/// https vers un hôte de `TRUSTED_HOSTS` (comparaison exacte, sans identifiants ni port). La boucle locale en http n'est
+/// acceptée que dans les builds de debug (serveurs de test) : jamais en release.
 pub fn check_host(url: &str) -> Result<()> {
-    let (scheme, rest) = url.split_once("://").with_context(|| format!("URL invalide : {url}"))?;
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
-    let loopback = scheme == "http" && ["127.0.0.1", "localhost"].contains(&authority.split(':').next().unwrap_or(""));
-    if loopback || (scheme == "https" && TRUSTED_HOSTS.contains(&authority)) {
+    check_host_in(url, cfg!(debug_assertions))
+}
+
+pub fn check_host_in(url: &str, allow_loopback: bool) -> Result<()> {
+    let u = reqwest::Url::parse(url).map_err(|_| anyhow::anyhow!("URL invalide"))?;
+    let host = u.host_str().unwrap_or("").to_ascii_lowercase();
+    if !u.username().is_empty() || u.password().is_some() {
+        bail!("téléchargement refusé : identifiants dans l'URL ({host})");
+    }
+    let https = u.scheme() == "https" && u.port().is_none() && TRUSTED_HOSTS.contains(&host.as_str());
+    let loopback = allow_loopback && u.scheme() == "http" && ["127.0.0.1", "localhost", "[::1]"].contains(&host.as_str());
+    if https || loopback {
         return Ok(());
     }
-    bail!("téléchargement refusé : hôte non autorisé ({})", authority.rsplit('@').next().unwrap_or(authority))
+    bail!("téléchargement refusé : hôte non autorisé ({host})")
+}
+
+/// Client dont chaque redirection est revérifiée par `check_host` (pour tout ce qui peut être exécuté).
+pub fn loader_client() -> Result<reqwest::blocking::Client> {
+    crate::download::http_client_with(reqwest::redirect::Policy::custom(|a| {
+        if a.previous().len() >= 10 {
+            return a.error("trop de redirections");
+        }
+        match check_host(a.url().as_str()) {
+            Ok(()) => a.follow(),
+            Err(e) => a.error(e.to_string()),
+        }
+    }))
+}
+
+pub use crate::loader_versions::valid_version;
+
+/// Verrou d'installation d'un loader (`.lock` créé en exclusivité, avec le PID). Un verrou de plus de 30 minutes est périmé
+/// (shortcut : pas de test de vivacité du PID, portable ; un processor dépasse au plus `PROCESSOR_TIMEOUT`).
+#[derive(Debug)]
+pub struct InstallLock(PathBuf);
+
+impl InstallLock {
+    pub fn acquire(dir: &Path) -> Result<InstallLock> {
+        fs::create_dir_all(dir)?;
+        let path = dir.join(".lock");
+        for _ in 0..2 {
+            match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(mut f) => {
+                    write!(f, "{}", std::process::id())?;
+                    return Ok(InstallLock(path));
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let stale = fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_none_or(|a| a > Duration::from_secs(1800));
+                    if !stale {
+                        bail!("une installation de ce loader est déjà en cours (verrou {})", path.display());
+                    }
+                    let _ = fs::remove_file(&path);
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+        bail!("verrou du loader impossible à créer")
+    }
+}
+
+impl Drop for InstallLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
+/// Fichier présent et, si le sha1 est connu, conforme.
+pub fn file_ok(path: &Path, sha1: Option<&str>) -> bool {
+    path.is_file() && sha1.is_none_or(|h| Hash::new("sha1", h).and_then(|h| h.matches_file(path)).unwrap_or(false))
 }
 
 /// `pack.toml` de Forge peut porter la version avec ou sans le préfixe `<mc>-` : on garde la version du loader seule.
@@ -80,6 +144,8 @@ pub struct Dl {
 pub struct ProfileLib {
     pub name: String,
     pub downloads: Option<Dl>,
+    pub rules: Option<serde_json::Value>,
+    pub natives: Option<serde_json::Value>,
 }
 
 impl ProfileLib {
@@ -89,6 +155,13 @@ impl ProfileLib {
             Some(p) => Ok(p.to_string()),
             None => maven_path(&self.name),
         }
+    }
+    /// Les `rules` et `natives` ne sont pas évaluées : refuser plutôt qu'inclure silencieusement.
+    pub fn check_supported(&self) -> Result<()> {
+        if self.rules.is_some() || self.natives.is_some() {
+            bail!("la bibliothèque {} porte des règles (rules/natives), non prises en charge par Opaline", self.name);
+        }
+        Ok(())
     }
     pub fn artifact(&self) -> Option<&Art> {
         self.downloads.as_ref().and_then(|d| d.artifact.as_ref())
@@ -115,6 +188,7 @@ pub struct Processor {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct InstallProfile {
+    pub minecraft: Option<String>,
     #[serde(default)]
     pub data: HashMap<String, DataEntry>,
     #[serde(default)]
@@ -138,6 +212,17 @@ pub struct LoaderVersion {
 }
 
 impl LoaderVersion {
+    /// À appeler avant tout téléchargement ou exécution : version du jeu cohérente, bibliothèques sans règles.
+    pub fn check(&self, mc: &str, profile: &InstallProfile) -> Result<()> {
+        if self.inherits_from.as_deref() != Some(mc) {
+            bail!("l'installeur du loader cible {} et non Minecraft {mc}", self.inherits_from.as_deref().unwrap_or("une version inconnue"));
+        }
+        if let Some(m) = profile.minecraft.as_deref().filter(|m| *m != mc) {
+            bail!("l'installeur du loader cible Minecraft {m} et non {mc}");
+        }
+        self.libraries.iter().chain(&profile.libraries).try_for_each(ProfileLib::check_supported)
+    }
+
     /// Profil de lancement : la fusion avec la version vanilla (`inheritsFrom`) se fait dans `launch::build_command`.
     pub fn into_profile(self, mc: &str) -> Result<FabricProfile> {
         if let Some(i) = self.inherits_from.as_deref().filter(|i| *i != mc) {
@@ -168,6 +253,8 @@ pub struct Ctx {
     pub data_dir: PathBuf,
     /// Variables résolues : intégrées (`MINECRAFT_JAR`, `SIDE`...) puis entrées `data` côté client.
     pub vars: HashMap<String, String>,
+    /// Entrées `data` de la forme `[coordonnées]` : des fichiers de libraries (entrées ou sorties de processors).
+    files: std::collections::HashSet<String>,
 }
 
 fn unwrap_pair(s: &str, open: char, close: char) -> Option<&str> {
@@ -180,6 +267,7 @@ impl Ctx {
         let mut ctx = Ctx {
             libs: libs.to_path_buf(),
             data_dir: data_dir.to_path_buf(),
+            files: Default::default(),
             vars: HashMap::from([
                 ("MINECRAFT_JAR".into(), s(minecraft_jar)),
                 ("SIDE".into(), "client".into()),
@@ -191,6 +279,9 @@ impl Ctx {
         };
         for (k, v) in &profile.data {
             let value = ctx.resolve(&v.client).with_context(|| format!("entrée data {k}"))?;
+            if unwrap_pair(&v.client, '[', ']').is_some() {
+                ctx.files.insert(k.clone());
+            }
             ctx.vars.insert(k.clone(), value);
         }
         Ok(ctx)
@@ -229,6 +320,12 @@ impl Ctx {
     /// `jar` puis `classpath` du processor, en chemins de libraries.
     pub fn processor_classpath(&self, p: &Processor) -> Result<Vec<PathBuf>> {
         std::iter::once(&p.jar).chain(&p.classpath).map(|c| self.lib_path(c)).collect()
+    }
+
+    /// Fichiers de libraries (variables `data` `[coords]`) que les arguments du processor désignent : ils doivent exister.
+    pub fn processor_files(&self, p: &Processor) -> Vec<PathBuf> {
+        let keys = p.args.iter().filter_map(|a| unwrap_pair(a, '{', '}'));
+        keys.filter(|k| self.files.contains(*k)).map(|k| PathBuf::from(&self.vars[k])).collect()
     }
 
     /// `None` : le processor ne déclare aucune sortie. `Some(true)` : toutes existent avec le bon sha1.
@@ -352,7 +449,7 @@ pub fn run_processors(java: &Path, ctx: &Ctx, profile: &InstallProfile, cwd: &Pa
         let mut cmd = Command::new(java);
         cmd.current_dir(cwd).arg("-cp").arg(join_classpath(&cp, sep)).arg(&main).args(&args);
         run_logged(cmd, log, timeout).with_context(|| format!("processor {}", p.jar))?;
-        if ctx.outputs_valid(p)? == Some(false) {
+        if ctx.outputs_valid(p)? == Some(false) || ctx.processor_files(p).iter().any(|f| !f.is_file()) {
             bail!("processor {} : sortie absente ou sha1 incorrect", p.jar);
         }
     }

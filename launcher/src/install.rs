@@ -130,6 +130,9 @@ fn marker_for(pack: &Pack) -> Result<Marker> {
 fn validate_ids(mc: &str, loader: &str) -> Result<()> {
     safe_file_name(mc)?;
     safe_file_name(loader)?;
+    if !loader::valid_version(mc) || !loader::valid_version(loader) {
+        bail!("version invalide (caractères autorisés : lettres, chiffres, . _ + -)");
+    }
     Ok(())
 }
 
@@ -249,7 +252,7 @@ fn sha1_or_maven(client: &Client, url: &str, given: Option<&str>) -> Result<Stri
 fn install_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &str, loader: &str, java: &Path, progress: &Arc<Progress>) -> Result<(FabricProfile, String)> {
     match kind {
         LoaderKind::Fabric | LoaderKind::Quilt => install_meta_loader(client, dirs, ep, kind, mc, loader, progress),
-        LoaderKind::NeoForge | LoaderKind::Forge => install_installer_loader(client, dirs, ep, kind, mc, loader, java, progress),
+        LoaderKind::NeoForge | LoaderKind::Forge => install_installer_loader(dirs, ep, kind, mc, loader, java, progress),
     }
 }
 
@@ -259,15 +262,16 @@ fn install_meta_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: Loade
     let url = format!("{}/{ver}/versions/loader/{mc}/{loader}/profile/json", meta.trim_end_matches('/'));
     let text = download::get_text(client, &url)?;
     let profile: FabricProfile = serde_json::from_str(&text).with_context(|| format!("profil {} invalide", kind.name()))?;
+    let strict = loader::loader_client()?;
     let mut jobs = Vec::new();
     for l in &profile.libraries {
         let dest = safe_join(&dirs.libraries(), &maven_path(&l.name)?)?;
         let url = l.download_url()?;
         check_host(&url)?;
-        let sha1 = sha1_or_maven(client, &url, l.sha1.as_deref())?;
+        let sha1 = sha1_or_maven(&strict, &url, l.sha1.as_deref())?;
         jobs.push(sha1_job(&url, dest, &sha1, l.size)?);
     }
-    download::fetch_all(client, jobs, CONCURRENCY, progress)?;
+    download::fetch_all(&strict, jobs, CONCURRENCY, progress)?;
     // Profil écrit seulement une fois toutes ses libraries présentes et vérifiées.
     let id = fabric_profile_id(kind.name(), loader, mc);
     let jp = dirs.versions().join(&id).join(format!("{id}.json"));
@@ -297,7 +301,8 @@ fn parse_entry<T: serde::de::DeserializeOwned>(installer: &Path, name: &str) -> 
 
 /// NeoForge et Forge : exécute l'`install_profile.json` de l'installeur officiel (processors client) dans l'instance isolée.
 #[allow(clippy::too_many_arguments)]
-fn install_installer_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &str, loader: &str, java: &Path, progress: &Arc<Progress>) -> Result<(FabricProfile, String)> {
+fn install_installer_loader(dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &str, loader: &str, java: &Path, progress: &Arc<Progress>) -> Result<(FabricProfile, String)> {
+    let client = &loader::loader_client()?;
     let url = installer_url(ep, kind, mc, loader)?;
     check_host(&url)?;
     let name = url.rsplit('/').next().unwrap_or_default();
@@ -307,6 +312,7 @@ fn install_installer_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: 
 
     let (profile, _): (InstallProfile, _) = parse_entry(&installer, "install_profile.json")?;
     let (ver, ver_bytes): (LoaderVersion, _) = parse_entry(&installer, "version.json")?;
+    ver.check(mc, &profile)?;
     let id = ver.id.clone();
     safe_file_name(&id)?;
     let libs_dir = dirs.libraries();
@@ -341,21 +347,37 @@ fn install_installer_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: 
     let work = dirs.instance().join("loader-work");
     let data_dir = work.join("installer");
     let ctx = Ctx::new(&dirs.shared(), &libs_dir, &dirs.client_jar(mc), &installer, &data_dir, mc, &profile)?;
-    let marker = dirs.versions().join(&id).join("opaline-loader.ok");
-    let outputs_ok = loader::client_processors(&profile).iter().all(|p| ctx.outputs_valid(p).ok().flatten() != Some(false));
-    let done = outputs_ok && fs::read_to_string(&marker).is_ok_and(|m| m.trim() == installer_sha.to_ascii_lowercase());
-    if !done {
+    let vdir = dirs.versions().join(&id);
+    let marker = vdir.join("opaline-loader.ok");
+    let sha_text = installer_sha.to_ascii_lowercase();
+    // Tout est vérifié : sorties (sha1), fichiers de libraries des arguments, libraries locales (sha1 quand connu).
+    let outputs_ok = || {
+        loader::client_processors(&profile).iter().all(|p| ctx.outputs_valid(p).ok().flatten() != Some(false) && ctx.processor_files(p).iter().all(|f| f.is_file()))
+            && local.iter().all(|(_, d, sha)| loader::file_ok(d, sha.as_deref()))
+    };
+    if !(outputs_ok() && fs::read_to_string(&marker).is_ok_and(|m| m.trim() == sha_text)) {
+        let _lock = loader::InstallLock::acquire(&vdir)?;
         let _ = fs::remove_file(&marker);
         loader::extract_data(&installer, &data_dir)?;
         let log = dirs.instance().join("logs").join("loader-install.log");
         let _ = fs::remove_file(&log);
         let sep = if cfg!(windows) { ";" } else { ":" };
-        loader::run_processors(java, &ctx, &profile, &work, &log, sep, loader::PROCESSOR_TIMEOUT)?;
-        if let Some((rel, _, _)) = local.iter().find(|(_, d, _)| !d.is_file()) {
-            bail!("bibliothèque du loader absente après l'installation : {rel}");
+        // Le journal d'un processor peut contenir des chemins personnels : ils sont masqués dans l'erreur.
+        loader::run_processors(java, &ctx, &profile, &work, &log, sep, loader::PROCESSOR_TIMEOUT)
+            .map_err(|e| anyhow::anyhow!(crate::service::sanitize_error(&format!("{e:#}"), dirs)))?;
+        if !outputs_ok() {
+            bail!("l'installation du loader n'a pas produit tous ses fichiers (ou un sha1 est incorrect)");
         }
-        fs::create_dir_all(marker.parent().unwrap())?;
-        fs::write(&marker, installer_sha.to_ascii_lowercase())?;
+        let tmp = marker.with_extension("tmp");
+        fs::write(&tmp, &sha_text)?;
+        fs::rename(&tmp, &marker)?;
+    }
+    // Jar client sous le nom du loader : `${version_name}.jar` figure dans l'ignoreList de Forge et NeoForge.
+    let (src, dst) = (dirs.client_jar(mc), dirs.client_jar(&id));
+    if fs::metadata(&src)?.len() != fs::metadata(&dst).map(|m| m.len()).unwrap_or(0) {
+        let tmp = dst.with_extension("tmp");
+        fs::copy(&src, &tmp)?;
+        fs::rename(&tmp, &dst)?;
     }
     let jp = dirs.versions().join(&id).join(format!("{id}.json"));
     fs::write(&jp, ver_bytes)?;

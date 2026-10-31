@@ -26,8 +26,13 @@ pub struct Job {
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub fn http_client() -> Result<Client> {
+    http_client_with(reqwest::redirect::Policy::default())
+}
+
+pub fn http_client_with(redirect: reqwest::redirect::Policy) -> Result<Client> {
     // Pas de timeout total (gros fichiers) : l'inactivité est surveillée dans `download_part`.
     Ok(Client::builder()
+        .redirect(redirect)
         .user_agent(concat!("Opaline/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(Duration::from_secs(15))
         .timeout(None::<Duration>)

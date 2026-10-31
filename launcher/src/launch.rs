@@ -46,7 +46,8 @@ pub fn classpath(i: &LaunchInput) -> Result<Vec<PathBuf>> {
         push(lib_key(&l.name), safe_join(&libs, &l.rel_path()?)?);
     }
     let mut cp: Vec<PathBuf> = entries.into_iter().map(|(_, p)| p).collect();
-    cp.push(i.dirs.client_jar(&i.version.id));
+    // Forge / NeoForge : le jar client porte le nom du loader (`${version_name}.jar` de leur ignoreList), copié à l'installation.
+    cp.push(i.dirs.client_jar(i.fabric.version_name.as_deref().unwrap_or(&i.version.id)));
     Ok(cp)
 }
 

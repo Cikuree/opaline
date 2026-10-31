@@ -186,7 +186,7 @@ fn inherited_version_is_merged_with_vanilla_for_launch() {
         assert!(game.iter().any(|a| a == "--fml.mcVersion" || a == "--launchTarget"));
         // le classpath garde les libraries du loader par leur chemin de manifeste, le client.jar vanilla en dernier
         let cp = &cmd[cp_at + 1];
-        assert!(cp.rsplit(';').next().unwrap().ends_with("26.3.jar"));
+        assert!(cp.rsplit(';').next().unwrap().ends_with(&format!("{version_name}.jar")), "jar client sous le nom du loader : {cp}");
         for l in &prof.libraries {
             if l.url.is_empty() && l.name.contains(":client") {
                 assert!(cp.contains(&l.rel_path().unwrap().replace('/', "\\")) || cp.contains(&l.rel_path().unwrap()));
@@ -203,16 +203,20 @@ fn host_allow_list() {
         "https://libraries.minecraft.net/a.jar",
         "https://maven.fabricmc.net/a.jar",
         "https://maven.quiltmc.org/repository/release/a.jar",
-        "http://127.0.0.1:8080/maven/a.jar",
-        "http://localhost/a.jar",
+        "https://MAVEN.FabricMC.net/a.jar",
+        "https://maven.fabricmc.net:443/a.jar", // port par défaut, normalisé par l'URL
     ] {
-        assert!(check_host(ok).is_ok(), "{ok}");
+        assert!(check_host_in(ok, false).is_ok(), "{ok}");
     }
     for bad in [
         "https://evil.example/a.jar",
         "http://maven.neoforged.net/a.jar",
         "https://maven.neoforged.net.evil.example/a.jar",
+        "https://evil.maven.neoforged.net/a.jar",
         "https://maven.neoforged.net@evil.example/a.jar",
+        "https://user:pw@maven.neoforged.net/a.jar",
+        "http://127.0.0.1:80@evil.example/x.jar",
+        "http://127.0.0.1@evil.example/x.jar",
         "https://evil.example/maven.neoforged.net/a.jar",
         "https://maven.neoforged.net:8443/a.jar",
         "https://repo1.maven.org/maven2/a.jar",
@@ -221,8 +225,60 @@ fn host_allow_list() {
         "pas une url",
         "",
     ] {
-        assert!(check_host(bad).is_err(), "{bad}");
+        assert!(check_host_in(bad, false).is_err(), "{bad}");
+        assert!(check_host_in(bad, true).is_err(), "{bad}");
     }
+    // boucle locale : debug seulement, jamais en release, et jamais avec identifiants
+    for lo in ["http://127.0.0.1:8080/a.jar", "http://localhost/a.jar", "http://[::1]:9/a.jar"] {
+        assert!(check_host_in(lo, true).is_ok(), "{lo}");
+        assert!(check_host_in(lo, false).is_err(), "{lo} refusé en release");
+    }
+    assert!(check_host_in("https://127.0.0.1/a.jar", true).is_err());
+}
+
+#[test]
+fn version_strings_are_plain() {
+    for ok in ["26.3", "0.31.0-beta.5", "26.3-66.1.0", "1.21.1", "0.20.0+build.1"] {
+        assert!(valid_version(ok), "{ok}");
+    }
+    for bad in ["", "..", "1..2", "a/b", "a\\b", "a b", "../x", "1;2", "é"] {
+        assert!(!valid_version(bad), "{bad}");
+    }
+}
+
+#[test]
+fn inherits_from_and_unsupported_libraries_are_refused_before_any_download() {
+    let p = profile("forge");
+    let mut lv: LoaderVersion = serde_json::from_str(&fixture("forge_version.json")).unwrap();
+    assert!(lv.check("26.3", &p).is_ok());
+    assert!(lv.check("26.4", &p).unwrap_err().to_string().contains("26.3"));
+    let mut other = p.clone();
+    other.minecraft = Some("1.20.1".into());
+    assert!(lv.check("26.3", &other).is_err());
+    lv.inherits_from = None;
+    assert!(lv.check("26.3", &p).is_err());
+    lv.inherits_from = Some("26.3".into());
+    let mut lib: ProfileLib = serde_json::from_str(r#"{"name":"a:b:1","rules":[{"action":"allow"}]}"#).unwrap();
+    lv.libraries.push(lib.clone());
+    assert!(lv.check("26.3", &p).unwrap_err().to_string().contains("a:b:1"));
+    lv.libraries.pop();
+    lib = serde_json::from_str(r#"{"name":"a:b:1","natives":{"windows":"x"}}"#).unwrap();
+    assert!(lib.check_supported().is_err());
+}
+
+#[test]
+fn install_lock_is_exclusive_and_stale_locks_are_cleaned() {
+    let d = tmp("lock");
+    let l = InstallLock::acquire(&d).unwrap();
+    assert!(InstallLock::acquire(&d).unwrap_err().to_string().contains("déjà en cours"));
+    drop(l);
+    assert!(!d.join(".lock").exists());
+    // verrou périmé : repris
+    fs::write(d.join(".lock"), "1").unwrap();
+    let old = std::time::SystemTime::now() - Duration::from_secs(7200);
+    fs::File::options().write(true).open(d.join(".lock")).unwrap().set_modified(old).unwrap();
+    assert!(InstallLock::acquire(&d).is_ok());
+    fs::remove_dir_all(&d).unwrap();
 }
 
 #[test]

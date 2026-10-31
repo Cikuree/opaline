@@ -7,7 +7,7 @@ Recherche fabric-scout du 2026-10-31. « NON VÉRIFIÉ » = à confirmer pendant
 - Liste des versions : `GET https://meta.quiltmc.org/v3/versions/loader/{game}`, champs `loader.{version, maven, hashes}`.
 - Profil de lancement : `GET https://meta.quiltmc.org/v3/versions/loader/{game}/{loader}/profile/json`, format proche de celui de Fabric.
 - Testé pour 26.3 : loader 0.20.0-beta.9, `mainClass` = `org.quiltmc.loader.impl.launch.knot.KnotClient`.
-- Les libraries du profil n'ont que `name` et `url`, sans sha1. Les hashes ne figurent que dans la liste des versions. Vérification par le fichier `.sha1` du Maven : NON VÉRIFIÉ.
+- Les libraries du profil n'ont que `name` et `url`, sans sha1. Les hashes ne figurent que dans la liste des versions (jar du loader seulement). Vérification par le fichier `.sha1` du Maven : VÉRIFIÉ (maven.quiltmc.org les publie), c'est ce qu'utilise Opaline. La liste `/v3/versions/loader/{game}` n'est pas triée (0.20.0-beta.9 avant 0.31.0-beta.5) : trier côté client.
 
 ## NeoForge
 
@@ -52,4 +52,14 @@ Tout se passe dans l'instance isolée et dans `shared/` : rien n'est écrit dans
 
 ## packwiz `pack.toml`, section `[versions]`
 
-Clés probables : `fabric`, `quilt`, `neoforge`, `forge`. NON VÉRIFIÉ, à confirmer dans le code de packwiz (`core/pack.go`).
+Clés confirmées dans packwiz (`core/pack.go`, `cmd/init.go`) : `fabric`, `quilt`, `forge`, `neoforge`. Packwiz stocke la version Forge sans préfixe `<mc>-` ; Opaline accepte les deux formes. Une seule clé de loader par pack.
+
+## Précisions d'implémentation (Opaline)
+
+- `{ROOT}` vaut `shared/` (qui contient `libraries/`). Les processors sont du code Java officiel exécuté avec le Java de l'instance : rien n'empêche techniquement un processor d'écrire hors de `shared/` ou de l'instance. La protection est la provenance : installeur et libraries ne viennent que des Maven officiels (liste blanche d'hôtes vérifiée aussi à chaque redirection, https, sans identifiants dans l'URL), vérifiés par sha1.
+- Les anciens NeoForge (21.1.x) ont des processors qui téléchargent eux-mêmes (par exemple les mappings Mojang) : ces téléchargements sont faits par le code officiel, hors de notre liste blanche.
+- Forge demande de ne pas automatiser son installeur. Opaline ne lance pas l'installeur : elle le télécharge depuis le Maven officiel et exécute ses processors comme les launchers open source (Prism, etc.).
+- Vérifié sur Windows : Quilt 0.31.0-beta.5, NeoForge 26.3.0.100 et 21.1.265, Forge 66.1.0 (26.3) et 47.4.28 (1.20.1), installés puis lancés jusqu'au rendu.
+- Le jar client vanilla est copié sous `versions/<id du loader>/<id du loader>.jar` : `${version_name}.jar` figure dans l'`ignoreList` de Forge et NeoForge.
+- Les libraries du loader portant `rules` ou `natives` sont refusées (message clair) plutôt qu'incluses sans évaluation.
+- Un verrou `shared/versions/<id>/.lock` (création exclusive, périmé après 30 minutes) protège l'exécution des processors contre une installation concurrente ; l'application sérialise déjà les installations (`install_lock`) et refuse d'installer un pack en cours de jeu.

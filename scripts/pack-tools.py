@@ -152,6 +152,9 @@ def catalog(root, base, out):
         v = pt["versions"]
         unknown = [k for k in v if k != "minecraft" and k not in LOADERS]
         loaders = [k for k in v if k in LOADERS]
+        bad = [x for x in [v["minecraft"], *(v[k] for k in loaders)] if not re.fullmatch(r"[0-9A-Za-z._+-]+", str(x)) or ".." in str(x)]
+        if bad:
+            sys.exit(f"{d.name}/pack.toml: version invalide dans [versions] : {bad}")
         if unknown or len(loaders) != 1:
             sys.exit(f"{d.name}/pack.toml: un seul loader parmi {'/'.join(LOADERS)} attendu dans [versions], trouve {loaders + unknown}")
         packs.append({
