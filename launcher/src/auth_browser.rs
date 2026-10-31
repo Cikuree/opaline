@@ -122,10 +122,7 @@ font-family:'Bricolage Grotesque',system-ui,'Segoe UI',sans-serif;color:#fff;tex
 .card{background:#4a1d25;border-radius:28px;padding:44px 32px 40px}\
 .logo{width:96px;height:96px;display:block;margin:0 auto 22px}\
 h1{font-family:'Bodoni Moda',Didot,'Bodoni 72',Georgia,serif;font-weight:700;font-size:34px;margin:0 0 10px;letter-spacing:.005em}\
-p{margin:0 auto;max-width:26em;color:#d9a5ab;font-size:16px;line-height:1.5}\
-.pill{display:inline-flex;align-items:center;gap:8px;margin-top:26px;padding:10px 20px;border-radius:999px;font-weight:700;font-size:14px}\
-.ok{background:linear-gradient(135deg,#e0574f,#f07a5a);color:#2c1219}.ko{background:#3d171e;color:#f0aaa5;border:1px solid #5a2630}\
-.dot{width:8px;height:8px;border-radius:50%;background:currentColor}";
+p{margin:0 auto;max-width:26em;color:#d9a5ab;font-size:16px;line-height:1.5}";
 
 // Le « O » et son étoile, nacrés (logo de l'interface).
 const PAGE_LOGO: &str = "<svg class=\"logo\" viewBox=\"0 0 64 64\" aria-hidden=\"true\"><defs>\
@@ -135,12 +132,11 @@ const PAGE_LOGO: &str = "<svg class=\"logo\" viewBox=\"0 0 64 64\" aria-hidden=\
 <path fill-rule=\"evenodd\" d=\"M9 32a23 27 0 1 0 46 0a23 27 0 1 0 -46 0ZM20.5 32a11.5 24.4 0 1 0 23 0a11.5 24.4 0 1 0 -23 0Z\"/>\
 <path d=\"M32 13Q33.2 30.8 43 32Q33.2 33.2 32 51Q30.8 33.2 21 32Q30.8 30.8 32 13Z\"/><path d=\"M53 7Q53.5 12 58 13Q53.5 14 53 19Q52.5 14 48 13Q52.5 12 53 7Z\"/></g></svg>";
 
-fn page(title: &str, text: &str, ok: bool) -> String {
-    let (class, badge) = if ok { ("ok", "Connecté") } else { ("ko", "Non connecté") };
+fn page(title: &str, text: &str) -> String {
     format!(
         "<!doctype html><html lang=\"fr\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">\
          <title>Opaline</title><style>{PAGE_STYLE}</style></head><body><div class=\"win\"><main class=\"card\">{PAGE_LOGO}\
-         <h1>{title}</h1><p>{text}</p><span class=\"pill {class}\"><span class=\"dot\"></span>{badge}</span></main></div></body></html>"
+         <h1>{title}</h1><p>{text}</p></main></div></body></html>"
     )
 }
 
@@ -270,8 +266,8 @@ pub fn wait_for_redirect(listeners: Vec<TcpListener>, state: &str, cancel: &Atom
                 match line.and_then(|l| parse_redirect_request(l.trim_end_matches('\r'), state)) {
                     Ok(r) => {
                         let body = match &r {
-                            Redirect::Code(_) => page("Connexion réussie", "Tu peux revenir sur Opaline.", true),
-                            Redirect::Denied(_) => page("Connexion refusée", "Tu peux fermer cet onglet et réessayer depuis Opaline.", false),
+                            Redirect::Code(_) => page("Connexion réussie", "Tu peux revenir sur Opaline."),
+                            Redirect::Denied(_) => page("Connexion refusée", "Tu peux fermer cet onglet et réessayer depuis Opaline."),
                         };
                         let mut s = conns.swap_remove(i).s;
                         respond(&mut s, "200 OK", &body);
