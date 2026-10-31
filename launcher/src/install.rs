@@ -1,5 +1,6 @@
-//! Orchestration de l'installation : Java, Minecraft, Fabric, mods. Les URL de base sont injectables.
+//! Orchestration de l'installation : Java, Minecraft, loader (Fabric, Quilt, NeoForge, Forge), mods. Les URL de base sont injectables.
 use crate::config::{Dirs, fabric_profile_id};
+use crate::loader::{self, Ctx, InstallProfile, LoaderKind, LoaderVersion, check_host, forge_version};
 use crate::download::{self, Job, Progress};
 use crate::fabric::{FabricProfile, maven_path};
 use crate::java;
@@ -20,6 +21,11 @@ pub const CONCURRENCY: usize = 12;
 pub struct Endpoints {
     pub mojang_manifest: String,
     pub fabric_meta: String,
+    pub quilt_meta: String,
+    /// Racine du Maven NeoForge (contient `net/neoforged/...`).
+    pub neoforge_maven: String,
+    /// Racine du Maven Forge (contient `net/minecraftforge/...`).
+    pub forge_maven: String,
     pub adoptium: String,
     pub assets: String,
 }
@@ -29,6 +35,9 @@ impl Default for Endpoints {
         Endpoints {
             mojang_manifest: "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json".into(),
             fabric_meta: "https://meta.fabricmc.net".into(),
+            quilt_meta: "https://meta.quiltmc.org".into(),
+            neoforge_maven: "https://maven.neoforged.net/releases".into(),
+            forge_maven: "https://maven.minecraftforge.net".into(),
             adoptium: "https://api.adoptium.net".into(),
             assets: "https://resources.download.minecraft.net".into(),
         }
@@ -38,6 +47,7 @@ impl Default for Endpoints {
 pub struct Installed {
     pub java: PathBuf,
     pub version: VersionJson,
+    /// Profil du loader : Fabric ou Quilt (meta), ou `version.json` de l'installeur Forge / NeoForge.
     pub fabric: FabricProfile,
     /// Zip de shaders installé (pour iris.properties).
     pub shader_pack: Option<String>,
@@ -84,7 +94,14 @@ fn sha1_job(url: &str, dest: PathBuf, sha1: &str, size: Option<u64>) -> Result<J
 struct Marker {
     pack: String,
     minecraft: String,
-    fabric: String,
+    /// Absent dans les anciens marqueurs : Fabric.
+    #[serde(default = "default_kind")]
+    loader: String,
+    #[serde(alias = "fabric")]
+    loader_version: String,
+    /// Identifiant du profil dans `shared/versions` (absent dans les anciens marqueurs).
+    #[serde(default)]
+    profile_id: Option<String>,
     #[serde(default)]
     shader_pack: Option<String>,
     /// Hash de l'index du pack installé (détection « le pack a changé »).
@@ -92,11 +109,18 @@ struct Marker {
     index_hash: Option<String>,
 }
 
+fn default_kind() -> String {
+    "fabric".into()
+}
+
 fn marker_for(pack: &Pack) -> Result<Marker> {
+    let (kind, loader_version) = pack.versions.loader()?;
     Ok(Marker {
         pack: pack.version.clone(),
         minecraft: pack.versions.minecraft.clone(),
-        fabric: pack.versions.fabric.clone().context("pack.toml : version de Fabric absente")?,
+        loader: kind.name().into(),
+        loader_version,
+        profile_id: None,
         shader_pack: pack.shader_pack().map(str::to_string),
         index_hash: Some(pack.index_hash.clone()),
     })
@@ -129,7 +153,8 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
     progress.set_stage("java");
     let pack = packwiz::load_pack(&p.pack_dir)?;
     let marker = marker_for(&pack)?;
-    let (mc, loader) = (marker.minecraft.clone(), marker.fabric.clone());
+    let (mc, loader) = (marker.minecraft.clone(), marker.loader_version.clone());
+    let kind = LoaderKind::parse(&marker.loader).context("loader inconnu")?;
     validate_ids(&mc, &loader)?;
     // Le jar classroomrun vient du pack s'il y est ; sinon seulement si un jar de dev est demandé explicitement.
     let mod_jar = if pack.mods.iter().any(|m| m.dir == "mods" && m.filename.starts_with("classroomrun")) {
@@ -176,7 +201,8 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
     download::fetch_all(client, jobs, CONCURRENCY, progress)?;
 
     progress.set_stage("loader");
-    let fabric = install_fabric(client, dirs, ep, &mc, &loader, progress)?;
+    let (fabric, profile_id) = install_loader(client, dirs, ep, kind, &mc, &loader, &java_exe, progress)?;
+    let marker = Marker { profile_id: Some(profile_id), ..marker };
 
     progress.set_stage("mods");
     install_mods(client, dirs, &pack, &p.pack_dir, mod_jar.as_deref(), progress)?;
@@ -211,28 +237,129 @@ fn install_java(client: &Client, dirs: &Dirs, ep: &Endpoints, major: u32, progre
     java::find_java(&dest).context("java introuvable après extraction")
 }
 
-fn install_fabric(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str, loader: &str, progress: &Arc<Progress>) -> Result<FabricProfile> {
-    let url = format!("{}/v2/versions/loader/{mc}/{loader}/profile/json", ep.fabric_meta.trim_end_matches('/'));
+/// sha1 fourni par le manifeste, sinon fichier `.sha1` publié à côté sur le Maven.
+fn sha1_or_maven(client: &Client, url: &str, given: Option<&str>) -> Result<String> {
+    match given.filter(|s| !s.is_empty()) {
+        Some(s) => Ok(s.to_string()),
+        None => Ok(download::get_text(client, &format!("{url}.sha1"))?.split_whitespace().next().unwrap_or("").to_string()),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn install_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &str, loader: &str, java: &Path, progress: &Arc<Progress>) -> Result<(FabricProfile, String)> {
+    match kind {
+        LoaderKind::Fabric | LoaderKind::Quilt => install_meta_loader(client, dirs, ep, kind, mc, loader, progress),
+        LoaderKind::NeoForge | LoaderKind::Forge => install_installer_loader(client, dirs, ep, kind, mc, loader, java, progress),
+    }
+}
+
+/// Fabric (meta v2) et Quilt (meta v3) : profil JSON, libraries vérifiées par leur sha1 (profil ou `.sha1` du Maven).
+fn install_meta_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &str, loader: &str, progress: &Arc<Progress>) -> Result<(FabricProfile, String)> {
+    let (meta, ver) = if kind == LoaderKind::Quilt { (&ep.quilt_meta, "v3") } else { (&ep.fabric_meta, "v2") };
+    let url = format!("{}/{ver}/versions/loader/{mc}/{loader}/profile/json", meta.trim_end_matches('/'));
     let text = download::get_text(client, &url)?;
-    let profile: FabricProfile = serde_json::from_str(&text).context("profil Fabric invalide")?;
+    let profile: FabricProfile = serde_json::from_str(&text).with_context(|| format!("profil {} invalide", kind.name()))?;
     let mut jobs = Vec::new();
     for l in &profile.libraries {
         let dest = safe_join(&dirs.libraries(), &maven_path(&l.name)?)?;
         let url = l.download_url()?;
-        // Sans sha1 dans le profil : fichier .sha1 publié à côté sur le Maven.
-        let sha1 = match &l.sha1 {
-            Some(s) => s.clone(),
-            None => download::get_text(client, &format!("{url}.sha1"))?.split_whitespace().next().unwrap_or("").to_string(),
-        };
+        check_host(&url)?;
+        let sha1 = sha1_or_maven(client, &url, l.sha1.as_deref())?;
         jobs.push(sha1_job(&url, dest, &sha1, l.size)?);
     }
     download::fetch_all(client, jobs, CONCURRENCY, progress)?;
     // Profil écrit seulement une fois toutes ses libraries présentes et vérifiées.
-    let id = fabric_profile_id(loader, mc);
+    let id = fabric_profile_id(kind.name(), loader, mc);
     let jp = dirs.versions().join(&id).join(format!("{id}.json"));
     fs::create_dir_all(jp.parent().unwrap())?;
     fs::write(&jp, &text)?;
-    Ok(profile)
+    Ok((profile, id))
+}
+
+/// URL de l'installeur officiel (Forge : la version peut être donnée avec ou sans le préfixe `<mc>-`).
+pub fn installer_url(ep: &Endpoints, kind: LoaderKind, mc: &str, loader: &str) -> Result<String> {
+    safe_file_name(mc)?;
+    safe_file_name(loader)?;
+    Ok(match kind {
+        LoaderKind::NeoForge => format!("{0}/net/neoforged/neoforge/{loader}/neoforge-{loader}-installer.jar", ep.neoforge_maven.trim_end_matches('/')),
+        LoaderKind::Forge => {
+            let v = forge_version(mc, loader);
+            format!("{0}/net/minecraftforge/forge/{mc}-{v}/forge-{mc}-{v}-installer.jar", ep.forge_maven.trim_end_matches('/'))
+        }
+        _ => bail!("{} n'a pas d'installeur", kind.name()),
+    })
+}
+
+fn parse_entry<T: serde::de::DeserializeOwned>(installer: &Path, name: &str) -> Result<(T, Vec<u8>)> {
+    let bytes = loader::read_entry(installer, name)?.with_context(|| format!("{name} absent de l'installeur (version non prise en charge)"))?;
+    Ok((serde_json::from_slice(&bytes).with_context(|| format!("{name} invalide"))?, bytes))
+}
+
+/// NeoForge et Forge : exécute l'`install_profile.json` de l'installeur officiel (processors client) dans l'instance isolée.
+#[allow(clippy::too_many_arguments)]
+fn install_installer_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &str, loader: &str, java: &Path, progress: &Arc<Progress>) -> Result<(FabricProfile, String)> {
+    let url = installer_url(ep, kind, mc, loader)?;
+    check_host(&url)?;
+    let name = url.rsplit('/').next().unwrap_or_default();
+    let installer = safe_join(&dirs.downloads(), safe_file_name(name)?)?;
+    let installer_sha = sha1_or_maven(client, &url, None)?;
+    download::fetch_all(client, vec![sha1_job(&url, installer.clone(), &installer_sha, None)?], 1, progress)?;
+
+    let (profile, _): (InstallProfile, _) = parse_entry(&installer, "install_profile.json")?;
+    let (ver, ver_bytes): (LoaderVersion, _) = parse_entry(&installer, "version.json")?;
+    let id = ver.id.clone();
+    safe_file_name(&id)?;
+    let libs_dir = dirs.libraries();
+
+    // Libraries du profil puis du version.json. Sans URL : fournies par le dossier `maven/` de l'installeur, ou produites par un processor.
+    let mut seen = HashSet::new();
+    let (mut jobs, mut local) = (Vec::new(), Vec::new());
+    for l in profile.libraries.iter().chain(&ver.libraries) {
+        let rel = l.rel_path()?;
+        let dest = safe_join(&libs_dir, &rel)?;
+        if !seen.insert(dest.clone()) {
+            continue;
+        }
+        match l.artifact().filter(|a| !a.url.is_empty()) {
+            Some(a) => {
+                check_host(&a.url)?;
+                let sha1 = sha1_or_maven(client, &a.url, Some(&a.sha1))?;
+                jobs.push(sha1_job(&a.url, dest, &sha1, a.size)?);
+            }
+            None => local.push((rel, dest, l.artifact().map(|a| a.sha1.clone()).filter(|s| !s.is_empty()))),
+        }
+    }
+    download::fetch_all(client, jobs, CONCURRENCY, progress)?;
+    for (rel, dest, sha1) in &local {
+        let valid = |p: &Path| p.is_file() && sha1.as_ref().is_none_or(|h| Hash::new("sha1", h).and_then(|h| h.matches_file(p)).unwrap_or(false));
+        if let (false, Some(bytes)) = (valid(dest), loader::read_entry(&installer, &format!("maven/{rel}"))?) {
+            fs::create_dir_all(dest.parent().unwrap())?;
+            fs::write(dest, bytes)?;
+        }
+    }
+
+    let work = dirs.instance().join("loader-work");
+    let data_dir = work.join("installer");
+    let ctx = Ctx::new(&dirs.shared(), &libs_dir, &dirs.client_jar(mc), &installer, &data_dir, mc, &profile)?;
+    let marker = dirs.versions().join(&id).join("opaline-loader.ok");
+    let outputs_ok = loader::client_processors(&profile).iter().all(|p| ctx.outputs_valid(p).ok().flatten() != Some(false));
+    let done = outputs_ok && fs::read_to_string(&marker).is_ok_and(|m| m.trim() == installer_sha.to_ascii_lowercase());
+    if !done {
+        let _ = fs::remove_file(&marker);
+        loader::extract_data(&installer, &data_dir)?;
+        let log = dirs.instance().join("logs").join("loader-install.log");
+        let _ = fs::remove_file(&log);
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        loader::run_processors(java, &ctx, &profile, &work, &log, sep, loader::PROCESSOR_TIMEOUT)?;
+        if let Some((rel, _, _)) = local.iter().find(|(_, d, _)| !d.is_file()) {
+            bail!("bibliothèque du loader absente après l'installation : {rel}");
+        }
+        fs::create_dir_all(marker.parent().unwrap())?;
+        fs::write(&marker, installer_sha.to_ascii_lowercase())?;
+    }
+    let jp = dirs.versions().join(&id).join(format!("{id}.json"));
+    fs::write(&jp, ver_bytes)?;
+    Ok((ver.into_profile(mc)?, id))
 }
 
 /// Lit l'installation existante d'après `installed.ok` (lancement sans réseau ni lecture du pack).
@@ -245,13 +372,19 @@ pub fn load_installed(dirs: &Dirs) -> Result<Installed> {
     let have: Marker =
         serde_json::from_slice(&fs::read(dirs.install_marker()).with_context(|| "installation absente ou incomplète : lancez l'installation".to_string())?)
             .context("installed.ok illisible : relancez l'installation")?;
-    let (mc, loader) = (&have.minecraft, &have.fabric);
+    let (mc, loader) = (&have.minecraft, &have.loader_version);
     validate_ids(mc, loader)?;
-    let id = fabric_profile_id(loader, mc);
+    let kind = LoaderKind::parse(&have.loader).context("loader inconnu : relancez l'installation")?;
+    let id = have.profile_id.clone().unwrap_or_else(|| fabric_profile_id(kind.name(), loader, mc));
+    safe_file_name(&id)?;
     let read = |p: PathBuf| fs::read(&p).with_context(|| format!("{} absent : lancez d'abord l'installation", p.display()));
     let version: VersionJson = serde_json::from_slice(&read(dirs.version_json(mc))?)?;
     validate_version(&version, mc)?;
-    let fabric: FabricProfile = serde_json::from_slice(&read(dirs.versions().join(&id).join(format!("{id}.json")))?)?;
+    let profile_json = read(dirs.versions().join(&id).join(format!("{id}.json")))?;
+    let fabric: FabricProfile = match kind {
+        LoaderKind::Fabric | LoaderKind::Quilt => serde_json::from_slice(&profile_json)?,
+        LoaderKind::NeoForge | LoaderKind::Forge => serde_json::from_slice::<LoaderVersion>(&profile_json)?.into_profile(mc)?,
+    };
     let java = java::find_java(&dirs.java(version.java_version.major_version)).context("Java absent : lancez d'abord l'installation")?;
     Ok(Installed { java, version, fabric, shader_pack: have.shader_pack, index_hash: have.index_hash })
 }
@@ -370,7 +503,7 @@ mod tests {
         let pack = Pack {
             version: "1".into(),
             index_hash: String::new(),
-            versions: packwiz::Versions { minecraft: "26.3".into(), fabric: Some("0.20.1".into()) },
+            versions: packwiz::Versions { minecraft: "26.3".into(), fabric: Some("0.20.1".into()), quilt: None, forge: None, neoforge: None },
             mods: vec![],
             files: vec![],
         };

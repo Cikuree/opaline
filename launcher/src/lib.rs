@@ -12,6 +12,8 @@ pub mod head;
 pub mod install;
 pub mod java;
 pub mod launch;
+pub mod loader;
+pub mod loader_versions;
 pub mod mojang;
 pub mod packwiz;
 pub mod perf;
