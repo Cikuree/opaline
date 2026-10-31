@@ -1,8 +1,7 @@
 //! Cas 6 : modes de performance (fusion d'options.txt, Personnalisé sans écriture, iris.properties, mémoire).
 #![allow(dead_code)]
 
-#[path = "../src/perf.rs"]
-mod perf;
+use opaline_core::perf;
 
 use perf::{PerfMode, apply, memory_mb};
 use std::path::{Path, PathBuf};

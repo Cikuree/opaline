@@ -1,0 +1,25 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Fenêtre principale : événements, fenêtre sans décoration, ouverture d'URL https choisies.",
+  "windows": ["main"],
+  "permissions": [
+    "core:event:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-is-maximized",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://microsoft.com/*" },
+        { "url": "https://*.microsoft.com/*" },
+        { "url": "https://login.live.com/*" },
+        { "url": "https://login.microsoftonline.com/*" },
+        { "url": "https://aka.ms/*" },
+        { "url": "https://github.com/Cikuree/*" }
+      ]
+    }
+  ]
+}

@@ -57,6 +57,16 @@ impl Hash {
         })
     }
 
+    /// (format, hex) : réutilisable avec `Hash::new`.
+    pub fn parts(&self) -> (&'static str, &str) {
+        match self {
+            Hash::Md5(h) => ("md5", h),
+            Hash::Sha1(h) => ("sha1", h),
+            Hash::Sha256(h) => ("sha256", h),
+            Hash::Sha512(h) => ("sha512", h),
+        }
+    }
+
     pub fn expected(&self) -> &str {
         match self {
             Hash::Md5(h) | Hash::Sha1(h) | Hash::Sha256(h) | Hash::Sha512(h) => h,

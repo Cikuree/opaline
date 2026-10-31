@@ -122,8 +122,7 @@ fn handle(mut s: TcpStream, sh: &Shared) {
     let method = first.next().unwrap_or("").to_string();
     let target = first.next().unwrap_or("/").to_string();
     let path = target.split('?').next().unwrap_or("/").to_string();
-    let headers: Vec<(String, String)> =
-        lines.filter_map(|l| l.split_once(':').map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string()))).collect();
+    let headers: Vec<(String, String)> = lines.filter_map(|l| l.split_once(':').map(|(k, v)| (k.trim().to_ascii_lowercase(), v.trim().to_string()))).collect();
     let get = |k: &str| headers.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
     let range = get("range");
     let len: usize = get("content-length").and_then(|v| v.parse().ok()).unwrap_or(0);
@@ -161,9 +160,7 @@ fn handle(mut s: TcpStream, sh: &Shared) {
     if let Mode::Reply(c) = mode {
         return reply(&mut s, &format!("{c} Fixture"), &[], &body, None);
     }
-    let start = range
-        .filter(|_| !matches!(mode, Mode::IgnoreRange))
-        .and_then(|r| r.strip_prefix("bytes=")?.strip_suffix('-')?.parse::<usize>().ok());
+    let start = range.filter(|_| !matches!(mode, Mode::IgnoreRange)).and_then(|r| r.strip_prefix("bytes=")?.strip_suffix('-')?.parse::<usize>().ok());
     let cut = if let Mode::TruncateOnce(n) = mode { Some(n) } else { None };
     match start {
         Some(n) if n >= body.len() => {
