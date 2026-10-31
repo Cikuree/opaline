@@ -22,8 +22,8 @@ name = "Classroom Run"
 description = "Hardcore coopératif : vie partagée, mort collective."
 thumbnail = "ender_eye"            # nom d'une texture item/ ou block/ du client.jar
 widgets = ["classroomRun", "server"]   # parmi : classroomRun, server, news
-[server]
-host = "home-server"                 # nom MagicDNS court ; suffixe tailnet ajouté à l'exécution
+[server]                           # section FACULTATIVE : sans elle, pas de carte serveur ni d'amis pour ce pack
+host = "home-server"                 # nom court (sans point) = nom MagicDNS Tailscale, suffixe du tailnet ajouté à l'exécution ; nom complet (avec un point, ex. monserveur.minestrator.com) ou IP = utilisé tel quel, sans Tailscale
 port = 25565
 motd = "Classroom Run"             # le MOTD du serveur doit contenir ce texte
 statsPort = 25580                  # 0 si pas d'endpoint HTTP (packs non Classroom)
@@ -80,7 +80,7 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 | `pack_changelog` | `{id}` | `{added: [string], removed: [string], updated: [{name, from, to}]}` (différence entre installé et publié) |
 | `pack_mods` | `{id}` | `[{name, version, side, file, verified}]` |
 | `pack_repair` | `{id}` | comme `pack_install` (revérifie tout) |
-| `play` | `{id}` | `{started: bool, reason: null \| string}`, puis événement `game://exited` |
+| `play` | `{id}` | `{started: bool, reason: null \| string}`, puis événement `game://exited`. Lance le jeu dans l'instance du pack, avec ses mods, jusqu'au **menu principal** de Minecraft : aucune connexion automatique, aucun ping ni vérification Tailscale/MOTD préalable. Si le pack déclare un serveur, Opaline l'ajoute au préalable à la liste Multijoueur de l'instance (`servers.dat`, entrée nommée d'après le pack, ajoutée seulement si absente, entrées de l'utilisateur jamais modifiées) |
 | `server_status` | `{id}` | `ServerView` (§5) |
 | `run_stats` | `{id}` | JSON de `GET /stats` du serveur, ou `null` (seulement pour le widget `classroomRun`) |
 | `run_history` | `{id, run: null \| number}` | JSON de `GET /history` (index) ou `GET /history/<n>` (détail), schémas de CONTRACT.md §Historique, ou `null` |
