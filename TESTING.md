@@ -112,23 +112,56 @@ Dans un monde solo avec le mod :
 - [ ] 7.4 Arrête le serveur sauvagement (fermer la fenêtre ou tuer le processus) en pleine run, puis relance-le : l'historique de cette run est toujours lisible.
 - [ ] 7.5 La touche H se reconfigure dans Options, Commandes, catégorie « Classroom Run ».
 
-## 9. Launcher Rust
+## 8. Opaline (launcher)
 
-1. Compile le launcher :
+Mise en place, une fois :
+
+1. Installe tauri-cli :
 
    ```bash
-   cd launcher && cargo build --release
+   cargo install tauri-cli --version "^2" --locked
    ```
 
-2. Lance `launcher/target/release/classroom-launcher.exe` (voir `launcher/README.md` pour les options).
+2. Compile Opaline depuis `D:\mod_hardcore\opaline\src-tauri` :
 
-- [ ] 9.1 La fenêtre s'ouvre avec les champs pseudo, serveur et chemin du pack (le dossier `pack/` du dépôt).
-- [ ] 9.2 « Installer » télécharge Java 25, Minecraft 26.3, Fabric et les mods dans `%APPDATA%\ClassroomRunLauncher\`, avec une barre de progression. Ton `.minecraft` n'est pas touché.
-- [ ] 9.3 Coupe le réseau pendant l'installation, puis réessaie : l'installation reprend sans tout retélécharger.
-- [ ] 9.4 « Jouer » lance le jeu en hors ligne et se connecte directement au serveur indiqué.
-- [ ] 9.5 Le panneau des stats affiche la run en cours depuis le serveur (port 25580). Avec le serveur éteint, une erreur s'affiche sans faire planter le launcher.
-- [ ] 9.6 Pendant une partie, le bouton « Installer » est désactivé.
-- [ ] 9.7 Si l'installation est interrompue, « Jouer » refuse de lancer le jeu et demande de réinstaller.
+   ```bash
+   cargo tauri build --debug --no-bundle
+   ```
+
+3. Lance l'exécutable produit dans `opaline/src-tauri/target/debug/`.
+
+Tant qu'aucune release n'existe, le catalogue des packs se pointe en dev sur un fichier local. Il est généré par :
+
+```bash
+python scripts/pack-tools.py catalog --tag v0.2.0 --repo Cikuree/opaline --out packs.json
+```
+
+Puis lance Opaline avec `OPALINE_PACKS_URL` pointant sur ce fichier (variable lue seulement en build debug).
+
+Sans app Azure validée, la connexion Microsoft reste désactivée. Pour tester le reste en dev, définis `CLASSROOM_DEV_OFFLINE=1` (build debug uniquement).
+
+- [ ] 8.1 La fenêtre Opaline s'ouvre sans bordure Windows. La barre du haut déplace la fenêtre. Réduire, Agrandir et Fermer fonctionnent, et le double-clic sur la barre agrandit.
+- [ ] 8.2 L'accueil affiche « Bonsoir, <pseudo> » en Bodoni, les cartes de packs, et la carte Serveur avec son statut et la latence. Aucune adresse n'est visible nulle part.
+- [ ] 8.3 Tailscale arrêté : message « Tailscale n'est pas connecté », JOUER désactivé. Tailscale connecté et serveur lancé avec `motd=Classroom Run` : « En ligne », JOUER actif.
+- [ ] 8.4 Installer Classroom Run :
+  - la barre avance sans jamais reculer (Java, Minecraft, assets, loader, mods, textures) ;
+  - ensuite les icônes des splits sont les vraies textures Minecraft ;
+  - ton dossier `.minecraft` n'est pas touché, tout est dans `%APPDATA%\Opaline`.
+- [ ] 8.5 JOUER lance le jeu directement sur le serveur. Pendant la partie, Installer, Mettre à jour et Réparer sont grisés.
+- [ ] 8.6 Le jeu est fermé : Opaline revient à l'état normal. Si le jeu plante au démarrage, la fin du log s'affiche, sans jeton ni adresse.
+- [ ] 8.7 Serveur avec un autre MOTD : « Serveur inattendu », JOUER refusé.
+- [ ] 8.8 Réglages :
+  - les modes Faible, Équilibré et Qualité changent la mémoire, qui reste bornée par ta RAM, et s'appliquent au lancement suivant (shaders, distance de rendu) ;
+  - Personnalisé ne touche à rien.
+- [ ] 8.9 Fichiers & mods : chaque bouton ouvre le bon dossier de l'instance. La liste des mods est marquée « vérifié ». Réparer revérifie tout.
+- [ ] 8.10 Historique : la liste des runs et le détail d'une mort (cause, position, graphe des vies) viennent du serveur. Endpoint `/history`, port 25580.
+- [ ] 8.11 Amis : les joueurs connectés au serveur apparaissent avec leur tête de skin et le badge « En jeu ». La colonne s'élargit sans décalage vertical.
+- [ ] 8.12 Compte, une fois l'app Azure validée :
+  - connexion par code : le code s'affiche, « Ouvrir la page » ouvre microsoft.com/link ;
+  - ton skin apparaît dans la garde-robe ;
+  - importer un PNG 64×64 puis l'appliquer change ton skin en jeu ;
+  - déconnexion.
+- [ ] 8.13 Coupe Internet puis relance Opaline : il démarre quand même (catalogue en cache) et joue avec le pack déjà installé.
 
 ## Pour me répondre
 

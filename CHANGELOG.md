@@ -1,5 +1,30 @@
 # Changelog
 
+## Opaline 0.2.0 : launcher Tauri multi-pack
+- **Application** :
+  - Opaline remplace l'ancien launcher egui : application Tauri 2 sans bordure Windows, avec l'interface de la maquette validée ;
+  - polices Bodoni Moda (salutation) et Bricolage Grotesque, embarquées dans l'application ;
+  - le cœur Rust devient la bibliothèque `opaline_core`.
+- **Packs** :
+  - un dossier par pack (`packs/<id>/` + `opaline.toml`), catalogue `packs.json`, une instance isolée par pack, Java et assets partagés entre instances ;
+  - changelog des mods (ajoutés, retirés, mis à jour) lors d'une mise à jour ;
+  - guide pour ajouter un pack dans `docs/PACKS.md`.
+- **Fonctionnalités** :
+  - garde-robe de skins et capes via l'API officielle ;
+  - têtes des amis et joueurs vus en ligne ;
+  - textures Minecraft extraites du `client.jar` du joueur, jamais redistribuées ;
+  - historique des morts via le nouvel endpoint `GET /history` du mod.
+- **Sécurité** :
+  - serveur revérifié (ping et MOTD) juste avant chaque lancement ;
+  - jeu et installation exclusifs pour un même pack ;
+  - ouverture de liens limitée à des hôtes exacts, CSP stricte ;
+  - données du serveur échappées dans l'interface ;
+  - jetons et adresse du serveur masqués dans les erreurs et les logs ;
+  - variables de développement désactivées en version publiée.
+- **Release** :
+  - installeur Windows (NSIS) et AppImage Linux, un `pack-<id>.zip` par pack, `packs.json`, `launcher.json` ;
+  - avertissement en CI si l'ID client Microsoft manque.
+
 ## Launcher en ligne, shaders et distribution
 - Pack : Sodium 0.9.2, Iris 1.11.7 et Complementary Reimagined r5.9.3 côté client. Le shaderpack est référencé par lien Modrinth et crédité dans `CREDITS.md`.
 - Release unique (tag `v*`), avec ces fichiers :
