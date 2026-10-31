@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 64 64">
+  <!-- Icône d'Opaline : le « O » Didone et son étoile, nacrés, sur une pastille rouge corail. Source des icônes de l'app (cargo tauri icon). -->
+  <defs>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff1e0"/>
+      <stop offset=".5" stop-color="#f6c9d4"/>
+      <stop offset="1" stop-color="#e6d8ff"/>
+    </linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8574f"/>
+      <stop offset="1" stop-color="#c63d3a"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="31" fill="url(#red)"/>
+  <g transform="translate(32 32) scale(.68) translate(-32 -32)">
+    <path fill="url(#lg)" fill-rule="evenodd" d="M9 32a23 27 0 1 0 46 0a23 27 0 1 0 -46 0ZM20.5 32a11.5 24.4 0 1 0 23 0a11.5 24.4 0 1 0 -23 0Z"/>
+    <path fill="url(#lg)" d="M32 13Q33.2 30.8 43 32Q33.2 33.2 32 51Q30.8 33.2 21 32Q30.8 30.8 32 13Z"/>
+    <path fill="url(#lg)" d="M53 7Q53.5 12 58 13Q53.5 14 53 19Q52.5 14 48 13Q52.5 12 53 7Z"/>
+  </g>
+</svg>
