@@ -71,7 +71,9 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 | Commande | Arguments | Retour |
 |---|---|---|
 | `app_info` | – | `{version, update: null \| {version, url}}` |
-| `auth_status` | – | `{state: "signedOut" \| "signedIn" \| "notConfigured", profile: null \| {name, uuid}, warning: null \| string}` |
+| `auth_status` | – | `{state: "signedOut" \| "signedIn" \| "notConfigured", profile: null \| {name, uuid}, warning: null \| string, mode: "direct" \| "official", mojangPending: bool, identity: null \| {name, uuid}}`. `mode` vaut `direct` avec une session Opaline valide, sinon `official` (lancement via le Launcher Minecraft : voir `play`). `mojangPending` : le dernier essai de connexion a été refusé par Mojang (app Azure non approuvée, `NOT_APPROVED`), mémorisé en mémoire seulement. `identity` : pseudo Minecraft mémorisé (mode officiel seulement) |
+| `identity_set` | `{name}` | `{name, uuid}`, ou `null` si `name` est vide (oublie le pseudo). Mode officiel : le pseudo (`[A-Za-z0-9_]{3,16}`, validé avant tout appel) est résolu via `api.mojang.com/users/profiles/minecraft/<pseudo>` (204 / 404 : erreur « Aucun joueur Minecraft nommé … »), puis mémorisé dans la config ; aucune authentification |
+| `identity_skin` | – | `null` (pas de pseudo) ou `{dataUrl, model: "classic" \| "slim"}` : skin du pseudo mémorisé (sessionserver public, hôte de texture vérifié), affiché en lecture seule |
 | `auth_start` | `{mode: "browser" \| "device"}` (défaut `browser`) | `browser` : `{attempt, mode: "browser", authorizeUrl}`. Opaline ouvre lui-même la page Microsoft dans le navigateur par défaut (code d'autorisation + PKCE, redirection vers `http://localhost:<port>` sur 127.0.0.1). `device` (secours) : `{attempt, mode: "device", userCode, verificationUri, expiresIn}`. Dans les deux cas, événement `auth://done` portant le même `attempt` |
 | `auth_cancel` | – | – |
 | `auth_sign_out` | – | `{warning: null \| string}` |
@@ -80,7 +82,7 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 | `pack_changelog` | `{id}` | `{added: [string], removed: [string], updated: [{name, from, to}]}` (différence entre installé et publié) |
 | `pack_mods` | `{id}` | `[{name, version, side, file, verified}]` |
 | `pack_repair` | `{id}` | comme `pack_install` (revérifie tout) |
-| `play` | `{id}` | `{started: bool, reason: null \| string, serverListed: bool}`, puis événement `game://exited`. Lance le jeu dans l'instance du pack, avec ses mods, jusqu'au **menu principal** de Minecraft : aucune connexion automatique, aucun ping ni appel à Tailscale. Si le pack déclare un serveur, Opaline l'ajoute au préalable à la liste Multijoueur de l'instance (`servers.dat`, entrée nommée d'après le pack) : ajoutée si aucune entrée n'a déjà cette adresse ; si une entrée porte déjà le nom du pack avec une autre adresse, seule son adresse est mise à jour ; les autres entrées ne sont jamais modifiées. Un nom court n'est écrit que si le suffixe MagicDNS est déjà connu (dernier `server_status`), sinon l'entrée est écrite au lancement suivant. `serverListed` vaut vrai si l'entrée figure dans la liste à l'issue (faux : pas de serveur, suffixe inconnu, nom/adresse trop long, `servers.dat` illisible ou écriture impossible) ; l'interface n'affiche « Ajouté à ta liste Multijoueur » que si vrai |
+| `play` | `{id}` | `{started: bool, reason: null \| string, serverListed: bool, via: "direct" \| "official", message?: string}`. `via: "direct"` (session Opaline valide) : puis événement `game://exited`. `via: "official"` (pas de session) : Opaline écrit la version du loader dans `.minecraft/versions/`, copie les libraries sans URL (Forge, NeoForge) vers `.minecraft/libraries`, fusionne le profil `opaline-<packId>` (`Opaline · <nom>`, `lastUsed` récent, `gameDir` = instance du pack, `-Xmx<RAM>M`) dans `launcher_profiles.json` (sauvegarde `.opaline.bak`, écriture atomique, reste du fichier intact) et ouvre le Launcher Minecraft ; `message` : « Profil prêt dans le Launcher Minecraft : clique sur Jouer », ou « Ouvre le Launcher Minecraft et choisis le profil Opaline · <pack> » s'il est introuvable. Pas de `game://exited` (processus non possédé), pas de verrou de jeu. Erreur lisible si `launcher_profiles.json` manque (« Installe et ouvre une fois le Launcher Minecraft ») ou est illisible. Mode direct : Lance le jeu dans l'instance du pack, avec ses mods, jusqu'au **menu principal** de Minecraft : aucune connexion automatique, aucun ping ni appel à Tailscale. Si le pack déclare un serveur, Opaline l'ajoute au préalable à la liste Multijoueur de l'instance (`servers.dat`, entrée nommée d'après le pack) : ajoutée si aucune entrée n'a déjà cette adresse ; si une entrée porte déjà le nom du pack avec une autre adresse, seule son adresse est mise à jour ; les autres entrées ne sont jamais modifiées. Un nom court n'est écrit que si le suffixe MagicDNS est déjà connu (dernier `server_status`), sinon l'entrée est écrite au lancement suivant. `serverListed` vaut vrai si l'entrée figure dans la liste à l'issue (faux : pas de serveur, suffixe inconnu, nom/adresse trop long, `servers.dat` illisible ou écriture impossible) ; l'interface n'affiche « Ajouté à ta liste Multijoueur » que si vrai |
 | `server_status` | `{id}` | `ServerView` (§5), ou `null` si le pack n'a pas de serveur |
 | `run_stats` | `{id}` | JSON de `GET /stats` du serveur, ou `null` (seulement pour le widget `classroomRun`) |
 | `run_history` | `{id, run: null \| number}` | JSON de `GET /history` (index) ou `GET /history/<n>` (détail), schémas de CONTRACT.md §Historique, ou `null` |
@@ -106,6 +108,12 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 - `inGame` vaut vrai si le joueur est connecté au serveur d'un pack.
 - Il n'y a pas de service de présence : le statut personnel (En ligne / Absent / Invisible) de la maquette n'est pas réalisé en v1.
 
+### Mode de lancement et écran de connexion
+
+- Session Opaline valide : lancement direct. Sinon : Launcher Minecraft officiel (aucun contournement, aucun hors ligne). La connexion Microsoft est facultative ; dès que Mojang approuve l'app, la connexion réussit et le mode direct revient seul.
+- L'écran de connexion propose « Se connecter avec Microsoft » et « Jouer via le Launcher Minecraft » (champ facultatif « Ton pseudo Minecraft » : tête et skin, sans authentification). Après `NOT_APPROVED`, il affiche « Opaline attend la validation de Mojang. En attendant, tu joues via le Launcher Minecraft : ton compte et ton skin y sont gérés. » puis continue en mode officiel.
+- Mode officiel : vue Compte sans cape ni changement de skin (état vide explicite) ; têtes des amis et statut serveur inchangés. Seul `launcher_profiles.json` du Launcher officiel est lu ou écrit : jamais ses fichiers de comptes ni de jetons.
+
 ## 5. Vues
 
 ```
@@ -122,7 +130,7 @@ SkinView = {id, name, model, active, dataUrl}
 
 | Événement | Charge utile |
 |---|---|
-| `auth://done` | `{attempt: number, ok: bool, profile: null \| {name, uuid}, error: null \| string}`, jamais émis pour une tentative annulée |
+| `auth://done` | `{attempt: number, ok: bool, profile: null \| {name, uuid}, error: null \| string, mojangPending: bool}`, jamais émis pour une tentative annulée. `mojangPending` vrai : refus `NOT_APPROVED`, l'interface explique que Mojang n'a pas encore validé l'app et continue en mode officiel |
 | `install://progress` | `{packId, stage, done, total}`, avec les étapes toujours émises dans cet ordre : `java`, `minecraft`, `assets`, `loader`, `mods`, `textures` |
 | `install://done` | `{packId, ok: bool, error: null \| string}` |
 | `textures://ready` | `{dir: string}` : textures disponibles (émis au démarrage dès qu'elles sont extraites, y compris avant toute installation de pack) |

@@ -66,6 +66,11 @@
     <p class="mute" style="max-width:42ch">Opaline, vos mondes entre amis. Connecte ton compte Microsoft pour installer les modpacks du groupe et les lancer.</p>
     <button class="btn primary" id="btnLogin" style="height:52px;padding:0 32px;font-size:16px">Se connecter avec Microsoft</button>
     <p class="small mute" id="loginMsg" role="status" hidden></p>
+    <div id="officialBox" style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-top:18px;width:min(320px,100%)">
+      <input class="skn" id="mcName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Ton pseudo Minecraft (facultatif)" aria-label="Ton pseudo Minecraft (facultatif)">
+      <button class="btn" id="btnOfficial" type="button">Jouer via le Launcher Minecraft</button>
+      <p class="xs mute">Sans compte Opaline : le Launcher Minecraft connecte ton compte et lance le jeu.</p>
+    </div>
     <button class="btn link small" id="btnDevice" type="button" style="background:none;border:0;color:var(--mute);text-decoration:underline;cursor:pointer;margin-top:10px">Le navigateur ne s&rsquo;ouvre pas&nbsp;? Utiliser un code</button>
     <div id="browserBox" hidden>
       <p class="mute" role="status" id="browserWait">Connexion en cours dans ton navigateur&hellip;</p>
@@ -144,22 +149,24 @@
   </section>
 
   <section class="view" id="v-account" aria-labelledby="accT">
-    <div class="bar"><h1 id="accT">Compte</h1><span class="pill"><span class="dot"></span>Session active</span></div>
+    <div class="bar"><h1 id="accT">Compte</h1><span class="pill"><span class="dot"></span><span id="accSessionT">Session active</span></span></div>
     <div class="grid2">
       <article class="card" style="display:flex;gap:20px;align-items:center">
         <div id="fullSkin" style="background:var(--win-deep);border-radius:20px;padding:14px;flex:none"></div>
         <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
           <div class="me"><div class="avatar" style="width:56px;height:56px" id="accAvatar"></div><div><h2 id="accName"></h2><div class="mute xs">Profil Minecraft Java</div></div></div>
           <div class="mute small">UUID <code style="color:var(--ink);overflow-wrap:anywhere" id="accUuid"></code></div>
-          <span class="pill" style="align-self:flex-start">Connecté avec Microsoft</span>
+          <span class="pill" style="align-self:flex-start" id="accPill">Connecté avec Microsoft</span>
           <button class="btn sm" id="btnLogout" style="align-self:flex-start">Se déconnecter</button>
+          <div id="accPseudo" class="row" style="gap:8px;flex-wrap:nowrap" hidden><input class="skn" id="accMcName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Ton pseudo Minecraft" aria-label="Ton pseudo Minecraft" style="text-align:left"><button class="btn sm" id="accMcSave" type="button">Enregistrer</button></div>
+          <button class="btn sm primary" id="btnLoginAcc" data-go="login" hidden style="align-self:flex-start">Se connecter avec Microsoft</button>
         </div>
       </article>
       <article class="card">
         <h2>État de la session</h2>
         <ul class="list" style="margin-top:12px;gap:10px;font-size:14px" id="sessionList"></ul>
       </article>
-      <article class="card">
+      <article class="card" id="capeCard">
         <h2 id="capeT">Cape</h2>
         <div role="radiogroup" aria-labelledby="capeT" style="margin-top:8px" id="capes"></div>
       </article>
@@ -167,7 +174,8 @@
   <section aria-labelledby="wrT">
       <h2 id="wrT" style="font-size:18px">Garde-robe</h2>
       <p class="mute small">Bibliothèque locale d&rsquo;Opaline : Mojang ne garde pas d&rsquo;historique des skins.</p>
-      <div class="wardrobe"><div id="skinCards" style="display:contents"></div>
+      <p class="mute small" id="wrOff" hidden></p>
+      <div class="wardrobe" id="wardrobe"><div id="skinCards" style="display:contents"></div>
         <article class="card imp"><h3>+ Importer un skin</h3>
           <label class="drop" id="drop"><input type="file" id="skinFile" accept="image/png">
             <svg class="i" style="width:28px;height:28px;color:var(--coral2)"><use href="#i-down"/></svg>
