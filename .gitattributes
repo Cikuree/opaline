@@ -9,4 +9,4 @@
 
 
 # packwiz hashes the exact bytes
-pack/** text eol=lf
+packs/** text eol=lf

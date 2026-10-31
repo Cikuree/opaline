@@ -1,6 +1,6 @@
 # Crédits
 
-Classroom Run n'embarque aucun de ces fichiers : le pack packwiz les télécharge depuis Modrinth, avec vérification de hash.
+Les packs (`packs/<id>/`) n'embarquent aucun de ces fichiers : le pack packwiz les télécharge depuis Modrinth, avec vérification de hash.
 
 | Composant | Auteur | Licence | Lien |
 |---|---|---|---|
