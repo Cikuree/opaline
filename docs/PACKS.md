@@ -52,8 +52,8 @@ name = "Mon pack"
 description = "Une phrase."
 thumbnail = "ender_eye"       # texture item/ ou block/ du client.jar, [a-z0-9_]+
 widgets = ["server"]          # parmi : classroomRun, server, news
-[server]
-host = "monserveur"           # nom MagicDNS court de la machine, [a-z0-9-]+
+[server]                      # section FACULTATIVE : sans elle, pas de carte serveur ni d'amis pour ce pack
+host = "monserveur"           # nom court (sans point) = nom MagicDNS Tailscale ; nom complet ou IP = serveur public (voir plus bas)
 port = 25565
 motd = "Mon pack"             # le MOTD du serveur doit contenir ce texte
 statsPort = 0                 # 0 : pas d'endpoint HTTP (le widget classroomRun n'est utile que pour Classroom Run)
@@ -68,6 +68,20 @@ Valider : `python3 scripts/pack-tools.py catalog --base-url https://github.com/C
 3. Mettre dans `mods/` du serveur les mods `side = "server"` ou `"both"` du pack.
 4. `server.properties` : `server-port` = `port` de `opaline.toml`, `motd` contenant le texte `motd` d'`opaline.toml`.
 5. Lancer un serveur par pack, chacun sur son port, et ouvrir ces ports seulement sur l'interface Tailscale (`sudo ufw allow in on tailscale0 to any port <port>`).
+
+### Serveur hébergé (MineStrator…)
+
+Pour un serveur public, sans Tailscale :
+
+1. Chez l'hébergeur, installer Fabric (même `[versions]` que `pack.toml`) et déposer dans `mods/` les mods `side = "server"` ou `"both"` du pack.
+2. `online-mode=true` est obligatoire : les joueurs se connectent avec leur compte Microsoft, Opaline ne contourne rien.
+3. `motd` : doit contenir le texte `motd` d'`opaline.toml` (Opaline s'en sert pour reconnaître le serveur).
+4. `opaline.toml` : `host` = nom complet (ex. `monserveur.minestrator.com`) ou IP, `port` = port du jeu (25565 par défaut).
+5. Statistiques : le widget Classroom Run lit un second port HTTP (`statsPort`). Si l'hébergeur n'ouvre qu'un seul port, mettre `statsPort = 0` : les statistiques et l'historique sont alors indisponibles pour ce pack (« Statistiques indisponibles sur ce serveur »).
+
+Sans section `[server]`, le pack s'installe et se lance normalement, sans carte serveur ni statistiques.
+
+JOUER lance toujours le jeu jusqu'au menu principal de Minecraft ; si le pack a un serveur, Opaline l'ajoute avant à la liste Multijoueur de l'instance (entrée nommée d'après le pack, jamais en doublon, les autres entrées ne sont pas touchées). Solo ou multijoueur se choisit ensuite dans le menu du jeu. Un nom court (Tailscale) a besoin que Tailscale soit connecté pour être joignable ; un nom complet non.
 
 ## 5. Tester localement
 

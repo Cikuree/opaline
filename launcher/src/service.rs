@@ -5,7 +5,7 @@ use crate::catalog::{self, PackEntry, PackView};
 use crate::changelog::{self, Changelog, ModView};
 use crate::config::{self, Config, Dirs};
 use crate::download::{self, Progress};
-use crate::{friends, install, launch, mojang, packwiz, perf, serverview, stats, sysmem, tailscale, textures, update};
+use crate::{friends, install, launch, mojang, packwiz, perf, serverview, servers, stats, sysmem, textures, update};
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -168,56 +168,58 @@ pub fn session_for_play(cfg: &Config, mgr: &AuthManager) -> Result<Session> {
 }
 
 fn magic_suffix() -> Option<String> {
-    if config::server_overridden() { None } else { tailscale::status().magic_dns_suffix }
-}
-
-/// Raison affichée quand le lancement est refusé faute de serveur vérifié.
-pub fn refusal_message(help: Option<&str>) -> &'static str {
-    match help {
-        Some("tailscaleNotInstalled") => tailscale::MSG_NOT_INSTALLED,
-        Some("tailscaleDisconnected") => tailscale::MSG_DISCONNECTED,
-        Some("noAccess") => tailscale::MSG_UNREACHABLE,
-        _ => "Le serveur joint n'est pas celui du pack : lancement refusé par sécurité.",
-    }
+    serverview::tailscale_info().magic_dns_suffix
 }
 
 pub struct Launched {
     pub child: Child,
-    /// Adresse du serveur (à masquer des journaux).
+    /// Adresse du serveur du pack, ou vide (à masquer des journaux : le jeu peut s'y connecter plus tard).
     pub server: String,
+    /// Le serveur du pack figure dans `servers.dat` (faux : pas de serveur, suffixe MagicDNS inconnu, ou écriture impossible).
+    pub server_listed: bool,
     pub log: PathBuf,
 }
 
+/// Lance le jeu jusqu'au menu principal (aucune connexion automatique, aucune vérification réseau). Si le pack a un
+/// serveur, il est d'abord ajouté à la liste Multijoueur de l'instance ; un échec de cet ajout ne bloque pas le lancement.
 pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) -> Result<Launched> {
     if !e.supported() {
         bail!("ce pack n'est pas pris en charge par cette version d'Opaline");
     }
     let dirs = root.for_pack(&e.id)?;
     let inst = install::load_installed(&dirs)?;
-    // Le serveur joint doit être celui du pack (MOTD) : sinon on ne lance pas (adresse de dev : vérification sautée).
-    let info = serverview::tailscale_info();
-    if !config::server_overridden() {
-        let (view, _) = serverview::check_with(e, &info);
-        if !view.motd_ok {
-            bail!("{}", refusal_message(view.help));
-        }
-    }
-    let server = config::server_addr(&e.server.host, e.server.port, info.magic_dns_suffix.as_deref());
+    let (server, server_listed) = e.server.as_ref().map(|s| list_entry(&dirs.instance(), &e.name, s)).unwrap_or_default();
     let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?
         .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
-    let env = mojang::Env::current(&[("is_quick_play_multiplayer", true)]);
+    let env = mojang::Env::current(&[]);
     let cmd = launch::build_command(&launch::LaunchInput {
         java: &inst.java,
         version: &inst.version,
         fabric: &inst.fabric,
         dirs: &dirs,
         session,
-        server: Some(&server),
         memory_mb,
         env: &env,
     })?;
     let child = launch::spawn(&cmd, &dirs)?;
-    Ok(Launched { child, server, log: dirs.instance().join("logs").join("launcher-game.log") })
+    Ok(Launched { child, server, server_listed, log: dirs.instance().join("logs").join("launcher-game.log") })
+}
+
+/// Ajoute (ou met à jour) le serveur dans `servers.dat` ; renvoie son adresse (pour masquage des journaux) et si l'entrée y figure.
+/// Aucun appel à Tailscale : un nom court utilise le suffixe MagicDNS déjà connu ; inconnu, l'entrée n'est pas écrite cette fois-ci
+/// (nouvel essai au lancement suivant). Rien n'est loggé de l'adresse ; un échec n'empêche pas le lancement.
+fn list_entry(instance: &Path, pack_name: &str, s: &catalog::ServerInfo) -> (String, bool) {
+    let suffix = if config::is_short_host(&s.host) { serverview::cached_magic_suffix() } else { None };
+    let addr = config::server_addr(&s.host, s.port, suffix.as_deref());
+    if suffix.is_none() && config::is_short_host(&s.host) && !config::server_overridden() {
+        return (addr, false);
+    }
+    let ip = config::list_addr(&s.host, s.port, suffix.as_deref());
+    let listed = servers::add_server(instance, pack_name, &ip).unwrap_or_else(|err| {
+        eprintln!("liste Multijoueur non modifiée : {}", sanitize_error_with(&format!("{err:#}"), &Dirs::new(instance), &[&ip]));
+        false
+    });
+    (addr, listed)
 }
 
 /// Dernières lignes du journal du jeu, sans jeton, sans adresse du serveur, sans chemin personnel.
@@ -280,17 +282,19 @@ pub fn sanitize_error_with(msg: &str, root: &Dirs, secrets: &[&str]) -> String {
 
 // ---------- Serveur, stats, amis ----------
 
-pub fn server_status(root: &Dirs, id: &str) -> Result<serverview::ServerView> {
-    Ok(serverview::check(&entry(root, id)?).0)
+/// `None` : le pack n'a pas de serveur.
+pub fn server_status(root: &Dirs, id: &str) -> Result<Option<serverview::ServerView>> {
+    Ok(serverview::check(&entry(root, id)?).map(|c| c.0))
 }
 
 fn stats_get(root: &Dirs, id: &str, path: &str) -> Result<Option<serde_json::Value>> {
     let e = entry(root, id)?;
-    if !e.widgets.iter().any(|w| w == "classroomRun") || e.server.stats_port == 0 {
+    let Some(srv) = e.server.as_ref().filter(|s| s.stats_port != 0 && e.widgets.iter().any(|w| w == "classroomRun")) else {
         return Ok(None);
-    }
-    let host = config::stats_host(&e.server.host, magic_suffix().as_deref());
-    stats::fetch_value(&short_client()?, &config::stats_url(&host, e.server.stats_port, path))
+    };
+    let suffix = if config::is_short_host(&srv.host) { magic_suffix() } else { None };
+    let host = config::stats_host(&srv.host, suffix.as_deref());
+    stats::fetch_value(&short_client()?, &config::stats_url(&host, srv.stats_port, path))
 }
 
 pub fn run_stats(root: &Dirs, id: &str) -> Result<Option<serde_json::Value>> {
@@ -306,7 +310,7 @@ pub fn friends_list(root: &Dirs) -> Result<Vec<friends::Friend>> {
     let mut seen = Vec::new();
     for e in packs(root)? {
         // Seuls les serveurs dont le MOTD correspond au pack comptent (pas d'inscription depuis un serveur inattendu).
-        let (view, st) = serverview::check(&e);
+        let Some((view, st)) = serverview::check(&e) else { continue };
         if view.motd_ok
             && let Some(st) = st
         {
@@ -325,11 +329,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn launch_refusal_messages() {
-        assert_eq!(refusal_message(Some("tailscaleNotInstalled")), tailscale::MSG_NOT_INSTALLED);
-        assert_eq!(refusal_message(Some("noAccess")), tailscale::MSG_UNREACHABLE);
-        assert!(refusal_message(Some("unexpectedServer")).contains("pas celui du pack"));
-        assert!(refusal_message(None).contains("pas celui du pack"));
+    fn list_entry_needs_known_suffix_for_short_hosts_only() {
+        if config::server_overridden() || serverview::cached_magic_suffix().is_some() {
+            return;
+        }
+        let d = std::env::temp_dir().join(format!("opaline-list-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let info = |host: &str| catalog::ServerInfo { host: host.into(), port: 25565, motd: "m".into(), stats_port: 0 };
+        let (_, listed) = list_entry(&d, "Pack", &info("home-server"));
+        assert!(!listed && !d.join("servers.dat").exists(), "suffixe inconnu : rien d'écrit");
+        let (addr, listed) = list_entry(&d, "Pack", &info("mon.minestrator.com"));
+        assert!(listed && d.join("servers.dat").is_file());
+        assert_eq!(addr, "mon.minestrator.com:25565");
+        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]

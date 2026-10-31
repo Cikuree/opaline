@@ -382,7 +382,7 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
             let session = service::session_for_play(&cfg, &s2.0.auth)?;
             let e = service::entry(root, &id2)?;
             let l = service::launch_pack(root, &e, &cfg, &session)?;
-            *s2.0.last_server.lock().unwrap() = Some(l.server.clone());
+            *s2.0.last_server.lock().unwrap() = Some(l.server.clone()).filter(|a| !a.is_empty());
             Ok((l, session.access_token().to_string()))
         })
         .await;
@@ -392,19 +392,20 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
             Ok(json!({ "started": false, "reason": reason }))
         }
         Ok((mut l, token)) => {
+            let listed = l.server_listed;
             std::thread::spawn(move || {
                 let code = l.child.wait().ok().and_then(|st| st.code());
                 let tail = service::log_tail(&l.log, &token, &l.server, &s.0.root, 40);
                 s.0.activity.lock().unwrap().running.remove(&id);
                 let _ = app.emit("game://exited", json!({ "packId": id, "code": code, "logTail": tail }));
             });
-            Ok(json!({ "started": true, "reason": null }))
+            Ok(json!({ "started": true, "reason": null, "serverListed": listed }))
         }
     }
 }
 
 #[tauri::command]
-async fn server_status(state: State<'_, S>, id: String) -> CmdResult<opaline_core::serverview::ServerView> {
+async fn server_status(state: State<'_, S>, id: String) -> CmdResult<Option<opaline_core::serverview::ServerView>> {
     state.blocking(move |r| service::server_status(r, &id)).await
 }
 

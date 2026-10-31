@@ -150,33 +150,35 @@ fn fabric_profile() -> fabric::FabricProfile {
     serde_json::from_str(r#"{"mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient","arguments":{"game":[],"jvm":[]},"libraries":[]}"#).unwrap()
 }
 
-fn command_for(session: &Session, server: Option<&str>, extra_jvm: Option<&str>) -> anyhow::Result<Vec<String>> {
+fn command_for(session: &Session, extra_jvm: Option<&str>) -> anyhow::Result<Vec<String>> {
     let (v, mut f) = (version_json(), fabric_profile());
     if let Some(x) = extra_jvm {
         f.arguments.jvm.push(mojang::Arg::Plain(x.into()));
     }
     let dirs = Dirs::new(tmp("cmd"));
-    let env = mojang::Env::current(&[("is_quick_play_multiplayer", server.is_some())]);
-    launch::build_command(&launch::LaunchInput { java: Path::new("java"), version: &v, fabric: &f, dirs: &dirs, session, server, memory_mb: 2048, env: &env })
+    let env = mojang::Env::current(&[]);
+    launch::build_command(&launch::LaunchInput { java: Path::new("java"), version: &v, fabric: &f, dirs: &dirs, session, memory_mb: 2048, env: &env })
 }
 
 #[test]
 fn command_line_is_redacted_for_logs() {
     let s = Session::microsoft("Steve".into(), "uuid".into(), "MC-TOKEN-SECRET-123".into());
-    let cmd = command_for(&s, Some("home-server:25565"), Some("-Dtoken=MC-TOKEN-SECRET-123")).unwrap();
+    let cmd = command_for(&s, Some("-Dtoken=MC-TOKEN-SECRET-123")).unwrap();
     // la commande réelle contient bien le jeton (sinon le test ne prouve rien)
     assert!(cmd.iter().any(|a| a.contains(SECRET)));
     let logged = launch::redact(&cmd, s.access_token(), Some("home-server:25565"));
     assert_no_secret("ligne de commande loggée", &logged);
     assert!(logged.contains("--accessToken <masqué>"));
-    assert!(logged.contains("<serveur>") && !logged.contains("home-server:25565"));
+    assert!(!cmd.iter().any(|a| a.contains("quickPlay")), "aucune connexion automatique");
+    let game_line = launch::redact_text("Connecting to play.exemple.fr, 25565", s.access_token(), Some("play.exemple.fr:25565"));
+    assert!(game_line.contains("<serveur>") && !game_line.contains("play.exemple.fr"));
 }
 
 #[test]
 fn command_line_redaction_keeps_offline_token_readable_but_masks_flag_value() {
     // Hors ligne : jeton factice "0" (un caractère) ; la valeur suivant --accessToken reste masquée.
     let s = Session::offline("Bob");
-    let cmd = command_for(&s, None, None).unwrap();
+    let cmd = command_for(&s, None).unwrap();
     let logged = launch::redact(&cmd, s.access_token(), None);
     assert!(logged.contains("--accessToken <masqué>"));
 }
@@ -195,7 +197,6 @@ fn bug_leftover_variable_error_echoes_token() {
         fabric: &f,
         dirs: &dirs,
         session: &s,
-        server: None,
         memory_mb: 2048,
         env: &env,
     })

@@ -65,19 +65,38 @@ pub fn server_overridden() -> bool {
     server_override().is_some()
 }
 
-/// Hôte (sans port) à contacter pour un serveur de pack : surcharge de dev, sinon nom MagicDNS court + suffixe.
+/// Nom court (sans point ni `:`) = nom MagicDNS Tailscale ; sinon nom complet ou IP, utilisé tel quel.
+pub fn is_short_host(host: &str) -> bool {
+    !host.contains('.') && !host.contains(':')
+}
+
+/// Hôte (sans port) à contacter pour un serveur de pack : surcharge de dev, sinon nom court + suffixe MagicDNS, sinon tel quel.
 pub fn choose_host(base: &str, suffix: Option<&str>, override_addr: Option<&str>) -> String {
     match override_addr.map(str::trim).filter(|s| !s.is_empty()) {
         Some(o) => crate::ping::split_host(o).0,
-        None => crate::tailscale::server_host(base, suffix),
+        None if is_short_host(base) => crate::tailscale::server_host(base, suffix),
+        None => base.to_string(),
     }
 }
 
-/// Adresse `hôte:port` du serveur de jeu pour cette exécution. Jamais affichée ni loggée.
+fn join_port(host: &str, port: u16) -> String {
+    if host.contains(':') { format!("[{host}]:{port}") } else { format!("{host}:{port}") }
+}
+
+/// Adresse `hôte:port` du serveur de jeu pour cette exécution (ping). Jamais affichée ni loggée.
 pub fn server_addr(base: &str, port: u16, suffix: Option<&str>) -> String {
     match server_override() {
         Some(o) => o,
-        None => format!("{}:{port}", choose_host(base, suffix, None)),
+        None => join_port(&choose_host(base, suffix, None), port),
+    }
+}
+
+/// Adresse écrite dans `servers.dat` : comme `server_addr`, sans le port s'il vaut 25565.
+pub fn list_addr(base: &str, port: u16, suffix: Option<&str>) -> String {
+    match server_override() {
+        Some(o) => o,
+        None if port == crate::ping::DEFAULT_PORT => choose_host(base, suffix, None),
+        None => join_port(&choose_host(base, suffix, None), port),
     }
 }
 
@@ -209,6 +228,22 @@ mod tests {
         assert_eq!(choose_host("home-server", None, None), "home-server");
         assert_eq!(choose_host("home-server", Some("x.ts.net"), Some("127.0.0.1:9999")), "127.0.0.1");
         assert_eq!(choose_host("home-server", Some("x.ts.net"), Some("  ")), "home-server.x.ts.net");
+        assert_eq!(choose_host("mon.minestrator.com", Some("x.ts.net"), None), "mon.minestrator.com");
+        assert_eq!(choose_host("10.0.0.2", Some("x.ts.net"), None), "10.0.0.2");
+        assert!(is_short_host("home-server") && !is_short_host("a.b") && !is_short_host("::1"));
+    }
+
+    #[test]
+    fn list_addr_omits_default_port() {
+        if server_override().is_some() {
+            return;
+        }
+        assert_eq!(list_addr("home-server", 25565, Some("x.ts.net")), "home-server.x.ts.net");
+        assert_eq!(list_addr("home-server", 25565, None), "home-server");
+        assert_eq!(list_addr("mon.minestrator.com", 25565, Some("x.ts.net")), "mon.minestrator.com");
+        assert_eq!(list_addr("mon.minestrator.com", 25999, None), "mon.minestrator.com:25999");
+        assert_eq!(list_addr("::1", 25999, None), "[::1]:25999");
+        assert_eq!(server_addr("mon.minestrator.com", 25565, None), "mon.minestrator.com:25565");
     }
 
     #[test]

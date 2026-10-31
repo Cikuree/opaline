@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerInfo {
-    /// Nom MagicDNS court (le suffixe du tailnet est ajouté à l'exécution). Jamais affiché.
+    /// Nom court (sans point) = nom MagicDNS Tailscale, suffixe du tailnet ajouté à l'exécution ; nom complet ou IP =
+    /// serveur public, utilisé tel quel. Jamais affiché.
     pub host: String,
     pub port: u16,
     pub motd: String,
@@ -34,7 +35,9 @@ pub struct PackEntry {
     /// URL du `pack-<id>.zip`.
     pub pack: String,
     pub pack_hash: String,
-    pub server: ServerInfo,
+    /// Absent ou `null` : pack sans serveur (ni carte serveur, ni amis, ni statistiques).
+    #[serde(default)]
+    pub server: Option<ServerInfo>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -49,6 +52,9 @@ pub struct PackView {
     pub mods_count: u32,
     pub thumbnail: String,
     pub widgets: Vec<String>,
+    pub has_server: bool,
+    /// Serveur avec endpoint de statistiques (`statsPort` ≠ 0).
+    pub has_stats: bool,
     pub supported: bool,
     pub installed: bool,
     pub update_available: bool,
@@ -73,12 +79,19 @@ impl PackEntry {
             mods_count: self.mods_count,
             thumbnail: self.thumbnail.clone(),
             widgets: self.widgets.clone(),
+            has_server: self.server.is_some(),
+            has_stats: self.server.as_ref().is_some_and(|s| s.stats_port != 0),
             supported: self.supported(),
             installed,
             update_available,
             installed_version_hash: installed_hash.map(str::to_string),
         }
     }
+}
+
+/// Même règle que `pack-tools.py` : segments non vides `[a-z0-9-]+` séparés par des points.
+fn valid_host(h: &str) -> bool {
+    !h.is_empty() && h.split('.').all(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
 }
 
 fn plain_token(s: &str, extra: &[char]) -> bool {
@@ -88,7 +101,7 @@ fn plain_token(s: &str, extra: &[char]) -> bool {
 /// Entrée utilisable : identifiants simples (ils deviennent dossiers, fichiers, hôtes d'URL), URL du zip en https
 /// (http seulement vers la boucle locale, pour les tests).
 fn validate(e: &PackEntry) -> Result<()> {
-    if !plain_token(&e.id, &[]) || !plain_token(&e.server.host, &['.']) || !(e.thumbnail.is_empty() || plain_token(&e.thumbnail, &[])) {
+    if !plain_token(&e.id, &[]) || !e.server.as_ref().is_none_or(|s| valid_host(&s.host)) || !(e.thumbnail.is_empty() || plain_token(&e.thumbnail, &[])) {
         bail!("identifiant invalide dans le catalogue");
     }
     let local = e.pack.starts_with("http://127.0.0.1") || e.pack.starts_with("http://localhost");
@@ -150,15 +163,30 @@ mod tests {
       {"id":"../evil","name":"x","mc":"1","loader":"fabric","pack":"https://x","packHash":"abcdef0123","server":{"host":"a","port":1,"motd":"m"}},
       {"id":"neo","name":"Neo","mc":"1","loader":"neoforge","pack":"https://x/n.zip","packHash":"abcdef0123","server":{"host":"neo","port":1,"motd":"m"}},
       {"id":"http","name":"x","mc":"1","loader":"fabric","pack":"http://evil/x.zip","packHash":"abcdef0123","server":{"host":"a","port":1,"motd":"m"}},
+      {"id":"nosrv","name":"Sans","mc":"1","loader":"fabric","pack":"https://x/s.zip","packHash":"abcdef0123","server":null},
+      {"id":"nosrv2","name":"Sans2","mc":"1","loader":"fabric","pack":"https://x/s.zip","packHash":"abcdef0123"},
       {"broken":true}]}"#;
 
     #[test]
     fn parses_and_drops_invalid_entries() {
         let p = parse_catalog(J).unwrap();
-        assert_eq!(p.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["classroom-run", "neo"]);
-        assert_eq!(p[0].server.stats_port, 25580);
-        assert_eq!(p[1].server.stats_port, 0);
+        assert_eq!(p.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["classroom-run", "neo", "nosrv", "nosrv2"]);
+        assert_eq!(p[0].server.as_ref().unwrap().stats_port, 25580);
+        assert_eq!(p[1].server.as_ref().unwrap().stats_port, 0);
+        assert!(p[2].server.is_none() && p[3].server.is_none());
+        assert!(!p[2].view(None, false).has_server && p[0].view(None, false).has_server);
+        assert!(p[0].view(None, false).has_stats && !p[1].view(None, false).has_stats && !p[2].view(None, false).has_stats);
         assert!(parse_catalog("{}").is_err() && parse_catalog("nope").is_err());
+    }
+
+    #[test]
+    fn host_validation_matches_pack_tools() {
+        for ok in ["home-server", "mon.minestrator.com", "10.0.0.2"] {
+            assert!(valid_host(ok), "{ok}");
+        }
+        for bad in ["", ".a", "a.", "a..b", "Mon.Host", "a b", "a:25565", "::1", "a_b"] {
+            assert!(!valid_host(bad), "{bad}");
+        }
     }
 
     #[test]

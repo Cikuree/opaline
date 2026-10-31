@@ -80,8 +80,8 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 | `pack_changelog` | `{id}` | `{added: [string], removed: [string], updated: [{name, from, to}]}` (différence entre installé et publié) |
 | `pack_mods` | `{id}` | `[{name, version, side, file, verified}]` |
 | `pack_repair` | `{id}` | comme `pack_install` (revérifie tout) |
-| `play` | `{id}` | `{started: bool, reason: null \| string}`, puis événement `game://exited`. Lance le jeu dans l'instance du pack, avec ses mods, jusqu'au **menu principal** de Minecraft : aucune connexion automatique, aucun ping ni vérification Tailscale/MOTD préalable. Si le pack déclare un serveur, Opaline l'ajoute au préalable à la liste Multijoueur de l'instance (`servers.dat`, entrée nommée d'après le pack, ajoutée seulement si absente, entrées de l'utilisateur jamais modifiées) |
-| `server_status` | `{id}` | `ServerView` (§5) |
+| `play` | `{id}` | `{started: bool, reason: null \| string, serverListed: bool}`, puis événement `game://exited`. Lance le jeu dans l'instance du pack, avec ses mods, jusqu'au **menu principal** de Minecraft : aucune connexion automatique, aucun ping ni appel à Tailscale. Si le pack déclare un serveur, Opaline l'ajoute au préalable à la liste Multijoueur de l'instance (`servers.dat`, entrée nommée d'après le pack) : ajoutée si aucune entrée n'a déjà cette adresse ; si une entrée porte déjà le nom du pack avec une autre adresse, seule son adresse est mise à jour ; les autres entrées ne sont jamais modifiées. Un nom court n'est écrit que si le suffixe MagicDNS est déjà connu (dernier `server_status`), sinon l'entrée est écrite au lancement suivant. `serverListed` vaut vrai si l'entrée figure dans la liste à l'issue (faux : pas de serveur, suffixe inconnu, nom/adresse trop long, `servers.dat` illisible ou écriture impossible) ; l'interface n'affiche « Ajouté à ta liste Multijoueur » que si vrai |
+| `server_status` | `{id}` | `ServerView` (§5), ou `null` si le pack n'a pas de serveur |
 | `run_stats` | `{id}` | JSON de `GET /stats` du serveur, ou `null` (seulement pour le widget `classroomRun`) |
 | `run_history` | `{id, run: null \| number}` | JSON de `GET /history` (index) ou `GET /history/<n>` (détail), schémas de CONTRACT.md §Historique, ou `null` |
 | `settings_get` | – | `{perfMode: "low" \| "balanced" \| "quality" \| "custom", memoryMb, noRemember, systemRamMb}` |
@@ -110,10 +110,11 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 
 ```
 PackView = {id, name, description, mc, loader, loaderVersion, modsCount, thumbnail, widgets,
-            supported: bool, installed: bool, updateAvailable: bool, installedVersionHash: string | null}
+            supported: bool, installed: bool, updateAvailable: bool, installedVersionHash: string | null,
+            hasServer: bool, hasStats: bool}
 ServerView = {online: bool, latencyMs: number | null, players: {online, max, sample: [{name, uuid}]},
-              version: string | null, motdOk: bool,
-              help: null | "tailscaleNotInstalled" | "tailscaleDisconnected" | "noAccess" | "unexpectedServer"}
+              version: string | null, motdOk: bool, viaTailscale: bool,
+              help: null | "tailscaleNotInstalled" | "tailscaleDisconnected" | "noAccess" | "unexpectedServer" | "serverOffline"}
 SkinView = {id, name, model, active, dataUrl}
 ```
 

@@ -1,5 +1,5 @@
 import * as api from '../api.js';
-import { state, on } from '../state.js';
+import { state, current, hasWidget, on } from '../state.js';
 import { $, esc, ago, headHtml, hydrateHeads } from '../util.js';
 
 const row = (f) => {
@@ -15,6 +15,10 @@ export function renderMe() {
 }
 
 export function renderFriends() {
+  if (!hasWidget(current(), 'server')) { // pack sans serveur : pas d'amis
+    $('#online').innerHTML = '<p class="xs mute tx" style="padding:6px 0">Pas de serveur pour ce pack.</p>'; $('#offline').innerHTML = ''; $('#onCount').textContent = 0;
+    return;
+  }
   const on_ = state.friends.filter((f) => f.online), off = state.friends.filter((f) => !f.online);
   $('#online').innerHTML = on_.length ? on_.map(row).join('') : '<p class="xs mute tx" style="padding:6px 0">Aucun ami en ligne.</p>';
   $('#offline').innerHTML = off.map(row).join(''); $('#onCount').textContent = on_.length;
@@ -25,4 +29,4 @@ export async function refreshFriends() {
   try { state.friends = await api.friends(); } catch { state.friends = []; }
   renderFriends();
 }
-export const initFriends = () => on('game', renderMe);
+export const initFriends = () => { on('game', renderMe); on('packs', renderFriends); };

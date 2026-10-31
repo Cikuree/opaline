@@ -11,9 +11,10 @@ export const controls = { help: '' };
 
 const iso = (min) => new Date(Date.now() - min * 60000).toISOString();
 const packs = [
-  { id: 'classroom-run', name: 'Classroom Run', description: 'Hardcore coopératif : vie partagée, mort collective, chaque run recommence dans la salle de classe.', mc: '26.3', loader: 'fabric', loaderVersion: '0.20.1', modsCount: 10, thumbnail: 'ender_eye', widgets: ['classroomRun', 'server', 'news'], supported: true, installed: true, updateAvailable: true, installedVersionHash: 'a1b2' },
-  { id: 'survie', name: 'Survie entre potes', description: 'Survie vanilla améliorée, monde partagé du groupe, sans règle particulière.', mc: '26.3', loader: 'fabric', loaderVersion: '0.20.1', modsCount: 64, thumbnail: 'grass_block_side', widgets: ['server', 'news'], supported: true, installed: true, updateAvailable: false, installedVersionHash: 'c3d4' },
-  { id: 'create', name: 'Create & Co', description: 'Automatisation et usines avec Create.', mc: '26.1', loader: 'neoforge', loaderVersion: '6.0.4', modsCount: 112, thumbnail: 'piston_side', widgets: ['server'], supported: false, installed: false, updateAvailable: false, installedVersionHash: null },
+  { id: 'classroom-run', name: 'Classroom Run', description: 'Hardcore coopératif : vie partagée, mort collective, chaque run recommence dans la salle de classe.', mc: '26.3', loader: 'fabric', loaderVersion: '0.20.1', modsCount: 10, thumbnail: 'ender_eye', widgets: ['classroomRun', 'server', 'news'], hasServer: true, hasStats: true, supported: true, installed: true, updateAvailable: true, installedVersionHash: 'a1b2' },
+  { id: 'survie', name: 'Survie entre potes', description: 'Survie vanilla améliorée, monde partagé du groupe, sans règle particulière.', mc: '26.3', loader: 'fabric', loaderVersion: '0.20.1', modsCount: 64, thumbnail: 'grass_block_side', widgets: ['server', 'news'], hasServer: true, hasStats: false, supported: true, installed: true, updateAvailable: false, installedVersionHash: 'c3d4' },
+  { id: 'solo', name: 'Vanilla amélioré', description: 'Sodium, Lithium et quelques mods de confort, pour jouer en solo ou sur n’importe quel serveur.', mc: '26.3', loader: 'fabric', loaderVersion: '0.20.1', modsCount: 12, thumbnail: 'oak_log', widgets: ['server'], hasServer: false, hasStats: false, supported: true, installed: true, updateAvailable: false, installedVersionHash: 'e5f6' },
+  { id: 'create', name: 'Create & Co', description: 'Automatisation et usines avec Create.', mc: '26.1', loader: 'neoforge', loaderVersion: '6.0.4', modsCount: 112, thumbnail: 'piston_side', widgets: ['server'], hasServer: true, hasStats: false, supported: false, installed: false, updateAvailable: false, installedVersionHash: null },
 ];
 const MODS = [['Fabric API', '0.131.0', 'both'], ['Classroom Run', '0.9.2', 'both'], ['Sodium', '0.7.2', 'client'], ['Lithium', '0.18.1', 'both'], ['Iris Shaders', '1.9.3', 'client', false], ['Sodium Extra', '0.7.0', 'client'], ['Mod Menu', '15.0.0', 'client'], ['Fantasy', '0.8.1', 'server'], ['ServerReplay', '1.4.0', 'server'], ['Replay Mod', '2.7.0', 'client']]
   .map(([name, version, side, ok]) => ({ name, version, side, file: name.toLowerCase().replace(/\W+/g, '-') + '.jar', verified: ok !== false }));
@@ -82,11 +83,13 @@ export async function invoke(cmd, a = {}) {
     case 'pack_install': case 'pack_repair': runInstall(a.id); return null;
     case 'pack_changelog': return a.id === 'classroom-run' ? { added: ['Cloth Config 21.0.1'], removed: ['Indium 1.0.37'], updated: [{ name: 'Classroom Run', from: '0.9.2', to: '0.9.3' }, { name: 'Sodium', from: '0.7.1', to: '0.7.2' }] } : { added: [], removed: [], updated: [] };
     case 'pack_mods': return a.id === 'classroom-run' ? MODS : packs.find((p) => p.id === a.id)?.installed ? MODS.slice(0, 5).map((m) => ({ ...m, verified: true })) : [];
-    case 'play': if (!packs.find((p) => p.id === a.id)?.installed) throw 'Le pack n’est pas installé.'; setTimeout(() => emit('game://exited', q.has('crash') ? { packId: a.id, code: 1, logTail: '[12:01:03] [main/ERROR]: Échec du chargement du mod « sodium ».\njava.lang.IllegalStateException: démo de plantage précoce' } : { packId: a.id, code: 0, logTail: null }), 5000); return { started: true, reason: null };
+    case 'play': if (!packs.find((p) => p.id === a.id)?.installed) throw 'Le pack n’est pas installé.'; setTimeout(() => emit('game://exited', q.has('crash') ? { packId: a.id, code: 1, logTail: '[12:01:03] [main/ERROR]: Échec du chargement du mod « sodium ».\njava.lang.IllegalStateException: démo de plantage précoce' } : { packId: a.id, code: 0, logTail: null }), 5000); return { started: true, reason: null, serverListed: packs.find((p) => p.id === a.id)?.hasServer !== false };
     case 'server_status': {
-      const help = controls.help || null;
-      if (help) return { online: false, latencyMs: null, players: { online: 0, max: 0, sample: [] }, version: null, motdOk: false, help };
-      return a.id === 'classroom-run' ? { online: true, latencyMs: 23, players: { online: 3, max: 8, sample: [] }, version: '26.3', motdOk: true, help: null } : { online: true, latencyMs: 31, players: { online: 2, max: 10, sample: [] }, version: '26.3', motdOk: true, help: null };
+      if (a.id === 'solo') return null; // pack sans serveur
+      const ts = a.id !== 'survie'; // « survie » = serveur public hébergé : ping direct, sans Tailscale
+      const help = ts ? controls.help || null : controls.help ? 'serverOffline' : null;
+      if (help) return { online: false, latencyMs: null, players: { online: 0, max: 0, sample: [] }, version: null, motdOk: false, help, viaTailscale: ts };
+      return a.id === 'classroom-run' ? { online: true, latencyMs: 23, players: { online: 3, max: 8, sample: [] }, version: '26.3', motdOk: true, help: null, viaTailscale: true } : { online: true, latencyMs: 31, players: { online: 2, max: 10, sample: [] }, version: '26.3', motdOk: true, help: null, viaTailscale: ts };
     }
     case 'run_stats': return a.id === 'classroom-run' ? stats() : null;
     case 'run_history': return a.id !== 'classroom-run' ? null : a.run == null ? { runs: RUNS } : detail(a.run);

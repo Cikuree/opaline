@@ -3,7 +3,7 @@
 
 use opaline_core::tailscale;
 
-use tailscale::{MSG_DISCONNECTED, MSG_NOT_INSTALLED, MSG_UNREACHABLE, TailscaleState, message, parse_backend_state, parse_magic_dns_suffix, server_host};
+use tailscale::{TailscaleState, parse_backend_state, parse_magic_dns_suffix, server_host};
 
 fn status(backend: &str) -> String {
     format!(r#"{{"Version":"1.80.0","BackendState":"{backend}","Self":{{"HostName":"poste-eleve-07","TailscaleIPs":["100.101.2.3"]}},"Peer":{{}}}}"#)
@@ -12,7 +12,6 @@ fn status(backend: &str) -> String {
 #[test]
 fn running_is_connected() {
     assert_eq!(parse_backend_state(&status("Running")), Some(TailscaleState::Connected));
-    assert_eq!(message(TailscaleState::Connected, true), None);
 }
 
 #[test]
@@ -20,7 +19,6 @@ fn stopped_and_needs_login_are_disconnected_with_hint() {
     for s in ["Stopped", "NeedsLogin", "NoState", "Starting"] {
         let st = parse_backend_state(&status(s)).unwrap_or_else(|| panic!("{s} : pas d'état"));
         assert_eq!(st, TailscaleState::Disconnected, "{s}");
-        assert_eq!(message(st, false), Some(MSG_DISCONNECTED), "{s}");
     }
 }
 
@@ -32,17 +30,6 @@ fn invalid_or_incomplete_json_gives_no_state() {
     assert_eq!(parse_backend_state("{}"), None);
     assert_eq!(parse_backend_state(r#"{"BackendState":5}"#), None);
     assert_eq!(parse_backend_state(r#"{"BackendState":"Running""#), None, "JSON tronqué");
-}
-
-#[test]
-fn not_installed_message() {
-    assert_eq!(message(TailscaleState::NotInstalled, false), Some(MSG_NOT_INSTALLED));
-    assert_eq!(message(TailscaleState::NotInstalled, true), Some(MSG_NOT_INSTALLED));
-}
-
-#[test]
-fn connected_but_server_unreachable_message() {
-    assert_eq!(message(TailscaleState::Connected, false), Some(MSG_UNREACHABLE));
 }
 
 #[test]

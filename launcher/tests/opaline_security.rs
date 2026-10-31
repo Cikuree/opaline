@@ -139,13 +139,49 @@ fn server_status_view_never_contains_the_address() {
     set_env("OPALINE_PACKS_URL", f.to_str().unwrap());
     set_env("CLASSROOM_SERVER", dead.trim_start_matches("http://"));
 
-    let v = service::server_status(&root, "classroom-run").unwrap();
+    let v = service::server_status(&root, "classroom-run").unwrap().expect("pack avec serveur");
     assert!(!v.online);
     assert_eq!(v.help, Some("noAccess"));
     let json = serde_json::to_string(&v).unwrap();
     assert!(!json.contains("127.0.0.1") && !json.contains(&dead.rsplit(':').next().unwrap().to_string()), "{json}");
 
     unset_env("CLASSROOM_SERVER");
+    unset_env("OPALINE_PACKS_URL");
+}
+
+#[test]
+fn pack_without_server_has_no_status_stats_or_history() {
+    let _g = env_lock();
+    let t = Tmp::new("no-server");
+    let root = Dirs::new(t.0.join("root"));
+    let f = t.0.join("packs.json");
+    fs::write(
+        &f,
+        r#"{"packs":[{"id":"solo","name":"Solo","mc":"26.3","loader":"fabric","pack":"https://github.com/x/p.zip","packHash":"abcdef0123456789","widgets":["classroomRun","server"]}]}"#,
+    )
+    .unwrap();
+    set_env("OPALINE_PACKS_URL", f.to_str().unwrap());
+    assert!(service::server_status(&root, "solo").unwrap().is_none());
+    assert!(service::run_stats(&root, "solo").unwrap().is_none());
+    assert!(service::run_history(&root, "solo", None).unwrap().is_none());
+    unset_env("OPALINE_PACKS_URL");
+}
+
+#[test]
+fn public_server_offline_gives_plain_help_without_tailscale() {
+    let _g = env_lock();
+    let t = Tmp::new("public-off");
+    let root = Dirs::new(t.0.join("root"));
+    let f = t.0.join("packs.json");
+    fs::write(
+        &f,
+        r#"{"packs":[{"id":"pub","name":"Pub","mc":"26.3","loader":"fabric","pack":"https://github.com/x/p.zip","packHash":"abcdef0123456789","server":{"host":"127.0.0.1","port":1,"motd":"Pub"}}]}"#,
+    )
+    .unwrap();
+    set_env("OPALINE_PACKS_URL", f.to_str().unwrap());
+    let v = service::server_status(&root, "pub").unwrap().unwrap();
+    assert!(!v.online && !v.via_tailscale);
+    assert_eq!(v.help, Some("serverOffline"));
     unset_env("OPALINE_PACKS_URL");
 }
 

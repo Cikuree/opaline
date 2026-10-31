@@ -11,20 +11,6 @@ pub enum TailscaleState {
     Connected,
 }
 
-pub const MSG_NOT_INSTALLED: &str = "Tailscale n'est pas installé sur ce PC.";
-pub const MSG_DISCONNECTED: &str = "Tailscale n'est pas connecté : ouvre Tailscale et connecte-toi.";
-pub const MSG_UNREACHABLE: &str = "Serveur injoignable : demande l'accès à l'hôte ou attends qu'il démarre le serveur.";
-
-/// Message à afficher, ou None si tout va bien. `server_reachable` : résultat du dernier ping.
-pub fn message(state: TailscaleState, server_reachable: bool) -> Option<&'static str> {
-    match state {
-        TailscaleState::NotInstalled => Some(MSG_NOT_INSTALLED),
-        TailscaleState::Disconnected => Some(MSG_DISCONNECTED),
-        TailscaleState::Connected if !server_reachable => Some(MSG_UNREACHABLE),
-        TailscaleState::Connected => None,
-    }
-}
-
 /// `BackendState` de `tailscale status --json` (champ de `ipnstate.Status`, valeur « Running » = connecté).
 /// None si le JSON est invalide.
 pub fn parse_backend_state(json: &str) -> Option<TailscaleState> {
@@ -130,13 +116,5 @@ mod tests {
         assert_eq!(parse_magic_dns_suffix("{}"), None);
         assert_eq!(server_host("home-server", Some("x.ts.net")), "home-server.x.ts.net");
         assert_eq!(server_host("home-server", None), "home-server");
-    }
-
-    #[test]
-    fn messages_follow_state() {
-        assert_eq!(message(TailscaleState::NotInstalled, true), Some(MSG_NOT_INSTALLED));
-        assert_eq!(message(TailscaleState::Disconnected, false), Some(MSG_DISCONNECTED));
-        assert_eq!(message(TailscaleState::Connected, false), Some(MSG_UNREACHABLE));
-        assert_eq!(message(TailscaleState::Connected, true), None);
     }
 }

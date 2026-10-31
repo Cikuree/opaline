@@ -23,7 +23,7 @@ avec `CLASSROOM_DEV_OFFLINE=1`.
 
 - `skins` : garde-robe, PNG 64x64 / 64x32 validé, API Mojang officielle (jeton obligatoire, jamais dans une erreur), textures depuis `textures.minecraft.net` seulement.
 - `head` : profil `sessionserver.mojang.com`, visage 8x8 + chapeau, cache 24 h. `friends` : joueurs vus par ping, mémorisés localement.
-- `serverview` : ping + diagnostic Tailscale. `stats::fetch_value` : `/stats`, `/history[/<n>]` (404 = absent).
+- `serverview` : ping (+ diagnostic Tailscale pour un nom court ; ping direct pour un serveur public). `servers` : ajout du serveur du pack à `servers.dat` (NBT). `stats::fetch_value` : `/stats`, `/history[/<n>]` (404 = absent).
 
 ## Pack, mods et shaders
 
@@ -77,11 +77,12 @@ Ensuite, pour les deux : XBL -> XSTS -> `login_with_xbox` -> entitlements -> pro
 
 ## Serveur, Tailscale, mise à jour
 
-- Adresse du serveur : jamais affichée ni saisie. Au lancement, `home-server.<MagicDNSSuffix>:25565` où le suffixe vient de
-  `tailscale status --json` (calculé à l'exécution, jamais écrit ni loggé), repli `home-server:25565`. Surcharge dev : `CLASSROOM_SERVER`
-  (le contrôle du MOTD est alors ignoré). Stats : port 25580.
-- Jouer est autorisé si le ping SLP répond et que le MOTD contient « Classroom Run » (sinon « Serveur inattendu »). Côté serveur :
-  `server.properties` `motd=Classroom Run`. L'état Tailscale (`tailscale status --json`, `BackendState` = `Running`) ne sert qu'au message d'aide quand le ping échoue.
+- Adresse du serveur : jamais affichée ni saisie. Nom court (sans point) : `<nom>.<MagicDNSSuffix>` avec le suffixe de `tailscale status --json`
+  (calculé à l'exécution lors de `server_status`, gardé en mémoire seulement, jamais écrit ni loggé) ; nom complet ou IP : tel quel, sans Tailscale.
+  Port omis s'il vaut 25565. Surcharge dev : `CLASSROOM_SERVER`. Stats : `statsPort` (0 = indisponibles).
+- Jouer lance le jeu jusqu'au menu principal (aucune connexion automatique, aucun ping ni contrôle Tailscale) ; avant, le serveur du pack est ajouté à
+  `servers.dat` de l'instance (entrée nommée d'après le pack ; si le suffixe MagicDNS d'un nom court est encore inconnu, l'entrée est écrite au lancement suivant).
+  Le statut du serveur (carte d'Opaline) : ping SLP, le MOTD doit contenir le texte du pack (sinon « Serveur inattendu »).
 - Polling du device code : une erreur réseau ponctuelle ne casse pas le flux (réessai jusqu'à l'échéance).
 - `ping::ping` : Server List Ping, protocole 777 (26.3). `sysmem::total_ram_mb` : RAM physique.
 - Au démarrage : lecture de `.../releases/latest/download/launcher.json` ; version plus récente = bandeau + bouton qui ouvre l'URL de l'OS (https seulement). Erreur réseau silencieuse (`CLASSROOM_DEBUG=1` pour la trace). Pas d'auto-remplacement.
@@ -91,7 +92,7 @@ Ensuite, pour les deux : XBL -> XSTS -> `login_with_xbox` -> entitlements -> pro
 
 - Interface : `cargo run --release` (connexion Microsoft, mode de performance, Installer, Jouer, stats du run).
 - CLI (tests/dev) : `classroom-launcher install|play [--root D] [--pack D] [--mod-jar P] [--nick N]`.
-  Le jeu est lancé avec `--quickPlayMultiplayer`; sortie du jeu dans `instance/logs/launcher-game.log`.
+  Le jeu est lancé au menu principal ; sortie du jeu dans `instance/logs/launcher-game.log`.
 
 ## Réseau injectable
 
