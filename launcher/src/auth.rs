@@ -1,4 +1,4 @@
-//! Session de jeu et authentification Microsoft (device code -> XBL -> XSTS -> Minecraft).
+//! Session de jeu et authentification Microsoft (navigateur ou device code -> XBL -> XSTS -> Minecraft).
 //!
 //! Sécurité : le refresh token Microsoft vit uniquement dans le trousseau système (crate `keyring`) ;
 //! les access tokens restent en mémoire. Aucun type porteur de token n'implémente `Debug`, et les messages
@@ -82,6 +82,7 @@ pub fn offline_uuid(name: &str) -> String {
 /// URL complètes des services appelés (injectables pour simuler le flux).
 #[derive(Clone, Debug)]
 pub struct Endpoints {
+    pub authorize: String,
     pub devicecode: String,
     pub token: String,
     pub xbl: String,
@@ -106,6 +107,7 @@ impl Endpoints {
     pub fn with_bases(ms: &str, xbl: &str, xsts: &str, mc: &str) -> Endpoints {
         let t = |s: &str| s.trim_end_matches('/').to_string();
         Endpoints {
+            authorize: format!("{}/authorize", t(ms)),
             devicecode: format!("{}/devicecode", t(ms)),
             token: format!("{}/token", t(ms)),
             xbl: format!("{}/user/authenticate", t(xbl)),
@@ -467,6 +469,42 @@ impl AuthManager {
         let dc = start_device_code(c, ep, client_id)?;
         on_code(&dc);
         let t = poll_device_code(c, ep, client_id, &dc, cancel)?;
+        self.finish_login(c, ep, gen_at_start, &t, remember)
+    }
+
+    /// Connexion par le navigateur (code d'autorisation + PKCE). `on_url` reçoit l'URL à ouvrir ; l'attente de la
+    /// redirection locale est annulable par `cancel` et plafonnée par `timeout`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn login_browser(
+        &self,
+        c: &Client,
+        ep: &Endpoints,
+        client_id: &str,
+        remember: bool,
+        on_url: impl FnOnce(&str),
+        cancel: &AtomicBool,
+        timeout: Duration,
+    ) -> Result<Session> {
+        use crate::auth_browser as b;
+        let gen_at_start = self.generation.load(Ordering::SeqCst);
+        let (verifier, state) = (b::new_verifier()?, b::new_state()?);
+        let (listener, redirect_uri) = b::bind_loopback()?;
+        on_url(&b::authorize_url(&ep.authorize, client_id, &redirect_uri, &state, &b::pkce_challenge(&verifier))?);
+        let code = match b::wait_for_redirect(listener, &state, cancel, timeout)? {
+            b::Redirect::Code(code) => code,
+            b::Redirect::Denied(e) if e == "access_denied" => bail!("connexion refusée sur la page Microsoft"),
+            b::Redirect::Denied(e) => bail!("échec de la connexion Microsoft : {e}"),
+        };
+        let (st, v) = post_form(c, &ep.token, &b::code_form(client_id, &code, &redirect_uri, &verifier))?;
+        let t = match parse_token_response(st, &v) {
+            Poll::Done(t) => t,
+            Poll::Failed(e) => bail!("échange du code refusé : {e}"),
+            _ => bail!("échange du code : réponse inattendue"),
+        };
+        self.finish_login(c, ep, gen_at_start, &t, remember)
+    }
+
+    fn finish_login(&self, c: &Client, ep: &Endpoints, gen_at_start: u64, t: &MsTokens, remember: bool) -> Result<Session> {
         if !self.commit(gen_at_start, t.refresh_token.as_deref(), None, remember) {
             bail!("connexion annulée par une déconnexion");
         }

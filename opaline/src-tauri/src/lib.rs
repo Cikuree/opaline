@@ -6,7 +6,7 @@ use base64::Engine;
 use opaline_core::config::{Config, Dirs};
 use opaline_core::download::Progress;
 use opaline_core::perf::PerfMode;
-use opaline_core::{auth, friends, head, service, skins};
+use opaline_core::{auth, auth_browser, friends, head, service, skins};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -165,7 +165,12 @@ async fn auth_status(state: State<'_, S>) -> CmdResult<Value> {
 }
 
 #[tauri::command]
-async fn auth_start(app: AppHandle, state: State<'_, S>) -> CmdResult<Value> {
+async fn auth_start(app: AppHandle, state: State<'_, S>, mode: Option<String>) -> CmdResult<Value> {
+    let browser = match mode.as_deref() {
+        None | Some("browser") => true,
+        Some("device") => false,
+        Some(_) => return Err("Mode de connexion inconnu".into()),
+    };
     if auth::dev_offline() || !auth::configured() {
         return Err("Connexion Microsoft non configurée".into());
     }
@@ -179,23 +184,30 @@ async fn auth_start(app: AppHandle, state: State<'_, S>) -> CmdResult<Value> {
         l.attempt += 1;
         l.attempt
     };
-    let (tx, rx) = std::sync::mpsc::channel::<Value>();
+    let (tx, rx) = std::sync::mpsc::channel::<Result<Value, String>>();
     let s2 = s.clone();
     std::thread::spawn(move || {
         let cfg = s2.config();
         let result = auth::http_client().and_then(|c| {
-            s2.0.auth.login(
-                &c,
-                &auth::Endpoints::default(),
-                auth::CLIENT_ID,
-                !cfg.no_remember,
-                |dc| {
-                    let _ =
-                        tx.send(json!({ "attempt": attempt, "userCode": dc.user_code, "verificationUri": dc.verification_uri, "expiresIn": dc.expires_in }));
-                },
-                &cancel,
-            )
+            let (ep, remember) = (auth::Endpoints::default(), !cfg.no_remember);
+            if browser {
+                let on_url = |url: &str| {
+                    // Échec d'ouverture ignoré : l'interface propose « Rouvrir la page ».
+                    let _ = app.opener().open_url(url, None::<&str>);
+                    let _ = tx.send(Ok(json!({ "attempt": attempt, "mode": "browser", "authorizeUrl": url })));
+                };
+                s2.0.auth.login_browser(&c, &ep, auth::CLIENT_ID, remember, on_url, &cancel, auth_browser::BROWSER_TIMEOUT)
+            } else {
+                let on_code = |dc: &auth::DeviceCode| {
+                    let _ = tx.send(Ok(json!({ "attempt": attempt, "mode": "device", "userCode": dc.user_code, "verificationUri": dc.verification_uri, "expiresIn": dc.expires_in })));
+                };
+                s2.0.auth.login(&c, &ep, auth::CLIENT_ID, remember, on_code, &cancel)
+            }
         });
+        // Échec avant l'affichage (aléa, port local, réseau) : la commande renvoie la vraie cause (sans effet si déjà répondu).
+        if let Err(e) = &result {
+            let _ = tx.send(Err(s2.sanitize(anyhow!("{e}"))));
+        }
         // Une tentative annulée (auth_cancel, nouvelle tentative, déconnexion) n'émet jamais auth://done.
         if cancel.load(Ordering::SeqCst) {
             return;
@@ -214,6 +226,7 @@ async fn auth_start(app: AppHandle, state: State<'_, S>) -> CmdResult<Value> {
         .await
         .map_err(|_| "erreur interne".to_string())?
         .map_err(|_| "Connexion Microsoft impossible : vérifiez votre réseau".to_string())
+        .and_then(|r| r)
 }
 
 #[tauri::command]

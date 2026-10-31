@@ -67,6 +67,15 @@
     <p class="mute" style="max-width:42ch">Opaline, vos mondes entre amis. Connecte ton compte Microsoft pour installer les modpacks du groupe et rejoindre leurs serveurs.</p>
     <button class="btn primary" id="btnLogin" style="height:52px;padding:0 32px;font-size:16px">Se connecter avec Microsoft</button>
     <p class="small mute" id="loginMsg" role="status" hidden></p>
+    <button class="btn link small" id="btnDevice" type="button" style="background:none;border:0;color:var(--mute);text-decoration:underline;cursor:pointer;margin-top:10px">Le navigateur ne s&rsquo;ouvre pas&nbsp;? Utiliser un code</button>
+    <div id="browserBox" hidden>
+      <p class="mute" role="status" id="browserWait">Connexion en cours dans ton navigateur&hellip;</p>
+      <div class="row" style="justify-content:center;margin-top:14px;flex-wrap:wrap">
+        <button class="btn sm cream" id="reopenPage">Rouvrir la page</button>
+        <button class="btn sm" id="cancelBrowser">Annuler</button>
+      </div>
+      <button class="btn link small" id="btnDevice2" type="button" style="background:none;border:0;color:var(--mute);text-decoration:underline;cursor:pointer;margin-top:10px">Le navigateur ne s&rsquo;ouvre pas&nbsp;? Utiliser un code</button>
+    </div>
     <div id="codeBox" hidden>
       <p class="mute small">Ouvre <b style="color:var(--ink)" id="codeUri">microsoft.com/link</b> et saisis ce code :</p>
       <div class="code" id="codeVal" aria-live="polite">&nbsp;</div>

@@ -53,7 +53,13 @@ Personnalisé : aucune écriture.
 
 ## Connexion Microsoft (`auth.rs`)
 
-Device code (tenant `consumers`, scope `XboxLive.signin offline_access`) -> XBL -> XSTS -> `login_with_xbox` -> entitlements -> profil.
+Principal (`mode: browser`, `auth_browser.rs`) : code d'autorisation OAuth 2.0 + PKCE S256 (client public, tenant `consumers`, scope `XboxLive.signin offline_access`,
+`prompt=select_account`, `state` aléatoire vérifié). Opaline ouvre lui-même la page Microsoft ; la redirection arrive sur `http://localhost:<port>`
+(port éphémère, serveur sur 127.0.0.1 uniquement). Le serveur accepte une seule requête `GET /` valide (bon `state`, `code` ou `error`), répond une page
+statique sans script ni contenu reflété, rejette le reste (404/405/400), s'arrête après la réponse, expire après 5 min et s'annule par `auth_cancel`.
+Port : Microsoft ignore le port des URI de redirection loopback `localhost` des apps de bureau (RFC 8252 §7.3), donc l'URI enregistrée `http://localhost` suffit.
+Secours (`mode: device`) : code d'appareil (nécessite « Autoriser les flux de clients publics »).
+Ensuite, pour les deux : XBL -> XSTS -> `login_with_xbox` -> entitlements -> profil.
 - ID client Azure (public) fixé à la compilation : `CLASSROOM_MS_CLIENT_ID=... cargo build --release`. Vide = « Connexion Microsoft non configurée » et Jouer désactivé.
 - Le refresh token est stocké dans le trousseau système (crate `keyring` 4.2, Credential Manager Windows, Secret Service Linux), en octets
   (`set_secret`), jamais dans un fichier, un log ou un `Debug`. Si le trousseau échoue (limite de taille, service absent), un avertissement

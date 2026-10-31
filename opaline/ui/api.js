@@ -15,7 +15,7 @@ export const errMsg = (e) => (typeof e === 'string' ? e : (e && e.message) || 'E
 
 export const appInfo = () => call('app_info');
 export const authStatus = () => call('auth_status');
-export const authStart = () => call('auth_start');
+export const authStart = (mode = 'browser') => call('auth_start', { mode });
 export const authCancel = () => call('auth_cancel');
 export const authSignOut = () => call('auth_sign_out');
 export const packsList = () => call('packs_list');
