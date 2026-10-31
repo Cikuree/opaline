@@ -8,6 +8,7 @@ pub struct LauncherInfo {
     pub windows: Option<String>,
     pub linux: Option<String>,
     /// Hash de l'index du pack publié (celui de `pack.toml`) ; sert à détecter « le pack a changé ».
+    #[serde(rename = "pack_hash")]
     pub pack: Option<String>,
 }
 
@@ -85,7 +86,7 @@ mod tests {
 
     #[test]
     fn picks_os_url_only_when_newer() {
-        let i: LauncherInfo = serde_json::from_str(r#"{"version":"0.3.0","windows":"https://w","linux":"https://l","pack":"1"}"#).unwrap();
+        let i: LauncherInfo = serde_json::from_str(r#"{"version":"0.3.0","windows":"https://w","linux":"https://l","pack_hash":"1"}"#).unwrap();
         let u = pick(&i, "0.1.0").unwrap();
         assert_eq!(u.url, if cfg!(windows) { "https://w" } else { "https://l" });
         assert!(pick(&i, "0.3.0").is_none());

@@ -22,7 +22,7 @@ fn expected_url(w: &str, l: &str) -> String {
 #[test]
 fn newer_version_proposes_update_for_this_os() {
     let srv = Server::start();
-    srv.put("/launcher.json", r#"{"version":"0.3.0","windows":"https://w.example/w.exe","linux":"https://l.example/l","pack":"1.2.0"}"#);
+    srv.put("/launcher.json", r#"{"version":"0.3.0","windows":"https://w.example/w.exe","linux":"https://l.example/l","pack_hash":"1.2.0"}"#);
     let u = update::check(&client(), &srv.url("/launcher.json"), "0.1.0").expect("mise à jour attendue");
     assert_eq!(u.version, "0.3.0");
     assert_eq!(u.url, expected_url("https://w.example/w.exe", "https://l.example/l"));
