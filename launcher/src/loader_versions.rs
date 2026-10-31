@@ -1,4 +1,4 @@
-//! Listes de versions des loaders (parsing pur, sans réseau). Inclus aussi par l'Atelier via `#[path]` : seulement `std` et `serde_json`.
+//! Listes de versions des loaders (parsing pur, sans réseau). Réutilisé par Opaline Atelier via la dépendance `opaline_core`.
 use serde_json::Value;
 
 pub const FABRIC_META: &str = "https://meta.fabricmc.net/v2/versions/loader";
