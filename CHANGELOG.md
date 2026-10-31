@@ -1,5 +1,11 @@
 # Changelog
 
+## Opaline 0.2.1 : tous les loaders, JOUER au menu
+- **Loaders** : Fabric, Quilt, NeoForge et Forge, installés depuis leurs sources officielles (installeur et processors exécutés par Opaline, hashes vérifiés, hôtes en liste blanche, redirections revérifiées, installation idempotente et verrouillée).
+- **JOUER** : lance le jeu au menu principal de l'instance choisie ; le serveur du pack est ajouté à la liste Multijoueur. Serveur Tailscale (nom MagicDNS court), public ou absent.
+- **Packs** : publiés sur la release permanente `packs` à chaque push, sans tag d'Opaline ; catalogue à adresse fixe.
+- Opaline Atelier, l'outil de publication de packs, vit désormais dans son propre dépôt.
+
 ## Opaline 0.2.0 : launcher Tauri multi-pack
 - **Application** :
   - Opaline remplace l'ancien launcher egui : application Tauri 2 sans bordure Windows, avec l'interface de la maquette validée ;
