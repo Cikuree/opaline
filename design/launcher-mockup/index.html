@@ -326,25 +326,25 @@ tbody tr.sel td,tbody tr:hover td{background:var(--panel-hi)} tbody tr[tabindex]
   <!-- SETTINGS -->
   <section class="view" id="v-settings" aria-labelledby="setT">
     <div class="bar"><h1 id="setT">Réglages</h1><span class="mute small">Appliqués au prochain lancement</span></div>
-    <article class="card"><h3 id="perfT">Mode de performance</h3>
+    <article class="card"><h2 id="perfT">Mode de performance</h2>
       <div class="perf" role="radiogroup" aria-labelledby="perfT" id="perf" style="margin-top:12px"></div></article>
     <div class="grid2">
       <article class="card field">
-        <div class="row"><h3><label for="mem">Mémoire allouée</label></h3><b id="memV" style="font-size:22px">6 Go</b></div>
+        <div class="row"><h2><label for="mem">Mémoire allouée</label></h2><b id="memV" style="font-size:22px">6 Go</b></div>
         <input type="range" id="mem" min="2" max="16" step="1" value="6" aria-describedby="memH">
         <div class="zone" aria-hidden="true"></div>
         <p class="xs mute" id="memH"></p>
       </article>
       <article class="card field">
-        <div class="row"><h3><label for="rd">Distance de rendu</label></h3><b id="rdV" style="font-size:22px">12 chunks</b></div>
+        <div class="row"><h2><label for="rd">Distance de rendu</label></h2><b id="rdV" style="font-size:22px">12 chunks</b></div>
         <input type="range" id="rd" min="4" max="32" value="12">
-        <div class="row" style="margin-top:6px"><h3 id="fsL">Plein écran</h3><button class="sw" role="switch" aria-checked="false" aria-labelledby="fsL" id="fs"></button></div>
+        <div class="row" style="margin-top:6px"><h2 id="fsL">Plein écran</h2><button class="sw" role="switch" aria-checked="false" aria-labelledby="fsL" id="fs"></button></div>
         <div class="row"><label for="res" class="small mute">Résolution</label><select id="res"><option>1920 × 1080</option><option>1600 × 900</option><option>1280 × 720</option></select></div>
         <div class="row"><label for="lang" class="small mute">Langue du jeu</label><select id="lang"><option>Français (France)</option><option>English (US)</option><option>Español</option></select></div>
       </article>
     </div>
     <article class="card">
-      <div class="row"><div><h3 id="shL">Shaders</h3><p class="small mute" style="margin-top:2px">Pack : Complementary Reimagined, par EminGT et Complementary Shaders</p></div>
+      <div class="row"><div><h2 id="shL">Shaders</h2><p class="small mute" style="margin-top:2px">Pack : Complementary Reimagined, par EminGT et Complementary Shaders</p></div>
         <button class="sw" role="switch" aria-checked="false" aria-labelledby="shL" id="shaders"></button></div>
     </article>
   </section>
@@ -354,9 +354,9 @@ tbody tr.sel td,tbody tr:hover td{background:var(--panel-hi)} tbody tr[tabindex]
     <div class="bar"><h1 id="fT">Fichiers &amp; mods</h1><button class="btn primary" id="btnRepair"><svg class="i" style="width:18px;height:18px"><use href="#i-wrench"/></svg>Vérifier et réparer</button></div>
     <div class="files" id="folders"></div>
     <div class="grid2 fixed" style="grid-template-columns:1fr 300px">
-      <article class="card"><h3>Mods installés</h3>
+      <article class="card"><h2>Mods installés</h2>
         <table style="margin-top:8px"><thead><tr><th>Nom</th><th>Version</th><th>Côté</th><th>Hash</th></tr></thead><tbody id="mods"></tbody></table></article>
-      <article class="card" style="align-self:start"><h3>Pack Classroom Run</h3>
+      <article class="card" style="align-self:start"><h2>Pack Classroom Run</h2>
         <p style="font-size:30px;font-weight:800;margin:10px 0 6px" id="packV">0.9.2</p>
         <span class="pill" id="packState">Mise à jour disponible : 0.9.3</span>
         <p class="small mute" style="margin:12px 0">Corrige le reset de run quand un joueur quitte pendant la mort collective.</p>
@@ -368,7 +368,7 @@ tbody tr.sel td,tbody tr:hover td{background:var(--panel-hi)} tbody tr[tabindex]
   <section class="view" id="v-history" aria-labelledby="hT">
     <div class="bar"><h1 id="hT">Historique</h1><span class="mute small">20 runs · 41:08:22 jouées</span></div>
     <div class="grid2">
-      <article class="card"><h3>Runs</h3>
+      <article class="card"><h2>Runs</h2>
         <table style="margin-top:8px"><thead><tr><th>Run</th><th>Durée</th><th>Morts</th><th>Meilleur split</th></tr></thead><tbody id="runs"></tbody></table></article>
       <article class="card" id="dthDetail" aria-live="polite" style="align-self:start"></article>
     </div>
