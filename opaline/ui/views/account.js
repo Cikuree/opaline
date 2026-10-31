@@ -82,10 +82,10 @@ let expTimer = null, attempt = null;
 const loginMsg = (t) => { const m = $('#loginMsg'); m.hidden = !t; m.textContent = t || ''; };
 export function renderLogin() {
   const nc = state.auth.state === 'notConfigured';
-  $('#btnLogin').disabled = nc;
+  $('#btnLogin').disabled = nc; $('#btnDevice').disabled = nc;
   loginMsg(nc ? 'La connexion Microsoft n’est pas configurée dans cette version d’Opaline.' : '');
 }
-function stopLogin() { clearInterval(expTimer); $('#codeBox').hidden = true; $('#btnLogin').hidden = false; }
+function stopLogin() { clearInterval(expTimer); $('#codeBox').hidden = true; $('#browserBox').hidden = true; $('#btnLogin').hidden = false; $('#btnDevice').hidden = false; }
 export function onAuthDone(p) {
   if (attempt === null || p.attempt !== attempt) return; // tentative périmée ou annulée
   attempt = null; stopLogin();
@@ -94,20 +94,27 @@ export function onAuthDone(p) {
 }
 
 export function initAccount() {
-  $('#btnLogin').addEventListener('click', async () => {
+  const start = async (mode) => {
     loginMsg('');
     try {
-      const r = await api.authStart(); attempt = r.attempt; let left = r.expiresIn;
-      $('#btnLogin').hidden = true; $('#codeBox').hidden = false;
+      const r = await api.authStart(mode); attempt = r.attempt;
+      $('#btnLogin').hidden = true; $('#btnDevice').hidden = true;
+      if (r.mode === 'browser') {
+        $('#browserBox').hidden = false; $('#browserBox').dataset.uri = r.authorizeUrl; $('#cancelBrowser').focus(); return;
+      }
+      let left = r.expiresIn; $('#codeBox').hidden = false;
       $('#codeVal').textContent = r.userCode; $('#codeVal').setAttribute('aria-label', 'Code ' + [...r.userCode].join(', '));
       $('#codeUri').textContent = r.verificationUri.replace(/^https?:\/\/(www\.)?/, ''); $('#codeBox').dataset.uri = r.verificationUri; $('#codeBox').dataset.code = r.userCode;
       const tick = () => { $('#codeWait').textContent = `En attente de validation… le code expire dans ${Math.max(1, Math.ceil(left / 60))} min.`; left -= 15; };
       clearInterval(expTimer); tick(); expTimer = setInterval(tick, 15000); $('#copyCode').focus();
-    } catch (e) { loginMsg(api.errMsg(e)); }
-  });
+    } catch (e) { loginMsg(api.errMsg(e)); $('#btnLogin').hidden = false; $('#btnDevice').hidden = false; }
+  };
+  $('#btnLogin').addEventListener('click', () => start('browser'));
+  $('#btnDevice').addEventListener('click', () => start('device'));
+  $('#reopenPage').addEventListener('click', () => api.openUrl($('#browserBox').dataset.uri));
   $('#copyCode').addEventListener('click', () => copy($('#codeBox').dataset.code, 'Code copié'));
   $('#openUri').addEventListener('click', () => api.openUrl($('#codeBox').dataset.uri));
-  $('#cancelLogin').addEventListener('click', async () => { attempt = null; try { await api.authCancel(); } catch { /* déjà terminé */ } stopLogin(); $('#btnLogin').focus(); });
+  for (const id of ['#cancelLogin', '#cancelBrowser']) $(id).addEventListener('click', async () => { attempt = null; try { await api.authCancel(); } catch { /* déjà terminé */ } stopLogin(); $('#btnLogin').focus(); });
   $('#btnLogout').addEventListener('click', async () => {
     try { const r = await api.authSignOut(); if (r?.warning) toast(r.warning); else toast('Déconnecté'); } catch (e) { toast(api.errMsg(e)); }
     await refreshAuth();

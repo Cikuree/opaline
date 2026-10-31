@@ -36,6 +36,14 @@ Serveur Fabric 26.3, loader 0.20.1, Java 25. Dans `mods/` :
 
 Chaque pack est un manifeste packwiz dans `packs/<id>/` (avec `opaline.toml`), source de vérité des mods pour Prism et pour Opaline (`side = "client" | "server" | "both"`). Ajouter un pack : voir [PACKS.md](PACKS.md). `packs/classroom-run` ne contient volontairement pas `classroomrun.pw.toml` : en dev local, Opaline prend le jar de `build/libs`. Après toute modification d'un `.pw.toml`, `python3 scripts/pack-tools.py index` régénère `index.toml` et le hash d'index de `pack.toml`.
 
+### Application Azure (connexion Microsoft)
+
+Dans Microsoft Entra (Inscriptions d'applications), compte « Comptes Microsoft personnels uniquement » :
+
+1. Authentification > Ajouter une plateforme > **Applications mobiles et de bureau**, URI de redirection `http://localhost` (sans port : Microsoft accepte n'importe quel port pour les URI loopback, Opaline utilise un port éphémère).
+2. Authentification > Paramètres avancés > **Autoriser les flux de clients publics : Oui** (nécessaire pour le secours « Utiliser un code »).
+3. Aucun secret client. L'ID d'application va dans la variable de dépôt `MS_CLIENT_ID`. L'app doit aussi être approuvée par Mojang (sinon 403 sur `login_with_xbox`).
+
 ### Publier une version
 
 1. Mettre le même numéro `X.Y.Z` dans `version` de `gradle.properties`, `opaline/src-tauri/tauri.conf.json` et `opaline/src-tauri/Cargo.toml` (et `launcher/Cargo.toml`), puis commit. La CI ignore un fichier absent mais refuse un fichier dont la version diffère du tag.

@@ -75,7 +75,7 @@ export async function invoke(cmd, a = {}) {
   switch (cmd) {
     case 'app_info': return { version: '0.1.0', update: q.has('update') ? { version: '0.1.1', url: 'https://github.com/Cikuree/opaline/releases/latest' } : null };
     case 'auth_status': return auth;
-    case 'auth_start': { const attempt = ++attemptN; cancelled = false; setTimeout(() => { if (cancelled) return; auth = { state: 'signedIn', profile: { name: 'OddNode', uuid: '3f9a21c4-7be0-4a11-9c3d-0b6e5f51e51d' }, warning: null }; emit('auth://done', { attempt, ok: true, profile: auth.profile, error: null }); }, 6000); return { attempt, userCode: 'KQ7M4XNP', verificationUri: 'https://www.microsoft.com/link', expiresIn: 900 }; }
+    case 'auth_start': { const attempt = ++attemptN; cancelled = false; setTimeout(() => { if (cancelled) return; auth = { state: 'signedIn', profile: { name: 'OddNode', uuid: '3f9a21c4-7be0-4a11-9c3d-0b6e5f51e51d' }, warning: null }; emit('auth://done', { attempt, ok: true, profile: auth.profile, error: null }); }, 6000); return a.mode === 'device' ? { attempt, mode: 'device', userCode: 'KQ7M4XNP', verificationUri: 'https://www.microsoft.com/link', expiresIn: 900 } : { attempt, mode: 'browser', authorizeUrl: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize' }; }
     case 'auth_cancel': cancelled = true; return null;
     case 'auth_sign_out': auth = { state: 'signedOut', profile: null, warning: null }; return { warning: null };
     case 'packs_list': return structuredClone(packs);

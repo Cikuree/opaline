@@ -1,6 +1,7 @@
 //! `opaline_core` : cœur d'Opaline (installation multi-pack, lancement, authentification, skins, serveur).
 //! Aucune interface graphique : le backend Tauri (`opaline/src-tauri`) appelle `service`.
 pub mod auth;
+pub mod auth_browser;
 pub mod catalog;
 pub mod changelog;
 pub mod config;
