@@ -1,6 +1,7 @@
 //! Détection locale de l'état de Tailscale. Rien de la sortie de la CLI (noms de machines, IP) n'est loggé ni conservé.
 use serde_json::Value;
 use std::io::Read;
+use std::net::Ipv4Addr;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
@@ -93,6 +94,39 @@ pub fn status() -> TailscaleInfo {
     TailscaleInfo { state, magic_dns_suffix }
 }
 
+/// Adresse du tailnet : 100.64.0.0/10 (CGNAT, plage réservée à Tailscale).
+pub fn is_tailnet_ip(ip: Ipv4Addr) -> bool {
+    let o = ip.octets();
+    o[0] == 100 && o[1] & 0xC0 == 64
+}
+
+/// Pairs en ligne (`Peer[*].Online`) avec leur première IPv4 du tailnet. Au plus 64 ; seule l'adresse est gardée (jamais le nom de machine).
+pub fn parse_online_peers(json: &str) -> Vec<Ipv4Addr> {
+    let Ok(v) = serde_json::from_str::<Value>(json) else { return Vec::new() };
+    let Some(peers) = v.get("Peer").and_then(Value::as_object) else { return Vec::new() };
+    peers
+        .values()
+        .filter(|p| p.get("Online").and_then(Value::as_bool) == Some(true))
+        .filter_map(|p| p.get("TailscaleIPs")?.as_array()?.iter().filter_map(|i| i.as_str()?.parse::<Ipv4Addr>().ok()).find(|i| is_tailnet_ip(*i)))
+        .take(64)
+        .collect()
+}
+
+/// Première ligne de `tailscale ip -4`, si c'est bien une adresse du tailnet.
+pub fn parse_own_ipv4(out: &str) -> Option<Ipv4Addr> {
+    out.lines().next()?.trim().parse::<Ipv4Addr>().ok().filter(|i| is_tailnet_ip(*i))
+}
+
+/// IPv4 Tailscale de ce PC (`tailscale ip -4`).
+pub fn own_ipv4() -> Option<Ipv4Addr> {
+    parse_own_ipv4(&run(Command::new(cli_path()?).args(["ip", "-4"]), Duration::from_secs(3))?)
+}
+
+/// IPv4 des pairs en ligne (une exécution de `tailscale status --json`, délai 3 s).
+pub fn online_peers() -> Vec<Ipv4Addr> {
+    cli_path().and_then(|c| run(Command::new(c).args(["status", "--json"]), Duration::from_secs(3))).map(|j| parse_online_peers(&j)).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +150,25 @@ mod tests {
         assert_eq!(parse_magic_dns_suffix("{}"), None);
         assert_eq!(server_host("home-server", Some("x.ts.net")), "home-server.x.ts.net");
         assert_eq!(server_host("home-server", None), "home-server");
+    }
+
+    #[test]
+    fn peers_and_own_ip() {
+        // Fixture inventée : aucune vraie sortie de la CLI.
+        let j = r#"{"BackendState":"Running","Self":{"Online":true,"TailscaleIPs":["100.64.0.1"]},"Peer":{
+            "nodekey:a":{"Online":true,"TailscaleIPs":["fd7a:115c:a1e0::1","100.101.102.103"]},
+            "nodekey:b":{"Online":false,"TailscaleIPs":["100.64.0.9"]},
+            "nodekey:c":{"Online":true,"TailscaleIPs":["192.168.1.5"]},
+            "nodekey:d":{"Online":true}}}"#;
+        assert_eq!(parse_online_peers(j), vec!["100.101.102.103".parse::<Ipv4Addr>().unwrap()]);
+        assert!(parse_online_peers("nope").is_empty() && parse_online_peers("{}").is_empty());
+        for (ip, ok) in [("100.64.0.1", true), ("100.127.255.254", true), ("100.128.0.1", false), ("100.63.0.1", false), ("192.168.1.2", false), ("0.0.0.0", false)] {
+            assert_eq!(is_tailnet_ip(ip.parse().unwrap()), ok, "{ip}");
+        }
+        assert_eq!(parse_own_ipv4("100.64.0.1
+"), Some("100.64.0.1".parse().unwrap()));
+        assert_eq!(parse_own_ipv4("192.168.0.4
+"), None);
+        assert_eq!(parse_own_ipv4(""), None);
     }
 }

@@ -399,6 +399,13 @@ pub fn friends_list(root: &Dirs) -> Result<Vec<friends::Friend>> {
     Ok(friends::record(root, &seen, friends::now_secs()))
 }
 
+/// Ajoute un ami par pseudo Minecraft (résolu via l'API publique Mojang) ; renvoie `(pseudo exact, UUID)`.
+pub fn friend_add(root: &Dirs, name: &str, api: &str, me: Option<&str>) -> Result<(String, String)> {
+    let (name, uuid) = identity::lookup(&short_client()?, api, name)?;
+    let uuid = friends::list_add(root, &name, &uuid, me)?;
+    Ok((name, uuid))
+}
+
 pub fn app_update(current: &str) -> Option<update::Update> {
     update::check(&short_client().ok()?, &config::launcher_json_url(), current)
 }
