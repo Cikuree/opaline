@@ -78,7 +78,7 @@ function skinFile(f) {
 const b64 = (f) => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = ko; r.readAsDataURL(f); });
 
 // ---- connexion ----
-let expTimer = null;
+let expTimer = null, attempt = null;
 const loginMsg = (t) => { const m = $('#loginMsg'); m.hidden = !t; m.textContent = t || ''; };
 export function renderLogin() {
   const nc = state.auth.state === 'notConfigured';
@@ -87,7 +87,8 @@ export function renderLogin() {
 }
 function stopLogin() { clearInterval(expTimer); $('#codeBox').hidden = true; $('#btnLogin').hidden = false; }
 export function onAuthDone(p) {
-  stopLogin();
+  if (attempt === null || p.attempt !== attempt) return; // tentative périmée ou annulée
+  attempt = null; stopLogin();
   if (!p.ok) { loginMsg(p.error || 'La connexion a échoué.'); return; }
   refreshAuth(); toast('Connecté en tant que ' + (p.profile?.name || ''));
 }
@@ -96,7 +97,7 @@ export function initAccount() {
   $('#btnLogin').addEventListener('click', async () => {
     loginMsg('');
     try {
-      const r = await api.authStart(); let left = r.expiresIn;
+      const r = await api.authStart(); attempt = r.attempt; let left = r.expiresIn;
       $('#btnLogin').hidden = true; $('#codeBox').hidden = false;
       $('#codeVal').textContent = r.userCode; $('#codeVal').setAttribute('aria-label', 'Code ' + [...r.userCode].join(', '));
       $('#codeUri').textContent = r.verificationUri.replace(/^https?:\/\/(www\.)?/, ''); $('#codeBox').dataset.uri = r.verificationUri; $('#codeBox').dataset.code = r.userCode;
@@ -106,7 +107,7 @@ export function initAccount() {
   });
   $('#copyCode').addEventListener('click', () => copy($('#codeBox').dataset.code, 'Code copié'));
   $('#openUri').addEventListener('click', () => api.openUrl($('#codeBox').dataset.uri));
-  $('#cancelLogin').addEventListener('click', async () => { try { await api.authCancel(); } catch { /* déjà terminé */ } stopLogin(); $('#btnLogin').focus(); });
+  $('#cancelLogin').addEventListener('click', async () => { attempt = null; try { await api.authCancel(); } catch { /* déjà terminé */ } stopLogin(); $('#btnLogin').focus(); });
   $('#btnLogout').addEventListener('click', async () => {
     try { const r = await api.authSignOut(); if (r?.warning) toast(r.warning); else toast('Déconnecté'); } catch (e) { toast(api.errMsg(e)); }
     await refreshAuth();

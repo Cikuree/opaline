@@ -62,12 +62,12 @@ const detail = (n) => {
   })) };
 };
 
-let started = null;
+let started = null, attemptN = 0, cancelled = false;
 const stats = () => ({ runNumber: 20, totalTimeMs: 12 * 3600e3 + 34 * 60e3 + 56e3 + (started ? Date.now() - started : 0), running: true, deaths: 19, currentSplit: 6, currentSplitName: 'ENDER_EYE', reachedSplits: SPL.slice(0, 6), bestSplit: 'ENDER_EYE', players: ['LunaFox', 'Creeper_Kid', 'Maëlle'] });
 started = Date.now();
 
 const runInstall = async (id) => {
-  const stages = ['java', 'minecraft', 'loader', 'mods', 'assets', 'textures'];
+  const stages = ['java', 'minecraft', 'assets', 'loader', 'mods', 'textures'];
   for (const stage of stages) for (let d = 0; d <= 4; d++) { emit('install://progress', { packId: id, stage, done: d * 25, total: 100 }); await wait(220); }
   const p = packs.find((x) => x.id === id); p.installed = true; p.updateAvailable = false;
   emit('install://done', { packId: id, ok: true, error: null });
@@ -78,8 +78,8 @@ export async function invoke(cmd, a = {}) {
   switch (cmd) {
     case 'app_info': return { version: '0.1.0', update: q.has('update') ? { version: '0.1.1', url: 'https://github.com/Cikuree/opaline/releases/latest' } : null };
     case 'auth_status': return auth;
-    case 'auth_start': setTimeout(() => { auth = { state: 'signedIn', profile: { name: 'OddNode', uuid: '3f9a21c4-7be0-4a11-9c3d-0b6e5f51e51d' }, warning: null }; emit('auth://done', { ok: true, profile: auth.profile, error: null }); }, 6000); return { userCode: 'KQ7M4XNP', verificationUri: 'https://www.microsoft.com/link', expiresIn: 900 };
-    case 'auth_cancel': return null;
+    case 'auth_start': { const attempt = ++attemptN; cancelled = false; setTimeout(() => { if (cancelled) return; auth = { state: 'signedIn', profile: { name: 'OddNode', uuid: '3f9a21c4-7be0-4a11-9c3d-0b6e5f51e51d' }, warning: null }; emit('auth://done', { attempt, ok: true, profile: auth.profile, error: null }); }, 6000); return { attempt, userCode: 'KQ7M4XNP', verificationUri: 'https://www.microsoft.com/link', expiresIn: 900 }; }
+    case 'auth_cancel': cancelled = true; return null;
     case 'auth_sign_out': auth = { state: 'signedOut', profile: null, warning: null }; return { warning: null };
     case 'packs_list': return structuredClone(packs);
     case 'pack_install': case 'pack_repair': runInstall(a.id); return null;

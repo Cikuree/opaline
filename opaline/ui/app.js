@@ -6,7 +6,7 @@ import { initChrome, show, currentView } from './views/chrome.js';
 import { initHome, renderHome, refreshServers, refreshStats, installPct } from './views/home.js';
 import { initAccount, renderAccount, renderLogin, onAuthDone, refreshAuth } from './views/account.js';
 import { initSettings, renderSettings } from './views/settings.js';
-import { initFiles, renderFiles } from './views/files.js';
+import { initFiles, renderFiles, syncBusy } from './views/files.js';
 import { initHistory, renderHistory, openDeath } from './views/history.js';
 import { initNews, renderNews } from './views/news.js';
 import { initFriends, renderMe, refreshFriends } from './views/friends.js';
@@ -59,7 +59,8 @@ function wireEvents() {
     }
   });
   $('#crashCopy').addEventListener('click', () => copy($('#crashLog').textContent, 'Journal copié'));
-  on('install', progressUi);
+  on('install', () => { progressUi(); syncBusy(); });
+  on('game', syncBusy);
   on('selectPack', selectPack);
   on('auth', applyAuth);
   on('openDeath', async (d) => { await openDeath(d); show('history'); });

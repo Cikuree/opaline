@@ -51,7 +51,7 @@ export function hydrateHeads(root = document) {
     const uuid = el.dataset.head; if (!uuid || el.dataset.done) return; el.dataset.done = '1';
     if (!heads.has(uuid)) heads.set(uuid, api.playerHead(uuid).then((r) => r.dataUrl).catch(() => null));
     const url = await heads.get(uuid);
-    if (url && el.isConnected) el.innerHTML = `<img class="px" src="${url}" alt="" width="${el.dataset.s}" height="${el.dataset.s}">`;
+    if (url && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(url) && el.isConnected) el.innerHTML = `<img class="px" src="${url}" alt="" width="${Number(el.dataset.s)}" height="${Number(el.dataset.s)}">`;
   });
 }
 

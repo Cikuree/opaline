@@ -30,7 +30,7 @@ export const HELP = {
 };
 
 export const STAGES = { java: 'Installation de Java', minecraft: 'Téléchargement de Minecraft', loader: 'Installation du chargeur', mods: 'Téléchargement des mods', assets: 'Téléchargement des ressources', textures: 'Extraction des textures' };
-export const STAGE_ORDER = ['java', 'minecraft', 'loader', 'mods', 'assets', 'textures'];
+export const STAGE_ORDER = ['java', 'minecraft', 'assets', 'loader', 'mods', 'textures']; // ordre émis par le backend (contrat §6)
 
 export const PERF = [
   { id: 'low', name: 'Faible', sub: 'Pour les PC modestes', gb: 3 },
