@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opaline</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232c1219'/%3E%3Cg fill='%23f6dcc8'%3E%3Cpath fill-rule='evenodd' d='M9 32a23 27 0 1 0 46 0a23 27 0 1 0 -46 0ZM20.5 32a11.5 24.4 0 1 0 23 0a11.5 24.4 0 1 0 -23 0Z'/%3E%3Cpath d='M32 13Q33.2 30.8 43 32Q33.2 33.2 32 51Q30.8 33.2 21 32Q30.8 30.8 32 13Z'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="styles.css">
+<link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,500..800&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff1e0"/><stop offset=".5" stop-color="#f6c9d4"/><stop offset="1" stop-color="#c9b4ff"/></linearGradient></defs>
+ <symbol id="logo-o" viewBox="0 0 64 64"><path fill="url(#lg)" fill-rule="evenodd" d="M9 32a23 27 0 1 0 46 0a23 27 0 1 0 -46 0ZM20.5 32a11.5 24.4 0 1 0 23 0a11.5 24.4 0 1 0 -23 0Z"/><path fill="url(#lg)" d="M32 13Q33.2 30.8 43 32Q33.2 33.2 32 51Q30.8 33.2 21 32Q30.8 30.8 32 13Z"/><path fill="url(#lg)" d="M53 7Q53.5 12 58 13Q53.5 14 53 19Q52.5 14 48 13Q52.5 12 53 7Z"/></symbol>
+ <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h14V10M10 20v-6h4v6"/></symbol>
+ <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></symbol>
+ <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
+ <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></symbol>
+ <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+ <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 17V11a6 6 0 0112 0v6l2 2H4zM10 21h4"/></symbol>
+ <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 012-2h9"/></symbol>
+ <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+ <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M2 9a15 15 0 0120 0M5 13a10 10 0 0114 0M8.5 16.5a5 5 0 017 0"/><circle cx="12" cy="20" r=".8"/></symbol>
+ <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14 6a4 4 0 005 5l-9 9a2 2 0 01-3-3l9-9a4 4 0 01-2-2z"/></symbol>
+ <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c.6-3.5 3.2-5.5 7-5.5s6.4 2 7 5.5M16 4.8a3.5 3.5 0 010 6.4M18 14.8c2 .6 3.4 2.4 4 5.2"/></symbol>
+ <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16a1 1 0 011 1v10a1 1 0 01-1 1H10l-5 4v-4H4a1 1 0 01-1-1V6a1 1 0 011-1z"/></symbol>
+ <symbol id="i-min" viewBox="0 0 24 24"><path d="M6 12h12"/></symbol>
+ <symbol id="i-max" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+ <symbol id="i-restore" viewBox="0 0 24 24"><path d="M9 8V7a1.5 1.5 0 011.5-1.5H17A1.5 1.5 0 0118.5 7v6.5A1.5 1.5 0 0117 15h-1"/><rect x="5.5" y="9" width="10" height="10" rx="1.5"/></symbol>
+ <symbol id="i-chev" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 001.5.9l10.5-6.5a1 1 0 000-1.8L9.5 4.6A1 1 0 008 5.5z" fill="currentColor" stroke="none"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+ <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.4-5.7M20 4v5h-5"/></symbol>
+ <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></symbol>
+</svg>
+
+<div class="window" id="app">
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <header class="titlebar" id="titlebar" data-tauri-drag-region>
+    <div class="tt" data-tauri-drag-region><svg class="logo-svg" width="18" height="18" viewBox="0 0 64 64" aria-hidden="true"><use href="#logo-o"/></svg>Opaline</div>
+    <div class="wbtns" role="group" aria-label="Fenêtre">
+      <button type="button" class="wbtn" id="wMin" aria-label="Réduire"><svg class="i"><use href="#i-min"/></svg></button>
+      <button type="button" class="wbtn" id="wMax" aria-label="Agrandir"><svg class="i"><use href="#i-max"/></svg></button>
+      <button type="button" class="wbtn close" id="wClose" aria-label="Fermer"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+  </header>
+
+  <nav class="rail" id="rail" aria-label="Navigation principale">
+    <div class="logo" role="img" aria-label="Opaline"><svg class="logo-svg" width="40" height="40" viewBox="0 0 64 64" aria-hidden="true"><use href="#logo-o"/></svg></div>
+    <button data-view="home" aria-label="Accueil" aria-current="page"><svg class="i"><use href="#i-home"/></svg></button>
+    <button data-view="account" aria-label="Compte"><svg class="i"><use href="#i-user"/></svg></button>
+    <button data-view="settings" aria-label="Réglages"><svg class="i"><use href="#i-sliders"/></svg></button>
+    <button data-view="files" aria-label="Fichiers et mods"><svg class="i"><use href="#i-folder"/></svg></button>
+    <button data-view="history" aria-label="Historique des runs"><svg class="i"><use href="#i-clock"/></svg></button>
+    <span class="spacer"></span>
+    <button id="colToggle" class="coltoggle" aria-label="Joueurs du serveur" aria-expanded="false" aria-controls="col"><svg class="i"><use href="#i-users"/></svg></button>
+    <button data-view="news" id="newsBtn" aria-label="Actualités et mises à jour"><svg class="i"><use href="#i-bell"/></svg><span class="badge" id="newsBadge" hidden></span></button>
+  </nav>
+
+  <main id="main" tabindex="-1">
+
+  <section class="view login" id="v-login" aria-labelledby="loginT">
+    <div class="art" aria-hidden="true"><svg class="logo-svg" width="96" height="96" viewBox="0 0 64 64" aria-hidden="true"><use href="#logo-o"/></svg></div>
+    <h1 id="loginT">Opaline</h1>
+    <p class="mute" style="max-width:42ch">Opaline, vos mondes entre amis. Connecte ton compte Microsoft pour installer les modpacks du groupe et rejoindre leurs serveurs.</p>
+    <button class="btn primary" id="btnLogin" style="height:52px;padding:0 32px;font-size:16px">Se connecter avec Microsoft</button>
+    <p class="small mute" id="loginMsg" role="status" hidden></p>
+    <div id="codeBox" hidden>
+      <p class="mute small">Ouvre <b style="color:var(--ink)" id="codeUri">microsoft.com/link</b> et saisis ce code :</p>
+      <div class="code" id="codeVal" aria-live="polite">&nbsp;</div>
+      <div class="row" style="justify-content:center;margin-top:14px;flex-wrap:wrap">
+        <button class="btn sm" id="copyCode"><svg class="i" style="width:16px;height:16px"><use href="#i-copy"/></svg>Copier le code</button>
+        <button class="btn sm cream" id="openUri">Ouvrir la page</button>
+        <button class="btn sm" id="cancelLogin">Annuler</button>
+      </div>
+      <p class="xs mute" style="margin-top:12px" role="status" id="codeWait">En attente de validation&hellip;</p>
+    </div>
+  </section>
+
+  <section class="view on" id="v-home" aria-labelledby="homeT">
+    <div class="bar">
+      <div><h1 id="homeT"><span style="color:#f0aaa5;font-weight:600" id="greet">Bonsoir,</span> <span id="homeName"></span></h1><p class="mute small" id="homeSub"></p></div>
+      <label class="search"><svg class="i" style="width:18px;height:18px"><use href="#i-search"/></svg><span class="sr">Rechercher un pack</span><input type="search" id="packSearch" placeholder="Rechercher"></label>
+    </div>
+    <article class="card crash" id="crash" role="alert" hidden>
+      <h2 id="crashT">Le jeu s&rsquo;est arrêté</h2>
+      <pre id="crashLog"></pre>
+      <div class="row"><button class="btn sm" id="crashCopy"><svg class="i" style="width:16px;height:16px"><use href="#i-copy"/></svg>Copier le journal</button><button class="btn sm" id="crashClose">Fermer</button></div>
+    </article>
+    <div class="packs" id="packs" role="radiogroup" aria-label="Modpacks du groupe"></div>
+    <div class="home" id="home">
+      <article class="card hero" aria-labelledby="heroT">
+        <div class="art" id="heroArt" aria-hidden="true"></div>
+        <div>
+          <span class="pill" id="runState"></span>
+          <h2 id="heroT" style="margin-top:10px"></h2>
+        </div>
+        <div class="stats" id="heroStats"></div>
+        <div class="acts"><button class="play" id="btnPlay"><svg class="bi" aria-hidden="true"><use href="#i-play"/></svg><span class="bl">JOUER</span></button><button class="btn cream" id="btnUpd" hidden><svg class="bi i" aria-hidden="true"><use href="#i-down"/></svg><span class="bl">Mettre à jour</span></button></div>
+      </article>
+
+      <article class="card server" id="cardServer" aria-labelledby="srvT">
+        <div class="row"><h2 id="srvT">Serveur</h2><span class="pill" id="srvPill"><span class="dot"></span>En ligne</span></div>
+        <p style="font-weight:700;font-size:18px" id="srvName"></p>
+        <div class="kv">
+          <div><span class="xs mute">Latence</span><b id="lat">—</b></div>
+          <div><span class="xs mute">Joueurs</span><b id="kvPl">—</b></div>
+          <div><span class="xs mute">Version</span><b id="kvVer">—</b></div>
+        </div>
+        <p class="xs mute" id="srvMsg" role="status" hidden></p>
+        <div class="ts" id="tsBox"><svg class="i" style="flex:none;color:var(--ok)"><use href="#i-wifi"/></svg>
+          <div style="flex:1"><b id="tsT">Tailscale connecté</b><div class="mute xs" id="tsH" role="status"></div></div>
+          <label class="xs mute" id="demoTsL" hidden style="display:flex;flex-direction:column;gap:2px">Démo serveur<select id="demoTs" style="padding:4px 8px;font-size:12px"><option value="">Connecté</option><option value="tailscaleDisconnected">Non connecté</option><option value="tailscaleNotInstalled">Non installé</option><option value="noAccess">Sans accès</option><option value="unexpectedServer">Autre serveur</option></select></label></div>
+      </article>
+
+      <article class="card splits" id="cardSplits" aria-labelledby="splT">
+        <div class="row"><h2 id="splT">Splits jusqu&rsquo;à l&rsquo;Ender Dragon</h2><span class="small mute" id="splCount"></span></div>
+        <ol class="splitrow" id="splits"></ol>
+      </article>
+
+      <article class="card stat" id="cardStat" aria-labelledby="statT">
+        <h2 class="sr" id="statT">Temps total</h2>
+        <svg id="statSvg" viewBox="0 0 300 300" role="img" aria-label="Temps total"></svg>
+      </article>
+
+      <article class="card deaths" id="cardDeaths" aria-labelledby="dthT">
+        <div class="row"><h2 id="dthT">Dernières morts</h2><button class="btn sm" data-go="history">Tout voir</button></div>
+        <ul class="list" id="deaths"></ul>
+      </article>
+
+      <article class="card news" id="cardNews" aria-labelledby="pnT"><h2 id="pnT">Nouveautés du pack</h2><div id="packNews"></div></article>
+    </div>
+  </section>
+
+  <section class="view" id="v-account" aria-labelledby="accT">
+    <div class="bar"><h1 id="accT">Compte</h1><span class="pill"><span class="dot"></span>Session active</span></div>
+    <div class="grid2">
+      <article class="card" style="display:flex;gap:20px;align-items:center">
+        <div id="fullSkin" style="background:var(--win-deep);border-radius:20px;padding:14px;flex:none"></div>
+        <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+          <div class="me"><div class="avatar" style="width:56px;height:56px" id="accAvatar"></div><div><h2 id="accName"></h2><div class="mute xs">Profil Minecraft Java</div></div></div>
+          <div class="mute small">UUID <code style="color:var(--ink);overflow-wrap:anywhere" id="accUuid"></code></div>
+          <span class="pill" style="align-self:flex-start">Connecté avec Microsoft</span>
+          <button class="btn sm" id="btnLogout" style="align-self:flex-start">Se déconnecter</button>
+        </div>
+      </article>
+      <article class="card">
+        <h2>État de la session</h2>
+        <ul class="list" style="margin-top:12px;gap:10px;font-size:14px" id="sessionList"></ul>
+      </article>
+      <article class="card">
+        <h2 id="capeT">Cape</h2>
+        <div role="radiogroup" aria-labelledby="capeT" style="margin-top:8px" id="capes"></div>
+      </article>
+    </div>
+  <section aria-labelledby="wrT">
+      <h2 id="wrT" style="font-size:18px">Garde-robe</h2>
+      <p class="mute small">Bibliothèque locale d&rsquo;Opaline : Mojang ne garde pas d&rsquo;historique des skins.</p>
+      <div class="wardrobe"><div id="skinCards" style="display:contents"></div>
+        <article class="card imp"><h3>+ Importer un skin</h3>
+          <label class="drop" id="drop"><input type="file" id="skinFile" accept="image/png">
+            <svg class="i" style="width:28px;height:28px;color:var(--coral2)"><use href="#i-down"/></svg>
+            <div style="font-weight:700;margin-top:6px">Glisse un PNG 64×64 ici</div><div class="xs mute" id="dropMsg">ou clique pour parcourir</div></label>
+          <div class="row"><span class="small mute" id="modelLbl">Modèle de bras</span>
+            <div class="seg sm" role="radiogroup" aria-labelledby="modelLbl" id="model"><button role="radio" aria-checked="true" data-m="classic">Classique</button><button role="radio" aria-checked="false" data-m="slim">Fin</button></div></div>
+          <button class="btn primary" id="importSkin">Importer dans la garde-robe</button></article></div>
+    </section>
+  </section>
+
+  <section class="view" id="v-settings" aria-labelledby="setT">
+    <div class="bar"><h1 id="setT">Réglages</h1><span class="mute small">Appliqués au prochain lancement</span></div>
+    <article class="card"><h2 id="perfT">Mode de performance</h2>
+      <div class="perf" role="radiogroup" aria-labelledby="perfT" id="perf" style="margin-top:12px"></div></article>
+    <div class="grid2">
+      <article class="card field">
+        <div class="row"><h2><label for="mem">Mémoire allouée</label></h2><b id="memV" style="font-size:22px"></b></div>
+        <input type="range" id="mem" min="2" max="16" step="1" value="6" aria-describedby="memH">
+        <div class="zone" aria-hidden="true" id="zone"></div>
+        <p class="xs mute" id="memH"></p>
+      </article>
+      <article class="card field">
+        <div class="row"><div><h2 id="nrL">Ne pas mémoriser la connexion sur ce PC</h2><p class="small mute" style="margin-top:2px">Tu devras te reconnecter à chaque démarrage d&rsquo;Opaline.</p></div>
+          <button class="sw" role="switch" aria-checked="false" aria-labelledby="nrL" id="noRemember"></button></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="view" id="v-files" aria-labelledby="fT">
+    <div class="bar"><h1 id="fT">Fichiers &amp; mods</h1><button class="btn primary" id="btnRepair"><svg class="i" style="width:18px;height:18px"><use href="#i-wrench"/></svg>Vérifier et réparer</button></div>
+    <div class="seg" id="filePacks" role="radiogroup" aria-label="Pack concerné" style="align-self:flex-start;flex-wrap:wrap"></div>
+    <div class="files" id="folders"></div>
+    <div class="grid2 filesgrid">
+      <article class="card"><h2>Mods installés</h2><div id="modsBox"></div></article>
+      <article class="card" id="packCard"></article>
+    </div>
+  </section>
+
+  <section class="view" id="v-history" aria-labelledby="hT">
+    <div class="bar"><h1 id="hT">Historique</h1><span class="mute small" id="histSum"></span></div>
+    <div class="grid2">
+      <article class="card" id="runsCard"><h2>Runs</h2>
+        <table style="margin-top:8px"><thead><tr><th>Run</th><th>Durée</th><th>Morts</th><th>Meilleur split</th></tr></thead><tbody id="runs"></tbody></table><p class="mute small" id="runsEmpty" hidden style="margin-top:10px">Aucune run enregistrée.</p></article>
+      <article class="card" id="dthDetail" aria-live="polite" style="align-self:start"></article>
+    </div>
+  </section>
+
+  <section class="view" id="v-news" aria-labelledby="nT">
+    <div class="bar"><h1 id="nT">Actualités</h1></div>
+    <div class="banner" id="banner" role="region" aria-label="Mise à jour du launcher" hidden><svg class="i"><use href="#i-down"/></svg><b id="bannerT"></b><button class="btn sm" id="updLauncher">Télécharger</button><button class="x" id="dismiss" aria-label="Fermer la bannière"><svg class="i" style="width:18px;height:18px"><use href="#i-x"/></svg></button></div>
+    <div class="grid2" id="newsCards"></div>
+  </section>
+  </main>
+
+  <aside class="col" id="col" aria-label="Joueurs du serveur">
+    <article class="card meCard">
+      <div class="me" id="meBtn"><div class="avwrap"><div class="avatar" id="meAvatar"></div><span class="dot" id="meDot" role="img" aria-label="En ligne"></span></div><span class="ingame" id="meGame" hidden>En jeu</span><div class="mtx"><b id="meName"></b><div class="xs mute" id="meSt">En ligne</div></div></div>
+    </article>
+    <button type="button" class="colx" id="colExpand" aria-expanded="true" aria-controls="col" aria-label="Réduire la liste des amis"><svg class="i"><use href="#i-users"/></svg><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg><span class="lbl">Réduire</span></button>
+    <article class="card onl"><h2 class="sr">Amis, <span id="onCount"></span> en ligne</h2><div id="online"></div><div id="offline"></div></article>
+  </aside>
+
+  <div class="prog" id="prog" role="status"><svg class="i" style="color:var(--coral2)"><use href="#i-down"/></svg>
+    <div style="min-width:0"><b id="progT" class="small">Téléchargement</b><div class="xs mute" id="progS"></div></div>
+    <div class="track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="track" aria-label="Progression"><i id="bar"></i></div><b id="pct" style="width:44px;text-align:right;font-variant-numeric:tabular-nums">0 %</b></div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
