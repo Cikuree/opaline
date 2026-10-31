@@ -67,6 +67,8 @@ Sans publier : lancer Opaline en développement avec un `packs.json` local ou co
 2. Même numéro de version dans `gradle.properties` et dans Opaline, puis tag `vX.Y.Z` (voir `docs/INSTALL.md`, « Publier une version »).
 3. La CI publie `pack-<id>.zip` pour chaque pack et regénère `packs.json` (nombre de mods, `packHash`).
 
+`packHash` ancre `index.toml`, donc tous les fichiers du pack (chaque métafichier est vérifié par son hash). Les versions MC et loader viennent du `pack.toml` publié dans le même zip, lui-même vérifié par ce hash. `catalog` refuse un pack dont `index.toml` ou un métafichier ne correspond pas aux hashes ; la CI réindexe tous les packs avant le catalogue.
+
 ## Mettre à jour ou retirer un mod
 
 - Mise à jour : `packwiz update <slug>` (ou `packwiz update --all`), puis `packwiz refresh`.

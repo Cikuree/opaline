@@ -12,3 +12,10 @@ Les packs (`packs/<id>/`) n'embarquent aucun de ces fichiers : le pack packwiz l
 Licence de Complementary : https://github.com/ComplementaryDevelopment/ComplementaryReimagined/blob/main/License.txt. Le pack n'est pas modifié et n'est jamais redistribué en fichier : il est téléchargé via Modrinth.
 
 Fantasy est inclus dans le jar `classroomrun` (voir son dépôt pour sa licence).
+
+## Polices d'Opaline
+
+Embarquées dans `opaline/ui/fonts/`, sous licence SIL Open Font License 1.1 (https://openfontlicense.org) :
+
+- Bodoni Moda (Indestructible Type, Owen Earl) : https://fonts.google.com/specimen/Bodoni+Moda
+- Bricolage Grotesque (Mathieu Triay) : https://fonts.google.com/specimen/Bricolage+Grotesque

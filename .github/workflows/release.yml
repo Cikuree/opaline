@@ -101,6 +101,8 @@ jobs:
           [ "$(basename "$jar")" = "classroomrun-$VERSION.jar" ] || { echo "jar inattendu: $jar"; exit 1; }
           echo "JAR=$jar" >> "$GITHUB_ENV"
           python3 scripts/pack-tools.py add-jar --pack packs/classroom-run --jar "$jar" --version "$VERSION" --repo "$GITHUB_REPOSITORY"
+          # reindexer tous les packs avant zip et catalogue
+          for d in packs/*/; do python3 scripts/pack-tools.py index --pack "$d"; done
           # pack-<id>.zip : un dossier pack/ à la racine (contenu de packs/<id>/ publié)
           mkdir -p dist/stage
           for d in packs/*/; do

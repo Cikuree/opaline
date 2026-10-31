@@ -73,6 +73,20 @@ def load_opaline(pack):
     return o
 
 
+def verify(d, pt):
+    """sha256(index.toml) == [index] hash de pack.toml, et hash de chaque fichier listé dans index.toml."""
+    idx = d / "index.toml"
+    if pt["index"].get("hash-format") != "sha256" or sha256(idx) != pt["index"]["hash"]:
+        sys.exit(f"{d.name}: hash de index.toml different de [index] hash de pack.toml (lancer `pack-tools.py index --pack packs/{d.name}`)")
+    it = tomllib.loads(idx.read_text("utf-8"))
+    if it.get("hash-format") != "sha256":
+        sys.exit(f"{d.name}/index.toml: hash-format sha256 requis")
+    for e in it.get("files", []):
+        f = d / e["file"]
+        if not f.is_file() or sha256(f) != e["hash"]:
+            sys.exit(f"{d.name}: fichier {e['file']} absent ou different du hash de index.toml (lancer `pack-tools.py index --pack packs/{d.name}`)")
+
+
 def catalog(root, tag, repo, out):
     if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
         sys.exit(f"tag invalide: {tag}")
@@ -83,6 +97,7 @@ def catalog(root, tag, repo, out):
         if not (d / "pack.toml").is_file():
             sys.exit(f"{d.name}: pack.toml manquant")
         o, pt = load_opaline(d), tomllib.loads((d / "pack.toml").read_text("utf-8"))
+        verify(d, pt)
         v = pt["versions"]
         loaders = [k for k in v if k != "minecraft"]
         if len(loaders) != 1:
