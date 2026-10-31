@@ -26,6 +26,9 @@ jobs:
           v=$(sed -n 's/^version = "\(.*\)"/\1/p' launcher/Cargo.toml | head -n1)
           [ "${GITHUB_REF_NAME#v}" = "$v" ] || { echo "tag $GITHUB_REF_NAME != launcher $v"; exit 1; }
       - name: Build launcher
+        env:
+          # ID client de l app Azure (public, pas un secret) : variable de dépôt MS_CLIENT_ID
+          CLASSROOM_MS_CLIENT_ID: ${{ vars.MS_CLIENT_ID }}
         run: |
           cd launcher
           cargo build --release
