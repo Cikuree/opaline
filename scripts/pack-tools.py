@@ -3,14 +3,12 @@
 
   pack-tools.py index [--pack pack]
       Regenere index.toml (tous les *.pw.toml de mods/ et shaderpacks/) puis le hash d'index de pack.toml.
-  pack-tools.py add-jar --jar J --version X.Y.Z [--pack pack]
-      Ecrit mods/classroomrun.pw.toml (side both, url = asset de release du depot public, sha512 du jar), puis reindexe.
+  pack-tools.py add-jar --jar J --version X.Y.Z --repo OWNER/REPO [--pack pack]
+      Ecrit mods/classroomrun.pw.toml (side both, url = asset de release du depot --repo, sha512 du jar), puis reindexe.
 Hashes sha256 sur les octets exacts (pack/ doit rester en LF).
 """
 import argparse, hashlib, re, sys, tomllib
 from pathlib import Path
-
-DIST = "https://github.com/Cikuree/classroom-run-dist/releases/download"
 
 
 def sha256(p):
@@ -34,13 +32,15 @@ def reindex(pack):
     print("index:", idx, sha256(idx))
 
 
-def add_jar(pack, jar, version):
+def add_jar(pack, jar, version, repo):
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         sys.exit(f"version invalide: {version}")
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
+        sys.exit(f"depot invalide: {repo}")
     name = f"classroomrun-{version}.jar"
     h = hashlib.sha512(jar.read_bytes()).hexdigest()
     body = (f'name = "Classroom Run"\nfilename = "{name}"\nside = "both"\n\n[download]\n'
-            f'url = "{DIST}/v{version}/{name}"\nhash-format = "sha512"\nhash = "{h}"\n')
+            f'url = "https://github.com/{repo}/releases/download/v{version}/{name}"\nhash-format = "sha512"\nhash = "{h}"\n')
     (pack / "mods" / "classroomrun.pw.toml").write_bytes(body.encode())
 
 
@@ -50,9 +50,10 @@ if __name__ == "__main__":
     ap.add_argument("--pack", type=Path, default=Path(__file__).resolve().parent.parent / "pack")
     ap.add_argument("--jar", type=Path)
     ap.add_argument("--version")
+    ap.add_argument("--repo", help="OWNER/REPO des releases (ex. $GITHUB_REPOSITORY)")
     a = ap.parse_args()
     if a.cmd == "add-jar":
-        if not (a.jar and a.jar.is_file() and a.version):
-            sys.exit("--jar (existant) et --version requis")
-        add_jar(a.pack, a.jar, a.version)
+        if not (a.jar and a.jar.is_file() and a.version and a.repo):
+            sys.exit("--jar (existant), --version et --repo requis")
+        add_jar(a.pack, a.jar, a.version, a.repo)
     reindex(a.pack)

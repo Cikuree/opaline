@@ -63,38 +63,15 @@ jobs:
           jar=$(ls build/libs/classroomrun-*.jar | grep -v -- '-sources' | head -n1)
           [ "$(basename "$jar")" = "classroomrun-$VERSION.jar" ] || { echo "jar inattendu: $jar"; exit 1; }
           echo "JAR=$jar" >> "$GITHUB_ENV"
-          python3 scripts/pack-tools.py add-jar --jar "$jar" --version "$VERSION"
+          python3 scripts/pack-tools.py add-jar --jar "$jar" --version "$VERSION" --repo "$GITHUB_REPOSITORY"
           python3 scripts/build-prism-instance.py --jar "$jar" --out dist/classroom-run-prism.zip
-      - name: Release privee
+      - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "$JAR" dist/launchers/* dist/classroom-run-prism.zip \
-            --title "$GITHUB_REF_NAME" --generate-notes
-      - name: Release et manifeste publics
-        env:
-          DIST_TOKEN: ${{ secrets.DIST_TOKEN }}
-        run: |
-          if [ -z "$DIST_TOKEN" ]; then
-            echo "::error::secret DIST_TOKEN absent : la release privee est faite, la publication dans Cikuree/classroom-run-dist est a refaire (voir docs/INSTALL.md)"
-            exit 1
-          fi
-          export GH_TOKEN="$DIST_TOKEN"
           VERSION="${GITHUB_REF_NAME#v}"
-          PUB=Cikuree/classroom-run-dist
-          BASE="https://github.com/$PUB/releases/download/$GITHUB_REF_NAME"
-          gh release create "$GITHUB_REF_NAME" "$JAR" dist/launchers/* dist/classroom-run-prism.zip \
-            -R "$PUB" --title "$GITHUB_REF_NAME" --generate-notes
-          gh auth setup-git
-          gh repo clone "$PUB" dist/public -- --branch main
-          # copie explicite de ces seuls chemins : jamais de code source dans le depot public
-          rm -rf dist/public/pack
-          cp -r pack dist/public/pack
-          cp CREDITS.md dist/public/CREDITS.md
+          BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
           printf '{"version":"%s","windows":"%s/classroom-launcher-windows.exe","linux":"%s/classroom-launcher-linux"}\n' \
-            "$VERSION" "$BASE" "$BASE" > dist/public/launcher.json
-          cd dist/public
-          git add pack CREDITS.md launcher.json
-          git -c user.name=classroom-run-ci -c user.email=ci@users.noreply.github.com \
-            commit -m "release $GITHUB_REF_NAME"
-          git push origin HEAD:main
+            "$VERSION" "$BASE" "$BASE" > dist/launcher.json
+          gh release create "$GITHUB_REF_NAME" "$JAR" dist/launchers/* dist/classroom-run-prism.zip dist/launcher.json \
+            --title "$GITHUB_REF_NAME" --generate-notes
