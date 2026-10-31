@@ -14,6 +14,8 @@ mod install;
 mod java;
 #[path = "../src/mojang.rs"]
 mod mojang;
+#[path = "../src/perf.rs"]
+mod perf;
 #[path = "../src/packwiz.rs"]
 mod packwiz;
 #[path = "../src/safe.rs"]

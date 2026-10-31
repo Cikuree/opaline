@@ -1,4 +1,4 @@
-//! Lecture du manifeste packwiz depuis un dossier local.
+//! Lecture du manifeste packwiz depuis un dossier local (ou le pack.zip de la release, extrait puis lu ici).
 use crate::safe::{Hash, safe_file_name, safe_join};
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
@@ -54,6 +54,8 @@ struct MetaDownload {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModEntry {
+    /// Dossier d'instance de destination, d'après le dossier du métafichier (`mods`, `shaderpacks`...).
+    pub dir: String,
     pub filename: String,
     pub url: String,
     pub hash: Hash,
@@ -69,9 +71,18 @@ pub struct PackFile {
 #[derive(Debug)]
 pub struct Pack {
     pub version: String,
+    /// Hash de l'index annoncé par pack.toml (minuscules) : identifie la version du pack.
+    pub index_hash: String,
     pub versions: Versions,
     pub mods: Vec<ModEntry>,
     pub files: Vec<PackFile>,
+}
+
+impl Pack {
+    /// Nom du zip de shaders (premier fichier .zip du dossier `shaderpacks`).
+    pub fn shader_pack(&self) -> Option<&str> {
+        self.mods.iter().find(|m| m.dir == "shaderpacks" && m.filename.ends_with(".zip")).map(|m| m.filename.as_str())
+    }
 }
 
 /// Packwiz : `side` absent = both ; on garde client et both.
@@ -122,7 +133,10 @@ pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> R
         let Some(url) = m.download.url else {
             bail!("{} : pas de download.url (CurseForge non supporté)", f.file);
         };
+        let dir = f.file.rsplit_once('/').map_or("mods", |(d, _)| d).to_string();
+        safe_join(Path::new("x"), &dir)?;
         mods.push(ModEntry {
+            dir,
             filename: safe_file_name(&m.filename)?.to_string(),
             url,
             hash: Hash::new(&m.download.hash_format, &m.download.hash)?,
@@ -131,9 +145,42 @@ pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> R
     Ok((mods, files))
 }
 
+/// Taille max du zip, et bornes d'extraction (anti zip bomb).
+pub const PACK_ZIP_MAX_BYTES: u64 = 50 * 1024 * 1024;
+pub const PACK_MAX_ENTRIES: usize = 5_000;
+pub const PACK_MAX_UNPACKED: u64 = 300 * 1024 * 1024;
+
+/// Télécharge `pack.zip` (release) avec délai global et limite de taille, l'extrait dans `<downloads>/pack-remote`
+/// (extraction sûre : zip-slip refusé, nombre d'entrées et taille décompressée bornés) et renvoie le dossier
+/// contenant `pack.toml`. Les hashes sont vérifiés ensuite par `load_pack`.
+pub fn fetch_remote_pack(client: &reqwest::blocking::Client, dirs: &crate::config::Dirs, url: &str) -> Result<std::path::PathBuf> {
+    use std::io::Read;
+    let r = client.get(url).timeout(std::time::Duration::from_secs(120)).send().with_context(|| format!("requête {url}"))?;
+    if !r.status().is_success() {
+        bail!("HTTP {} pour {url}", r.status());
+    }
+    if r.content_length().is_some_and(|n| n > PACK_ZIP_MAX_BYTES) {
+        bail!("pack.zip trop gros (limite {} Mo)", PACK_ZIP_MAX_BYTES / 1024 / 1024);
+    }
+    let mut bytes = Vec::new();
+    r.take(PACK_ZIP_MAX_BYTES + 1).read_to_end(&mut bytes).context("lecture de pack.zip")?;
+    if bytes.len() as u64 > PACK_ZIP_MAX_BYTES {
+        bail!("pack.zip trop gros (limite {} Mo)", PACK_ZIP_MAX_BYTES / 1024 / 1024);
+    }
+    let work = dirs.downloads().join("pack-remote");
+    let _ = std::fs::remove_dir_all(&work); // notre propre dossier de travail
+    std::fs::create_dir_all(&work)?;
+    let zip = work.with_extension("zip");
+    std::fs::write(&zip, &bytes)?;
+    let r = crate::java::extract_limited(&zip, &work, PACK_MAX_ENTRIES, PACK_MAX_UNPACKED);
+    let _ = std::fs::remove_file(&zip);
+    r?;
+    [work.join("pack"), work.clone()].into_iter().find(|d| d.join("pack.toml").is_file()).context("pack.zip : pack.toml introuvable")
+}
+
 pub fn load_pack(dir: &Path) -> Result<Pack> {
     if dir.as_os_str().is_empty() {
-        anyhow::bail!("dossier du pack non renseigné : indiquez le dossier qui contient pack.toml");
+        anyhow::bail!("dossier du pack non renseigné");
     }
     let read_in = |rel: &str| -> Result<String> {
         let p = safe_join(dir, rel)?;
@@ -151,7 +198,7 @@ pub fn load_pack(dir: &Path) -> Result<Pack> {
         version: String,
     }
     let version = toml::from_str::<V>(&read_in("pack.toml")?)?.version;
-    Ok(Pack { version, versions, mods, files })
+    Ok(Pack { version, index_hash: index_hash.expected().to_ascii_lowercase(), versions, mods, files })
 }
 
 #[cfg(test)]

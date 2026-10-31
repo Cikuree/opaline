@@ -1,44 +1,50 @@
 //! Configuration persistée (aucun secret) et disposition des dossiers du launcher.
 use serde::{Deserialize, Serialize};
+use crate::perf::PerfMode;
 use std::path::PathBuf;
+
+/// Dépôt public unique (releases : pack.zip, launcher.json, binaires).
+pub const REPO: &str = "Cikuree/classroom-run";
+
+pub fn pack_zip_url() -> String {
+    format!("https://github.com/{REPO}/releases/latest/download/pack.zip")
+}
+
+pub fn launcher_json_url() -> String {
+    format!("https://github.com/{REPO}/releases/latest/download/launcher.json")
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(default)]
 pub struct Config {
     pub nickname: String,
-    /// `hôte` ou `hôte:port` du serveur de jeu (utilisé pour --quickPlayMultiplayer).
-    pub server_host: String,
-    /// Port de l'endpoint HTTP /stats du serveur.
-    pub stats_port: u16,
-    /// Dossier local du manifeste packwiz (contient pack.toml).
+    /// Option avancée (dev) : dossier local du manifeste packwiz (contient pack.toml). Vide = pack.zip de la dernière release.
     pub pack_dir: String,
     /// Jar classroomrun (fichier) ou dossier le contenant ; vide = `<pack_dir>/../build/libs`.
     pub mod_jar: String,
     pub memory_mb: u32,
+    pub perf_mode: PerfMode,
+    /// « Ne pas mémoriser la connexion sur ce PC » : le refresh token reste en mémoire, jamais dans le trousseau.
+    pub no_remember: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
             nickname: "Player".into(),
-            server_host: "localhost:25565".into(),
-            stats_port: 25580,
             pack_dir: String::new(),
             mod_jar: String::new(),
             memory_mb: 4096,
+            perf_mode: PerfMode::Balanced,
+            no_remember: false,
         }
     }
 }
 
 impl Config {
     pub fn load(dirs: &Dirs) -> Config {
-        let mut cfg: Config =
+        let cfg: Config =
             std::fs::read_to_string(dirs.config_file()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        if cfg.pack_dir.trim().is_empty()
-            && let Some(found) = std::env::current_exe().ok().and_then(|exe| find_pack_dir(&exe))
-        {
-            cfg.pack_dir = found.display().to_string();
-        }
         cfg
     }
 
@@ -48,15 +54,54 @@ impl Config {
         Ok(())
     }
 
-    /// Hôte seul (sans port de jeu) pour l'URL /stats.
     pub fn stats_url(&self) -> String {
-        stats_url(&self.server_host, self.stats_port)
+        stats_url(&server_addr(), STATS_PORT)
     }
 }
 
-/// First `pack/` containing `pack.toml` among the ancestors of `start` (e.g. the repo when run from `launcher/target/release`).
-pub fn find_pack_dir(start: &std::path::Path) -> Option<PathBuf> {
-    start.ancestors().map(|d| d.join("pack")).find(|p| p.join("pack.toml").is_file())
+/// Éléments propres à un pack (MC et loader viennent du manifeste ; instance = `Dirs::instance`).
+/// Classroom Run est le profil par défaut ; le multi-pack passera par un catalogue de profils.
+#[derive(Clone, Debug)]
+pub struct PackProfile {
+    pub pack_zip_url: String,
+    /// Nom d'hôte de base du serveur (le suffixe MagicDNS Tailscale est ajouté à l'exécution).
+    pub server_name: String,
+    pub server_port: u16,
+}
+
+impl Default for PackProfile {
+    fn default() -> Self {
+        PackProfile { pack_zip_url: pack_zip_url(), server_name: "classroom".into(), server_port: 25565 }
+    }
+}
+
+impl PackProfile {
+    /// Adresse du serveur, jamais affichée ni saisie : `CLASSROOM_SERVER` (dev), sinon `host:port`
+    /// où `host` est fourni par l'appelant (nom de base + suffixe MagicDNS calculé à l'exécution).
+    pub fn server_addr_for(&self, host: &str) -> String {
+        server_override().unwrap_or_else(|| format!("{host}:{}", self.server_port))
+    }
+
+    /// Adresse sans suffixe MagicDNS (repli).
+    pub fn server_addr(&self) -> String {
+        self.server_addr_for(&self.server_name)
+    }
+}
+
+pub const STATS_PORT: u16 = 25580;
+
+fn server_override() -> Option<String> {
+    std::env::var("CLASSROOM_SERVER").ok().filter(|s| !s.trim().is_empty())
+}
+
+/// `CLASSROOM_SERVER` (dev) ou la constante par défaut.
+pub fn server_addr() -> String {
+    PackProfile::default().server_addr()
+}
+
+/// Vrai si l'adresse est surchargée (dev) : Tailscale n'est alors pas exigé.
+pub fn server_overridden() -> bool {
+    server_override().is_some()
 }
 
 pub fn stats_url(server_host: &str, stats_port: u16) -> String {
@@ -134,19 +179,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn finds_pack_dir_among_ancestors() {
-        let root = std::env::temp_dir().join(format!("crl-pack-{}", std::process::id()));
-        let exe_dir = root.join("launcher").join("target").join("release");
-        std::fs::create_dir_all(&exe_dir).unwrap();
-        std::fs::create_dir_all(root.join("pack")).unwrap();
-        std::fs::write(root.join("pack").join("pack.toml"), "").unwrap();
-        assert_eq!(find_pack_dir(&exe_dir.join("launcher.exe")), Some(root.join("pack")));
-        std::fs::remove_file(root.join("pack").join("pack.toml")).unwrap();
-        assert_eq!(find_pack_dir(&exe_dir.join("launcher.exe")), None);
-        std::fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
     fn stats_url_strips_game_port() {
         assert_eq!(stats_url("play.example.fr:25565", 25580), "http://play.example.fr:25580/stats");
         assert_eq!(stats_url("play.example.fr", 25580), "http://play.example.fr:25580/stats");
@@ -156,7 +188,8 @@ mod tests {
     #[test]
     fn config_roundtrip_and_defaults() {
         let c: Config = serde_json::from_str(r#"{"nickname":"A"}"#).unwrap();
-        assert_eq!((c.nickname.as_str(), c.stats_port, c.memory_mb), ("A", 25580, 4096));
+        assert_eq!((c.nickname.as_str(), c.memory_mb), ("A", 4096));
+        assert_eq!(stats_url(&PackProfile::default().server_addr(), STATS_PORT), "http://classroom:25580/stats");
     }
 
     #[test]
