@@ -18,7 +18,7 @@ pub const UI_TEXTURES: &[&str] = &[
     "blaze_rod",
     "ender_eye",
     "end_stone",
-    "dragon_egg",
+    "end_crystal",
     // hero, vignettes, causes de mort
     "ender_pearl",
     "diamond_pickaxe",
@@ -163,7 +163,7 @@ mod tests {
         let dirs = crate::config::Dirs::new(&d);
         std::fs::create_dir_all(dirs.client_jar("26.3").parent().unwrap()).unwrap();
         let jar = dirs.client_jar("26.3");
-        let block = ["end_stone", "dragon_egg", "grass_block_side", "piston_side", "crafting_table_front", "barrel_side", "furnace_front"];
+        let block = ["end_stone", "grass_block_side", "piston_side", "crafting_table_front", "barrel_side", "furnace_front"];
         jar_with(&jar, UI_TEXTURES, |n| if block.contains(&n) { "block" } else { "item" });
         assert!(!complete(&dirs.textures()));
         // L'URL est injoignable : si le jar vérifié n'était pas réutilisé, le téléchargement échouerait.

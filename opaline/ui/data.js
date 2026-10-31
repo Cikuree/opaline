@@ -8,7 +8,7 @@ export const SPLITS = [
   { k: 'BLAZE_ROD', label: 'Bâton de blaze', tex: 'blaze_rod' },
   { k: 'ENDER_EYE', label: 'Œil de l’Ender', tex: 'ender_eye' },
   { k: 'ENTER_END', label: 'Entrée dans l’End', tex: 'end_stone' },
-  { k: 'KILL_DRAGON', label: 'Ender Dragon', tex: 'dragon_egg' },
+  { k: 'KILL_DRAGON', label: 'Ender Dragon', tex: 'end_crystal' },
 ];
 export const splitByKey = (k) => SPLITS.find((s) => s.k === k);
 
