@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 
-pub const LAUNCHER_NAME: &str = "ClassroomRunLauncher";
+pub const LAUNCHER_NAME: &str = "Opaline";
 
 pub struct LaunchInput<'a> {
     pub java: &'a Path,
@@ -74,11 +74,7 @@ pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
         ("classpath", cp),
         ("quickPlayMultiplayer", i.server.unwrap_or_default().to_string()),
     ]);
-    let mut cmd = vec![
-        i.java.to_string_lossy().into_owned(),
-        "-Xms512M".into(),
-        format!("-Xmx{}M", i.memory_mb),
-    ];
+    let mut cmd = vec![i.java.to_string_lossy().into_owned(), "-Xms512M".into(), format!("-Xmx{}M", i.memory_mb)];
     cmd.extend(expand_args(&i.version.arguments.jvm, i.env, &vars));
     cmd.extend(expand_args(&i.fabric.arguments.jvm, i.env, &vars));
     cmd.push(i.fabric.main_class.clone());
@@ -173,7 +169,8 @@ mod tests {
         let dirs = Dirs::new("/root");
         let session = Session::offline("Bob");
         let env = Env { os, arch: "x86_64", features: HashMap::from([("is_quick_play_multiplayer".to_string(), server.is_some())]) };
-        build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &f, dirs: &dirs, session: &session, server, memory_mb: 2048, env: &env }).unwrap()
+        build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &f, dirs: &dirs, session: &session, server, memory_mb: 2048, env: &env })
+            .unwrap()
     }
 
     #[test]
@@ -233,7 +230,16 @@ mod tests {
         let dirs = Dirs::new("/root");
         let session = Session::offline("Bob");
         let env = Env { os: "linux", arch: "x86_64", features: HashMap::new() };
-        let r = build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &f, dirs: &dirs, session: &session, server: None, memory_mb: 1, env: &env });
+        let r = build_command(&LaunchInput {
+            java: Path::new("/j/java"),
+            version: &v,
+            fabric: &f,
+            dirs: &dirs,
+            session: &session,
+            server: None,
+            memory_mb: 1,
+            env: &env,
+        });
         assert!(r.is_err());
     }
 }

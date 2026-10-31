@@ -37,7 +37,11 @@ pub fn parse_backend_state(json: &str) -> Option<TailscaleState> {
 /// Refusé s'il contient autre chose que lettres, chiffres, `.` et `-`.
 pub fn parse_magic_dns_suffix(json: &str) -> Option<String> {
     let v: Value = serde_json::from_str(json).ok()?;
-    let s = v.get("MagicDNSSuffix").and_then(Value::as_str).filter(|s| !s.is_empty()).or_else(|| v.pointer("/CurrentTailnet/MagicDNSSuffix").and_then(Value::as_str))?;
+    let s = v
+        .get("MagicDNSSuffix")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .or_else(|| v.pointer("/CurrentTailnet/MagicDNSSuffix").and_then(Value::as_str))?;
     let s = s.trim().trim_matches('.');
     (!s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')).then(|| s.to_string())
 }
@@ -91,7 +95,9 @@ pub struct TailscaleInfo {
 
 /// Une seule exécution de `tailscale status --json` (délai 3 s) : état et suffixe MagicDNS.
 pub fn status() -> TailscaleInfo {
-    let Some(cli) = cli_path() else { return TailscaleInfo { state: TailscaleState::NotInstalled, magic_dns_suffix: None } };
+    let Some(cli) = cli_path() else {
+        return TailscaleInfo { state: TailscaleState::NotInstalled, magic_dns_suffix: None };
+    };
     // CLI présente mais en échec (service arrêté, délai dépassé) : non connecté.
     let Some(json) = run(Command::new(cli).args(["status", "--json"]), Duration::from_secs(3)) else {
         return TailscaleInfo { state: TailscaleState::Disconnected, magic_dns_suffix: None };

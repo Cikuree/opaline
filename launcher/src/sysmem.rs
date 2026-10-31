@@ -24,7 +24,17 @@ pub fn total_ram_mb() -> Option<u64> {
     unsafe extern "system" {
         fn GlobalMemoryStatusEx(buf: *mut MemoryStatusEx) -> i32;
     }
-    let mut m = MemoryStatusEx { length: size_of::<MemoryStatusEx>() as u32, memory_load: 0, total_phys: 0, avail_phys: 0, total_page_file: 0, avail_page_file: 0, total_virtual: 0, avail_virtual: 0, avail_extended_virtual: 0 };
+    let mut m = MemoryStatusEx {
+        length: size_of::<MemoryStatusEx>() as u32,
+        memory_load: 0,
+        total_phys: 0,
+        avail_phys: 0,
+        total_page_file: 0,
+        avail_page_file: 0,
+        total_virtual: 0,
+        avail_virtual: 0,
+        avail_extended_virtual: 0,
+    };
     // SAFETY : `m` est une structure MEMORYSTATUSEX valide dont `length` est renseigné.
     (unsafe { GlobalMemoryStatusEx(&mut m) } != 0).then_some(m.total_phys / (1024 * 1024))
 }

@@ -1,0 +1,10 @@
+name = "Classroom Run"
+description = "Hardcore coopératif : vie partagée, mort collective."
+thumbnail = "ender_eye"
+widgets = ["classroomRun", "server"]
+
+[server]
+host = "classroom"
+port = 25565
+motd = "Classroom Run"
+statsPort = 25580

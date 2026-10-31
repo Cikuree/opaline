@@ -64,7 +64,7 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/packs.j
 |---|---|---|
 | `app_info` | – | `{version, update: null \| {version, url}}` |
 | `auth_status` | – | `{state: "signedOut" \| "signedIn" \| "notConfigured", profile: null \| {name, uuid}, warning: null \| string}` |
-| `auth_start` | – | `{userCode, verificationUri, expiresIn}`, puis événement `auth://done` |
+| `auth_start` | – | `{attempt, userCode, verificationUri, expiresIn}`, puis événement `auth://done` portant le même `attempt` |
 | `auth_cancel` | – | – |
 | `auth_sign_out` | – | `{warning: null \| string}` |
 | `packs_list` | – | `[PackView]` (§5) |
@@ -113,8 +113,8 @@ SkinView = {id, name, model, active, dataUrl}
 
 | Événement | Charge utile |
 |---|---|
-| `auth://done` | `{ok: bool, profile: null \| {name, uuid}, error: null \| string}` |
-| `install://progress` | `{packId, stage: "java" \| "minecraft" \| "loader" \| "mods" \| "assets" \| "textures", done, total}` |
+| `auth://done` | `{attempt: number, ok: bool, profile: null \| {name, uuid}, error: null \| string}`, jamais émis pour une tentative annulée |
+| `install://progress` | `{packId, stage, done, total}`, avec les étapes toujours émises dans cet ordre : `java`, `minecraft`, `assets`, `loader`, `mods`, `textures` |
 | `install://done` | `{packId, ok: bool, error: null \| string}` |
 | `game://exited` | `{packId, code: number \| null, logTail: null \| string}` (log filtré : ni jeton ni adresse) |
 

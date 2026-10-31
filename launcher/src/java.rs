@@ -36,12 +36,7 @@ pub fn adoptium_arch() -> &'static str {
 
 /// `GET {base}/v3/assets/latest/{major}/hotspot?architecture=..&image_type=jre&os=..`
 pub fn assets_url(base: &str, major: u32) -> String {
-    format!(
-        "{}/v3/assets/latest/{major}/hotspot?architecture={}&image_type=jre&os={}",
-        base.trim_end_matches('/'),
-        adoptium_arch(),
-        adoptium_os()
-    )
+    format!("{}/v3/assets/latest/{major}/hotspot?architecture={}&image_type=jre&os={}", base.trim_end_matches('/'), adoptium_arch(), adoptium_os())
 }
 
 pub fn parse_assets(json: &str) -> Result<Package> {
@@ -238,7 +233,9 @@ mod tests {
         extract(&ok, &dir.join("out")).unwrap();
         assert!(find_java(&dir.join("out")).is_some() || cfg!(windows)); // java.exe attendu sous Windows
         assert!(dir.join("out/jdk/bin/java").is_file());
-        for (i, (ty, target)) in [(tar::EntryType::Symlink, "../../etc/passwd"), (tar::EntryType::Symlink, "/etc/passwd"), (tar::EntryType::Link, "../x")].into_iter().enumerate() {
+        for (i, (ty, target)) in
+            [(tar::EntryType::Symlink, "../../etc/passwd"), (tar::EntryType::Symlink, "/etc/passwd"), (tar::EntryType::Link, "../x")].into_iter().enumerate()
+        {
             let bad = dir.join(format!("bad{i}.tar.gz"));
             fs::write(&bad, tar_gz(&[("jdk/l", ty, target)])).unwrap();
             assert!(extract(&bad, &dir.join(format!("out{i}"))).is_err(), "{target}");

@@ -2,20 +2,8 @@
 //! Jetons fictifs reconnaissables : tout ce qui contient `TOKEN-SECRET-123` est une fuite.
 #![allow(dead_code)]
 
-#[path = "../src/auth.rs"]
-mod auth;
-#[path = "../src/config.rs"]
-mod config;
-#[path = "../src/fabric.rs"]
-mod fabric;
-#[path = "../src/launch.rs"]
-mod launch;
-#[path = "../src/mojang.rs"]
-mod mojang;
-#[path = "../src/perf.rs"]
-mod perf;
-#[path = "../src/safe.rs"]
-mod safe;
+use opaline_core::{auth, config, fabric, launch, mojang};
+
 mod support;
 
 use auth::{Endpoints, Session};
@@ -97,7 +85,10 @@ fn error_bodies_with_tokens_are_not_echoed() {
         ("token 200 sans access_token", Box::new(|s| s.put("/ms/token", r#"{"refresh_token":"REFRESH-TOKEN-SECRET-123"}"#))),
         ("token JSON tronqué", Box::new(|s| s.put("/ms/token", r#"{"access_token":"MS-TOKEN-SECRET-123", "#))),
         ("token non JSON", Box::new(|s| s.put("/ms/token", "MS-TOKEN-SECRET-123"))),
-        ("token refusé avec jetons", Box::new(|s| s.put_mode("/ms/token", r#"{"error":"authorization_declined","access_token":"MS-TOKEN-SECRET-123"}"#, Mode::Reply(400)))),
+        (
+            "token refusé avec jetons",
+            Box::new(|s| s.put_mode("/ms/token", r#"{"error":"authorization_declined","access_token":"MS-TOKEN-SECRET-123"}"#, Mode::Reply(400))),
+        ),
     ];
     for (what, setup) in cases {
         let (srv, ep) = fixtures();
@@ -138,7 +129,7 @@ fn successful_login_then_config_json_has_no_secret() {
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
     let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     keys.sort();
-    assert_eq!(keys, ["memory_mb", "mod_jar", "nickname", "no_remember", "pack_dir", "perf_mode"]);
+    assert_eq!(keys, ["memory_mb", "nickname", "no_remember", "perf_mode"]);
     let _ = std::fs::remove_dir_all(&dirs.root);
 }
 
@@ -166,16 +157,7 @@ fn command_for(session: &Session, server: Option<&str>, extra_jvm: Option<&str>)
     }
     let dirs = Dirs::new(tmp("cmd"));
     let env = mojang::Env::current(&[("is_quick_play_multiplayer", server.is_some())]);
-    launch::build_command(&launch::LaunchInput {
-        java: Path::new("java"),
-        version: &v,
-        fabric: &f,
-        dirs: &dirs,
-        session,
-        server,
-        memory_mb: 2048,
-        env: &env,
-    })
+    launch::build_command(&launch::LaunchInput { java: Path::new("java"), version: &v, fabric: &f, dirs: &dirs, session, server, memory_mb: 2048, env: &env })
 }
 
 #[test]

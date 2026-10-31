@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Construit classroom-run-prism.zip (instance Prism Launcher importable).
 
-Usage: build-prism-instance.py --jar build/libs/classroomrun-0.1.0.jar [--out dist/classroom-run-prism.zip]
-Mods et shaderpacks client/both lus dans pack/{mods,shaderpacks}/*.pw.toml, telecharges et verifies (hash du manifeste).
+Usage: build-prism-instance.py --pack packs/classroom-run --jar build/libs/classroomrun-0.1.0.jar [--out dist/classroom-run-prism.zip]
+Mods et shaderpacks client/both lus dans packs/<id>/{mods,shaderpacks}/*.pw.toml, telecharges et verifies (hash du manifeste).
 """
 import argparse, hashlib, json, sys, tomllib, urllib.request, zipfile
 from pathlib import Path
@@ -23,7 +23,7 @@ def fetch(url, algo, expected):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--jar", required=True, type=Path)
-    ap.add_argument("--pack", type=Path, default=ROOT / "pack")
+    ap.add_argument("--pack", type=Path, default=ROOT / "packs" / "classroom-run")
     ap.add_argument("--out", type=Path, default=ROOT / "dist" / "classroom-run-prism.zip")
     a = ap.parse_args()
     if not a.jar.is_file():

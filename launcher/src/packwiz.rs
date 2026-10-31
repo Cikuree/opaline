@@ -39,6 +39,8 @@ struct IndexFile {
 }
 #[derive(Deserialize)]
 struct MetaFile {
+    #[serde(default)]
+    name: String,
     filename: String,
     #[serde(default)]
     side: Option<String>,
@@ -54,6 +56,10 @@ struct MetaDownload {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModEntry {
+    /// Nom lisible du métafichier (repli : nom du fichier).
+    pub name: String,
+    /// `client`, `server` ou `both`.
+    pub side: String,
     /// Dossier d'instance de destination, d'après le dossier du métafichier (`mods`, `shaderpacks`...).
     pub dir: String,
     pub filename: String,
@@ -136,6 +142,8 @@ pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> R
         let dir = f.file.rsplit_once('/').map_or("mods", |(d, _)| d).to_string();
         safe_join(Path::new("x"), &dir)?;
         mods.push(ModEntry {
+            name: if m.name.trim().is_empty() { m.filename.clone() } else { m.name.trim().to_string() },
+            side: m.side.clone().unwrap_or_else(|| "both".into()),
             dir,
             filename: safe_file_name(&m.filename)?.to_string(),
             url,
@@ -154,6 +162,11 @@ pub const PACK_MAX_UNPACKED: u64 = 300 * 1024 * 1024;
 /// (extraction sûre : zip-slip refusé, nombre d'entrées et taille décompressée bornés) et renvoie le dossier
 /// contenant `pack.toml`. Les hashes sont vérifiés ensuite par `load_pack`.
 pub fn fetch_remote_pack(client: &reqwest::blocking::Client, dirs: &crate::config::Dirs, url: &str) -> Result<std::path::PathBuf> {
+    fetch_remote_pack_in(client, &dirs.pack_work(), url)
+}
+
+/// Comme `fetch_remote_pack`, dans un dossier de travail choisi (vidé d'abord).
+pub fn fetch_remote_pack_in(client: &reqwest::blocking::Client, work: &Path, url: &str) -> Result<std::path::PathBuf> {
     use std::io::Read;
     let r = client.get(url).timeout(std::time::Duration::from_secs(120)).send().with_context(|| format!("requête {url}"))?;
     if !r.status().is_success() {
@@ -167,15 +180,14 @@ pub fn fetch_remote_pack(client: &reqwest::blocking::Client, dirs: &crate::confi
     if bytes.len() as u64 > PACK_ZIP_MAX_BYTES {
         bail!("pack.zip trop gros (limite {} Mo)", PACK_ZIP_MAX_BYTES / 1024 / 1024);
     }
-    let work = dirs.downloads().join("pack-remote");
-    let _ = std::fs::remove_dir_all(&work); // notre propre dossier de travail
-    std::fs::create_dir_all(&work)?;
+    let _ = std::fs::remove_dir_all(work); // notre propre dossier de travail
+    std::fs::create_dir_all(work)?;
     let zip = work.with_extension("zip");
     std::fs::write(&zip, &bytes)?;
-    let r = crate::java::extract_limited(&zip, &work, PACK_MAX_ENTRIES, PACK_MAX_UNPACKED);
+    let r = crate::java::extract_limited(&zip, work, PACK_MAX_ENTRIES, PACK_MAX_UNPACKED);
     let _ = std::fs::remove_file(&zip);
     r?;
-    [work.join("pack"), work.clone()].into_iter().find(|d| d.join("pack.toml").is_file()).context("pack.zip : pack.toml introuvable")
+    [work.join("pack"), work.to_path_buf()].into_iter().find(|d| d.join("pack.toml").is_file()).context("pack.zip : pack.toml introuvable")
 }
 
 pub fn load_pack(dir: &Path) -> Result<Pack> {
@@ -226,11 +238,7 @@ mod tests {
 
     #[test]
     fn filters_sides() {
-        let metas = [
-            ("mods/a.pw.toml", meta("a", "both")),
-            ("mods/b.pw.toml", meta("b", "server")),
-            ("mods/c.pw.toml", meta("c", "client")),
-        ];
+        let metas = [("mods/a.pw.toml", meta("a", "both")), ("mods/b.pw.toml", meta("b", "server")), ("mods/c.pw.toml", meta("c", "client"))];
         let idx = index_for(&metas);
         let read = |p: &str| Ok(metas.iter().find(|(f, _)| *f == p).unwrap().1.clone());
         let (mods, files) = parse_index(&idx, read).unwrap();

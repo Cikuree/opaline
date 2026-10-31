@@ -174,10 +174,7 @@ pub fn rules_allow(rules: &Option<Vec<Rule>>, env: &Env) -> bool {
 /// Libraries applicables, avec leur artefact. Les natives de 26.3 sont de simples artefacts
 /// `natives-<os>` filtrés par règle (pas d'extraction) ; LWJGL les extrait lui-même.
 pub fn applicable_libraries<'a>(libs: &'a [Library], env: &Env) -> Vec<(&'a Library, &'a Artifact)> {
-    libs.iter()
-        .filter(|l| rules_allow(&l.rules, env))
-        .filter_map(|l| Some((l, l.downloads.as_ref()?.artifact.as_ref()?)))
-        .collect()
+    libs.iter().filter(|l| rules_allow(&l.rules, env)).filter_map(|l| Some((l, l.downloads.as_ref()?.artifact.as_ref()?))).collect()
 }
 
 /// Aplatit les arguments (règles évaluées) puis substitue les `${var}` ; inconnues laissées telles quelles.
@@ -240,10 +237,7 @@ mod tests {
 
     #[test]
     fn os_rules_filter_libraries() {
-        let libs = [
-            lib(LIB),
-            lib(r#"{"name":"plain","downloads":{"artifact":{"path":"p.jar","sha1":"b","size":1,"url":"u"}}}"#),
-        ];
+        let libs = [lib(LIB), lib(r#"{"name":"plain","downloads":{"artifact":{"path":"p.jar","sha1":"b","size":1,"url":"u"}}}"#)];
         assert_eq!(applicable_libraries(&libs, &env("windows", &[])).len(), 2);
         let linux = applicable_libraries(&libs, &env("linux", &[]));
         assert_eq!(linux.len(), 1);
@@ -275,11 +269,7 @@ mod tests {
 
     #[test]
     fn substitutes_and_evaluates_features() {
-        let vars = HashMap::from([
-            ("auth_player_name", "Bob".to_string()),
-            ("x", "1".to_string()),
-            ("quickPlayMultiplayer", "h:25565".to_string()),
-        ]);
+        let vars = HashMap::from([("auth_player_name", "Bob".to_string()), ("x", "1".to_string()), ("quickPlayMultiplayer", "h:25565".to_string())]);
         let out = expand_args(&args(), &env("windows", &[("is_quick_play_multiplayer", true)]), &vars);
         assert_eq!(out, ["--username", "Bob", "pre-1-post", "${unknown}", "--quickPlayMultiplayer", "h:25565", "-Dwin"]);
         let out = expand_args(&args(), &env("linux", &[]), &vars);

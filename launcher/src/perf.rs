@@ -43,9 +43,33 @@ pub struct Settings {
 
 pub fn settings(mode: PerfMode) -> Option<Settings> {
     Some(match mode {
-        PerfMode::Low => Settings { shaders: false, render_distance: 6, simulation_distance: 5, particles: 2, render_clouds: "false", graphics_preset: "fast", memory_mb: 2048 },
-        PerfMode::Balanced => Settings { shaders: true, render_distance: 10, simulation_distance: 8, particles: 1, render_clouds: "fast", graphics_preset: "fancy", memory_mb: 4096 },
-        PerfMode::Quality => Settings { shaders: true, render_distance: 16, simulation_distance: 10, particles: 0, render_clouds: "true", graphics_preset: "fabulous", memory_mb: 6144 },
+        PerfMode::Low => Settings {
+            shaders: false,
+            render_distance: 6,
+            simulation_distance: 5,
+            particles: 2,
+            render_clouds: "false",
+            graphics_preset: "fast",
+            memory_mb: 2048,
+        },
+        PerfMode::Balanced => Settings {
+            shaders: true,
+            render_distance: 10,
+            simulation_distance: 8,
+            particles: 1,
+            render_clouds: "fast",
+            graphics_preset: "fancy",
+            memory_mb: 4096,
+        },
+        PerfMode::Quality => Settings {
+            shaders: true,
+            render_distance: 16,
+            simulation_distance: 10,
+            particles: 0,
+            render_clouds: "true",
+            graphics_preset: "fabulous",
+            memory_mb: 6144,
+        },
         PerfMode::Custom => return None,
     })
 }
@@ -99,7 +123,9 @@ pub fn options_pairs(s: &Settings) -> Vec<(&'static str, String)> {
 
 pub fn iris_pairs(s: &Settings, shader_pack: Option<&str>) -> Vec<(&'static str, String)> {
     let mut v = vec![("enableShaders", s.shaders.to_string())];
-    if s.shaders && let Some(p) = shader_pack {
+    if s.shaders
+        && let Some(p) = shader_pack
+    {
         v.push(("shaderPack", p.to_string()));
     }
     v
@@ -131,7 +157,9 @@ fn merge_file(path: &Path, sep: char, kv: &[(&str, String)]) -> Result<()> {
 
 /// À appeler avant chaque lancement. Mode Personnalisé : aucune écriture. Retourne la mémoire à utiliser.
 pub fn apply(instance: &Path, mode: PerfMode, shader_pack: Option<&str>, ram_mb: Option<u64>) -> Result<Option<u32>> {
-    let Some(s) = settings(mode) else { return Ok(None) };
+    let Some(s) = settings(mode) else {
+        return Ok(None);
+    };
     merge_file(&instance.join("options.txt"), ':', &options_pairs(&s))?;
     merge_file(&instance.join("config").join("iris.properties"), '=', &iris_pairs(&s, shader_pack))?;
     Ok(memory_mb(mode, ram_mb))

@@ -18,6 +18,8 @@ pub struct ServerStatus {
     pub online: u32,
     pub max: u32,
     pub sample: Vec<String>,
+    /// UUID des joueurs de `sample` (même ordre ; chaîne vide si le serveur n'en donne pas).
+    pub sample_ids: Vec<String>,
     pub motd: String,
     pub latency_ms: Option<u64>,
 }
@@ -63,6 +65,11 @@ pub const EXPECTED_MOTD: &str = "Classroom Run";
 
 /// Le MOTD (codes de format `§x` retirés) contient `EXPECTED_MOTD`.
 pub fn motd_matches(st: &ServerStatus) -> bool {
+    motd_contains(st, EXPECTED_MOTD)
+}
+
+/// Le MOTD (codes de format retirés) contient `expected`.
+pub fn motd_contains(st: &ServerStatus, expected: &str) -> bool {
     let mut out = String::new();
     let mut it = st.motd.chars();
     while let Some(c) = it.next() {
@@ -72,7 +79,7 @@ pub fn motd_matches(st: &ServerStatus) -> bool {
             out.push(c);
         }
     }
-    out.contains(EXPECTED_MOTD)
+    out.contains(expected)
 }
 
 pub fn handshake(host: &str, port: u16) -> Vec<u8> {
@@ -131,6 +138,8 @@ pub fn parse_status(json: &str) -> Result<ServerStatus> {
     #[derive(Deserialize)]
     struct Named {
         name: String,
+        #[serde(default)]
+        id: String,
     }
     #[derive(Deserialize)]
     struct V {
@@ -138,9 +147,11 @@ pub fn parse_status(json: &str) -> Result<ServerStatus> {
         protocol: i32,
     }
     let s: S = serde_json::from_str(json).context("réponse de statut invalide")?;
-    let (online, max, sample) = s.players.map_or((0, 0, vec![]), |p| (p.online, p.max, p.sample.into_iter().map(|n| n.name).collect()));
+    let (online, max, named) = s.players.map_or((0, 0, vec![]), |p| (p.online, p.max, p.sample));
+    let sample_ids = named.iter().map(|n| n.id.clone()).collect();
+    let sample = named.into_iter().map(|n| n.name).collect();
     let (version, protocol) = s.version.map_or((String::new(), 0), |v| (v.name, v.protocol));
-    Ok(ServerStatus { version, protocol, online, max, sample, motd: flatten_component(&s.description), latency_ms: None })
+    Ok(ServerStatus { version, protocol, online, max, sample, sample_ids, motd: flatten_component(&s.description), latency_ms: None })
 }
 
 /// Déroule le dialogue sur un flux déjà connecté (testable sans réseau).
@@ -217,7 +228,16 @@ mod tests {
 
     #[test]
     fn motd_check_ignores_format_codes() {
-        let mk = |m: &str| ServerStatus { version: String::new(), protocol: 0, online: 0, max: 0, sample: vec![], motd: m.into(), latency_ms: None };
+        let mk = |m: &str| ServerStatus {
+            version: String::new(),
+            protocol: 0,
+            online: 0,
+            max: 0,
+            sample: vec![],
+            sample_ids: vec![],
+            motd: m.into(),
+            latency_ms: None,
+        };
         assert!(motd_matches(&mk("\u{a7}aClassroom \u{a7}lRun")));
         assert!(!motd_matches(&mk("A Minecraft Server")));
     }
@@ -228,7 +248,6 @@ mod tests {
         assert_eq!(split_host("[::1]"), ("::1".into(), 25565));
         assert_eq!(split_host("::1"), ("::1".into(), 25565));
     }
-
 
     #[test]
     fn splits_host() {

@@ -6,9 +6,9 @@ use crate::java;
 use crate::mojang::{AssetIndex, Env, VersionJson, VersionManifest, applicable_libraries};
 use crate::packwiz::{self, Pack};
 use crate::safe::{Hash, safe_file_name, safe_join};
-use serde::{Deserialize, Serialize};
 use anyhow::{Context, Result, bail};
 use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -48,7 +48,7 @@ pub struct Installed {
 pub struct InstallParams {
     pub dirs: Dirs,
     pub pack_dir: PathBuf,
-    /// Fichier jar ou dossier ; None = `<pack_dir>/../build/libs`.
+    /// Jar de dev (fichier ou dossier), pour un pack local sans `classroomrun` ; None = rien à ajouter.
     pub mod_jar: Option<PathBuf>,
     pub endpoints: Endpoints,
 }
@@ -56,7 +56,8 @@ pub struct InstallParams {
 /// Jar classroomrun (hors manifeste) : fichier explicite, ou le plus récent `*.jar` d'un dossier
 /// (hors `-sources`, `-dev`, `-javadoc`).
 pub fn find_mod_jar(configured: Option<&Path>, pack_dir: &Path) -> Result<PathBuf> {
-    let default_dir = pack_dir.parent().map(|p| p.join("build").join("libs"));
+    // Repli dev : premier `build/libs` trouvé en remontant depuis le pack (`<dépôt>/packs/<id>` -> `<dépôt>/build/libs`).
+    let default_dir = pack_dir.ancestors().skip(1).map(|p| p.join("build").join("libs")).find(|p| p.is_dir());
     let target = configured.map(Path::to_path_buf).or(default_dir).context("chemin du jar classroomrun inconnu")?;
     if target.is_file() {
         return Ok(target);
@@ -125,19 +126,18 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
         _ => {}
     }
-    progress.set_stage("Lecture du manifeste du pack");
+    progress.set_stage("java");
     let pack = packwiz::load_pack(&p.pack_dir)?;
     let marker = marker_for(&pack)?;
     let (mc, loader) = (marker.minecraft.clone(), marker.fabric.clone());
     validate_ids(&mc, &loader)?;
-    // Le jar classroomrun vient du pack s'il y est ; sinon (pack local de dev) repli sur build/libs.
+    // Le jar classroomrun vient du pack s'il y est ; sinon seulement si un jar de dev est demandé explicitement.
     let mod_jar = if pack.mods.iter().any(|m| m.dir == "mods" && m.filename.starts_with("classroomrun")) {
         None
     } else {
-        Some(find_mod_jar(p.mod_jar.as_deref(), &p.pack_dir)?)
+        p.mod_jar.as_deref().map(|j| find_mod_jar(Some(j), &p.pack_dir)).transpose()?
     };
 
-    progress.set_stage("Minecraft : métadonnées");
     let version = fetch_version_json(client, dirs, ep, &mc)?;
 
     validate_version(&version, &mc)?;
@@ -147,7 +147,8 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
         None => install_java(client, dirs, ep, major, progress)?,
     };
 
-    progress.set_stage("Minecraft : client et bibliothèques");
+    progress.complete_stage();
+    progress.set_stage("minecraft");
     let env = Env::current(&[]);
     let mut jobs = vec![sha1_job(&version.downloads.client.url, dirs.client_jar(&version.id), &version.downloads.client.sha1, version.downloads.client.size)?];
     for (_, a) in applicable_libraries(&version.libraries, &env) {
@@ -155,7 +156,7 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
     }
     download::fetch_all(client, jobs, CONCURRENCY, progress)?;
 
-    progress.set_stage("Minecraft : ressources");
+    progress.set_stage("assets");
     let idx_ref = &version.asset_index;
     let idx_path = dirs.assets().join("indexes").join(format!("{}.json", idx_ref.id));
     download::fetch(client, &sha1_job(&idx_ref.url, idx_path.clone(), &idx_ref.sha1, idx_ref.size)?)?;
@@ -174,15 +175,15 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
     }
     download::fetch_all(client, jobs, CONCURRENCY, progress)?;
 
-    progress.set_stage("Fabric Loader");
+    progress.set_stage("loader");
     let fabric = install_fabric(client, dirs, ep, &mc, &loader, progress)?;
 
-    progress.set_stage("Mods");
+    progress.set_stage("mods");
     install_mods(client, dirs, &pack, &p.pack_dir, mod_jar.as_deref(), progress)?;
 
-    fs::create_dir_all(&dirs.root)?;
+    crate::changelog::save_snapshot(dirs, &crate::changelog::snapshot_of(&pack))?;
+    fs::create_dir_all(dirs.instance())?;
     fs::write(dirs.install_marker(), serde_json::to_vec_pretty(&marker)?)?;
-    progress.set_stage("Terminé");
     Ok(Installed { java: java_exe, version, fabric, shader_pack: marker.shader_pack, index_hash: marker.index_hash })
 }
 
@@ -195,12 +196,12 @@ fn fetch_version_json(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str) ->
 }
 
 fn install_java(client: &Client, dirs: &Dirs, ep: &Endpoints, major: u32, progress: &Arc<Progress>) -> Result<PathBuf> {
-    progress.set_stage(&format!("Java {major} : téléchargement"));
+    progress.set_stage("java");
     let pkg = java::parse_assets(&download::get_text(client, &java::assets_url(&ep.adoptium, major))?)?;
     let archive = safe_join(&dirs.downloads(), crate::safe::safe_file_name(&pkg.name)?)?;
     let job = Job { url: pkg.link.clone(), dest: archive.clone(), hash: Hash::new("sha256", &pkg.checksum)?, size: None };
     download::fetch_all(client, vec![job], 1, progress)?;
-    progress.set_stage(&format!("Java {major} : extraction"));
+    // même étape pour l'interface
     let dest = dirs.java(major);
     let tmp = dest.with_extension("tmp");
     let _ = fs::remove_dir_all(&tmp);
@@ -235,9 +236,15 @@ fn install_fabric(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str, loader
 }
 
 /// Lit l'installation existante d'après `installed.ok` (lancement sans réseau ni lecture du pack).
+/// Hash de l'index du pack installé (None : pas installé ou installation ancienne sans hash).
+pub fn installed_hash(dirs: &Dirs) -> Option<String> {
+    serde_json::from_slice::<Marker>(&fs::read(dirs.install_marker()).ok()?).ok()?.index_hash
+}
+
 pub fn load_installed(dirs: &Dirs) -> Result<Installed> {
-    let have: Marker = serde_json::from_slice(&fs::read(dirs.install_marker()).with_context(|| "installation absente ou incomplète : lancez l'installation".to_string())?)
-        .context("installed.ok illisible : relancez l'installation")?;
+    let have: Marker =
+        serde_json::from_slice(&fs::read(dirs.install_marker()).with_context(|| "installation absente ou incomplète : lancez l'installation".to_string())?)
+            .context("installed.ok illisible : relancez l'installation")?;
     let (mc, loader) = (&have.minecraft, &have.fabric);
     validate_ids(mc, loader)?;
     let id = fabric_profile_id(loader, mc);
@@ -283,7 +290,9 @@ fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_
     // resource packs). Les fichiers de réglages (`*.zip.txt`) et les dossiers ne sont jamais supprimés.
     for (dir, ext) in [("mods", ".jar"), ("shaderpacks", ".zip"), ("resourcepacks", ".zip")] {
         let target = dirs.instance().join(dir);
-        let Ok(rd) = fs::read_dir(&target) else { continue };
+        let Ok(rd) = fs::read_dir(&target) else {
+            continue;
+        };
         let wanted: HashSet<&str> = pack
             .mods
             .iter()
@@ -329,10 +338,10 @@ mod tests {
     #[test]
     fn find_mod_jar_defaults_to_repo_build_libs() {
         let d = tmp("def");
-        fs::create_dir_all(d.join("pack")).unwrap();
+        fs::create_dir_all(d.join("packs/classroom-run")).unwrap();
         fs::create_dir_all(d.join("build/libs")).unwrap();
         fs::write(d.join("build/libs/classroomrun-1.jar"), b"x").unwrap();
-        assert!(find_mod_jar(None, &d.join("pack")).is_ok());
+        assert!(find_mod_jar(None, &d.join("packs/classroom-run")).is_ok());
         fs::remove_dir_all(&d).unwrap();
     }
 
