@@ -166,9 +166,9 @@ fn silent_server_times_out() {
 
 #[test]
 fn split_host_handles_default_and_explicit_port() {
-    assert_eq!(ping::split_host("classroom"), ("classroom".to_string(), 25565));
+    assert_eq!(ping::split_host("home-server"), ("home-server".to_string(), 25565));
     assert_eq!(ping::split_host("127.0.0.1:25566"), ("127.0.0.1".to_string(), 25566));
-    assert_eq!(ping::split_host("classroom:"), ("classroom".to_string(), 25565));
+    assert_eq!(ping::split_host("home-server:"), ("home-server".to_string(), 25565));
 }
 
 #[test]

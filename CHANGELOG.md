@@ -44,7 +44,7 @@
   - l'ID client Azure est injecté à la compilation (variable `MS_CLIENT_ID`).
 - Launcher, réglages et serveur :
   - modes de performance Faible, Équilibré, Qualité et Personnalisé, avec fusion non destructive de `options.txt` et d'`iris.properties`, et RAM plafonnée à 70 % ;
-  - statut du serveur par ping Minecraft. L'adresse `classroom.<suffixe MagicDNS>` est calculée à l'exécution et n'est jamais affichée. Jouer n'est autorisé que si le MOTD contient « Classroom Run ».
+  - statut du serveur par ping Minecraft. L'adresse `home-server.<suffixe MagicDNS>` est calculée à l'exécution et n'est jamais affichée. Jouer n'est autorisé que si le MOTD contient « Classroom Run ».
 - HUD : barre des splits centrée en haut, sous les barres de boss.
 - Tableau de la salle sur trois lignes, splits en français.
 - Maquette de l'interface Opaline dans `design/launcher-mockup/`.

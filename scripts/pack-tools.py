@@ -9,9 +9,11 @@
       Genere packs.json (contrat Opaline §3) depuis tous les packs/<id>/ ; valide chaque opaline.toml.
 Fichiers bruts (configs, options.txt, mods hors Modrinth...) : tout fichier de packs/<id>/ hors pack.toml, index.toml,
 opaline.toml, *.pw.toml et fichiers caches est indexe (metafile = false, sha256).
+  pack-tools.py zip --pack packs/<id> --out pack-<id>.zip
+      Zip publie : pack/ avec pack.toml, index.toml, opaline.toml et les fichiers de l'index seulement.
 Hashes sha256 sur les octets exacts (packs/ doit rester en LF).
 """
-import argparse, hashlib, json, re, sys, tomllib
+import argparse, hashlib, io, json, re, sys, tomllib, zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -21,23 +23,53 @@ def sha256(p):
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
-RESERVED = {"pack.toml", "index.toml", "opaline.toml"}
+RESERVED = {"pack.toml", "index.toml", "opaline.toml"}  # a la racine du pack seulement
+MAX_ZIP_BYTES, MAX_ENTRIES = 50 * 1024 * 1024, 5000  # launcher/src/packwiz.rs PACK_ZIP_MAX_BYTES, PACK_MAX_ENTRIES
+
+
+def pack_files(pack):
+    """(fichiers metafichiers .pw.toml, fichiers bruts), chemins relatifs POSIX tries ; fichiers caches ignores partout."""
+    meta, raw = [], []
+    for f in sorted(pack.rglob("*")):
+        rel = f.relative_to(pack).as_posix()
+        if not f.is_file() or any(x.startswith(".") for x in rel.split("/")) or rel in RESERVED:
+            continue
+        (meta if rel.endswith(".pw.toml") else raw).append(rel)
+    return sorted(meta), sorted(raw)
 
 
 def raw_files(pack):
-    """Fichiers non-metafichier a indexer, tries (ordre stable)."""
-    return sorted(f for f in pack.rglob("*") if f.is_file() and f.name not in RESERVED
-                  and not f.name.endswith(".pw.toml")
-                  and not any(x.startswith(".") for x in f.relative_to(pack).parts))
+    return [pack / r for r in pack_files(pack)[1]]
+
+
+def check_id(pack):
+    if not re.fullmatch(r"[a-z0-9-]+", pack.resolve().name):
+        sys.exit(f"id de pack invalide `{pack.resolve().name}` : [a-z0-9-]+ attendu")
+
+
+def make_zip(pack):
+    """Octets de pack-<id>.zip : dossier pack/ contenant pack.toml, index.toml, opaline.toml et les fichiers de l'index."""
+    it = tomllib.loads((pack / "index.toml").read_text("utf-8"))
+    names = ["pack.toml", "index.toml", "opaline.toml"] + [e["file"] for e in it.get("files", [])]
+    if len(names) > MAX_ENTRIES:
+        sys.exit(f"{pack.name}: {len(names)} fichiers, limite {MAX_ENTRIES}")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for n in names:
+            z.write(pack / n, "pack/" + n)
+    if buf.tell() > MAX_ZIP_BYTES:
+        sys.exit(f"{pack.name}: zip de {buf.tell() >> 20} Mo, limite {MAX_ZIP_BYTES >> 20} Mo")
+    return buf.getvalue()
 
 
 def reindex(pack):
+    check_id(pack)
+    meta, raw = pack_files(pack)
     out = ['hash-format = "sha256"', ""]
-    for d in ("mods", "shaderpacks"):
-        for f in sorted((pack / d).glob("*.pw.toml")):
-            out += ["[[files]]", f'file = "{d}/{f.name}"', f'hash = "{sha256(f)}"', "metafile = true", ""]
-    for f in raw_files(pack):
-        out += ["[[files]]", f'file = "{f.relative_to(pack).as_posix()}"', f'hash = "{sha256(f)}"', ""]
+    for r in meta:
+        out += ["[[files]]", f'file = "{r}"', f'hash = "{sha256(pack / r)}"', "metafile = true", ""]
+    for r in raw:
+        out += ["[[files]]", f'file = "{r}"', f'hash = "{sha256(pack / r)}"', ""]
     idx = pack / "index.toml"
     idx.write_bytes("\n".join(out).encode())
     pt = pack / "pack.toml"
@@ -107,10 +139,12 @@ def catalog(root, base, out):
     base = base.rstrip("/") + "/"
     packs = []
     for d in sorted(p for p in root.iterdir() if p.is_dir()):
+        check_id(d)
         if not (d / "pack.toml").is_file():
             sys.exit(f"{d.name}: pack.toml manquant")
         o, pt = load_opaline(d), tomllib.loads((d / "pack.toml").read_text("utf-8"))
         verify(d, pt)
+        make_zip(d)  # limites de taille et d'entrees
         v = pt["versions"]
         loaders = [k for k in v if k != "minecraft"]
         if len(loaders) != 1:
@@ -141,7 +175,7 @@ def add_jar(pack, jar, version, repo):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["index", "add-jar", "catalog"])
+    ap.add_argument("cmd", choices=["index", "add-jar", "catalog", "zip"])
     ap.add_argument("--pack", type=Path, default=ROOT / "packs" / "classroom-run")
     ap.add_argument("--base-url")
     ap.add_argument("--out", type=Path, default=Path("packs.json"))
@@ -153,6 +187,10 @@ if __name__ == "__main__":
         if not a.base_url:
             sys.exit("--base-url requis")
         catalog(ROOT / "packs", a.base_url, a.out)
+        sys.exit(0)
+    if a.cmd == "zip":
+        check_id(a.pack)
+        a.out.write_bytes(make_zip(a.pack))
         sys.exit(0)
     if a.cmd == "add-jar":
         if not (a.jar and a.jar.is_file() and a.version and a.repo):

@@ -334,14 +334,14 @@ mod tests {
 
     #[test]
     fn mask_tailnet_hosts_with_scheme() {
-        assert_eq!(mask_tailnet_hosts("GET http://classroom.tail1.ts.net:25580/stats a échoué"), "GET http://<serveur>:25580/stats a échoué");
-        assert_eq!(mask_tailnet_hosts("vers classroom.tail1.ts.net:25565"), "vers <serveur>:25565");
+        assert_eq!(mask_tailnet_hosts("GET http://home-server.tail1.ts.net:25580/stats a échoué"), "GET http://<serveur>:25580/stats a échoué");
+        assert_eq!(mask_tailnet_hosts("vers home-server.tail1.ts.net:25565"), "vers <serveur>:25565");
     }
 
     #[test]
     fn sanitize_masks_secrets_and_tailnet_hosts() {
         let root = Dirs::new(std::env::temp_dir().join("OpalineTest2"));
-        let m = sanitize_error_with("échec avec SECRETTOKEN sur classroom.tail1234.ts.net:25565 (réessayez)", &root, &["SECRETTOKEN"]);
+        let m = sanitize_error_with("échec avec SECRETTOKEN sur home-server.tail1234.ts.net:25565 (réessayez)", &root, &["SECRETTOKEN"]);
         assert!(!m.contains("SECRETTOKEN") && !m.contains("tail1234") && m.contains("<serveur>:25565") && m.contains("(réessayez)"), "{m}");
         let m = sanitize_error_with("connexion à 10.1.2.3:25565 refusée", &root, &["10.1.2.3:25565"]);
         assert!(!m.contains("10.1.2.3"), "{m}");

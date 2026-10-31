@@ -54,15 +54,15 @@ def main():
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("instance.cfg", cfg)
         z.writestr("mmc-pack.json", json.dumps(mmc, indent=4))
-        for sub in ("mods", "shaderpacks"):
-            for f in sorted((pack_dir / sub).glob("*.pw.toml")):
-                m = tomllib.loads(f.read_text("utf-8"))
-                # le jar passe par --jar (l'URL publique n'existe pas encore pendant la CI)
-                if m.get("side", "both") not in SIDES or m["filename"] == a.jar.name:
-                    continue
-                d = m["download"]
-                z.writestr(f".minecraft/{sub}/{m['filename']}", fetch(d["url"], d["hash-format"], d["hash"]))
-                print(f"{sub}:", m["filename"])
+        for rel in _tools.pack_files(pack_dir)[0]:  # tous les *.pw.toml (mods, shaderpacks, resourcepacks...)
+            sub = rel.rpartition("/")[0]
+            m = tomllib.loads((pack_dir / rel).read_text("utf-8"))
+            # le jar passe par --jar (l'URL publique n'existe pas encore pendant la CI)
+            if m.get("side", "both") not in SIDES or m["filename"] == a.jar.name:
+                continue
+            d = m["download"]
+            z.writestr(f".minecraft/{sub}/{m['filename']}", fetch(d["url"], d["hash-format"], d["hash"]))
+            print(f"{sub}:", m["filename"])
         z.write(a.jar, f".minecraft/mods/{a.jar.name}")
         # fichiers bruts du pack (configs, options.txt...), memes regles que l'index
         for f in raw_files(pack_dir):

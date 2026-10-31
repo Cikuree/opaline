@@ -23,7 +23,7 @@ description = "Hardcore coopératif : vie partagée, mort collective."
 thumbnail = "ender_eye"            # nom d'une texture item/ ou block/ du client.jar
 widgets = ["classroomRun", "server"]   # parmi : classroomRun, server, news
 [server]
-host = "classroom"                 # nom MagicDNS court ; suffixe tailnet ajouté à l'exécution
+host = "home-server"                 # nom MagicDNS court ; suffixe tailnet ajouté à l'exécution
 port = 25565
 motd = "Classroom Run"             # le MOTD du serveur doit contenir ce texte
 statsPort = 25580                  # 0 si pas d'endpoint HTTP (packs non Classroom)
@@ -59,7 +59,7 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
   "modsCount": 4, "thumbnail": "ender_eye", "widgets": ["classroomRun", "server"],
   "pack": "https://github.com/Cikuree/opaline/releases/download/vX.Y.Z/pack-classroom-run.zip",
   "packHash": "<sha256 de index.toml, = [index] hash de pack.toml>",
-  "server": {"host": "classroom", "port": 25565, "motd": "Classroom Run", "statsPort": 25580}
+  "server": {"host": "home-server", "port": 25565, "motd": "Classroom Run", "statsPort": 25580}
 }]}
 ```
 
