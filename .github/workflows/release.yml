@@ -72,7 +72,7 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
           # pack.zip : contenu de pack/ a la racine, avec classroomrun.pw.toml et index recalcules
-          (cd pack && zip -qr ../dist/pack.zip .)
+          zip -qr dist/pack.zip pack
           printf '{"version":"%s","windows":"%s/classroom-launcher-windows.exe","linux":"%s/classroom-launcher-linux","pack":"%s/pack.zip"}\n' \
             "$VERSION" "$BASE" "$BASE" "$BASE" > dist/launcher.json
           gh release create "$GITHUB_REF_NAME" "$JAR" dist/launchers/* dist/classroom-run-prism.zip dist/pack.zip dist/launcher.json \
