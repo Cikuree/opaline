@@ -278,8 +278,40 @@ fn install_meta_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: Loade
     let id = fabric_profile_id(kind.name(), loader, mc);
     let jp = dirs.versions().join(&id).join(format!("{id}.json"));
     fs::create_dir_all(jp.parent().unwrap())?;
-    fs::write(&jp, &text)?;
+    write_atomic(&jp, text.as_bytes())?;
     Ok((profile, id))
+}
+
+/// Écriture atomique (fichier temporaire voisin puis renommage) : un JSON de version n'est jamais à moitié écrit.
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, bytes)?;
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// Liste des fichiers de `shared/libraries` que le Launcher officiel ne peut pas télécharger (sorties des processors, fichiers
+/// `data` `[coords]` côté client, libraries sans URL) : `versions/<id>/opaline-loader-files.json`, lue par le mode officiel.
+fn write_loader_files(dirs: &Dirs, id: &str, libs_dir: &Path, ctx: &Ctx, profile: &InstallProfile, local: &[(String, PathBuf, Option<String>)]) -> Result<()> {
+    let mut files: Vec<(String, Option<String>)> = local.iter().map(|(rel, _, sha)| (rel.clone(), sha.clone())).collect();
+    let rel = |p: &Path| p.strip_prefix(libs_dir).ok().map(|r| r.to_string_lossy().replace('\\', "/"));
+    for p in loader::client_processors(profile) {
+        for (file, sha) in &p.outputs {
+            if let (Ok(f), Ok(s)) = (ctx.resolve(file), ctx.resolve(sha)) {
+                files.extend(rel(Path::new(&f)).map(|r| (r, Some(s))));
+            }
+        }
+        files.extend(ctx.processor_files(p).iter().filter_map(|f| rel(f)).map(|r| (r, None)));
+    }
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    let mut seen = HashSet::new();
+    files.sort_by_key(|(_, sha)| sha.is_none()); // une entrée avec sha1 l'emporte sur la même sans
+    for (path, sha1) in files {
+        if seen.insert(path.clone()) {
+            out.push(serde_json::json!({ "path": path, "sha1": sha1 }));
+        }
+    }
+    write_atomic(&dirs.versions().join(id).join(crate::official::LOADER_FILES), &serde_json::to_vec_pretty(&out)?)
 }
 
 /// URL de l'installeur officiel (Forge : la version peut être donnée avec ou sans le préfixe `<mc>-`).
@@ -382,7 +414,8 @@ fn install_installer_loader(dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &
         fs::rename(&tmp, &dst)?;
     }
     let jp = dirs.versions().join(&id).join(format!("{id}.json"));
-    fs::write(&jp, ver_bytes)?;
+    write_atomic(&jp, &ver_bytes)?;
+    write_loader_files(dirs, &id, &libs_dir, &ctx, &profile, &local)?;
     Ok((ver.into_profile(mc)?, id))
 }
 

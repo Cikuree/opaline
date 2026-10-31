@@ -238,7 +238,7 @@ async fn auth_start(app: AppHandle, state: State<'_, S>, mode: Option<String>) -
                 s2.0.mojang_pending.store(false, Ordering::SeqCst);
                 s2.0.skins_synced.store(false, Ordering::SeqCst);
                 s2.sync_skins_once();
-                json!({ "attempt": attempt, "ok": true, "profile": { "name": session.username, "uuid": session.uuid }, "error": null })
+                json!({ "attempt": attempt, "ok": true, "profile": { "name": session.username, "uuid": session.uuid }, "error": null, "mojangPending": false })
             }
             Err(e) => {
                 let pending = auth::is_not_approved(&format!("{e:#}"));
@@ -410,28 +410,36 @@ async fn textures_dir(state: State<'_, S>) -> CmdResult<Value> {
 
 // ---------- Jeu ----------
 
+/// Réponse de `play` : `via` et `serverListed` sont toujours présents (contrat §4).
+fn refused(reason: impl Into<String>, via: &str) -> Value {
+    json!({ "started": false, "reason": reason.into(), "serverListed": false, "via": via })
+}
+
 #[tauri::command]
 async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Value> {
     let s = state.inner().clone();
-    if s.0.activity.lock().unwrap().installing.contains(&id) {
-        return Ok(json!({ "started": false, "reason": "Une installation ou une réparation de ce pack est en cours : attendez la fin" }));
-    }
-    // Session Opaline valide : lancement direct ; sinon Launcher Minecraft officiel (aucun verrou de jeu : on ne possède pas le processus).
+    // Session Opaline valide : lancement direct ; sinon Launcher Minecraft officiel.
     let s2 = s.clone();
     let session = match s.blocking(move |_| service::try_session(&s2.config(), &s2.0.auth)).await {
         Ok(v) => v,
-        Err(reason) => return Ok(json!({ "started": false, "reason": reason })),
+        Err(reason) => return Ok(refused(reason, "direct")),
     };
-    let Some(session) = session else { return play_official(s, id).await };
+    let via = if session.is_some() { "direct" } else { "official" };
+    // Une seule vérification, et l'id est réservé pour toute la préparation (double-clic, installation concurrente).
     {
         let mut a = s.0.activity.lock().unwrap();
         if a.installing.contains(&id) {
-            return Ok(json!({ "started": false, "reason": "Une installation ou une réparation de ce pack est en cours : attendez la fin" }));
+            return Ok(refused("Une installation ou une réparation de ce pack est en cours : attendez la fin", via));
         }
         if !a.running.insert(id.clone()) {
-            return Ok(json!({ "started": false, "reason": "Le jeu est déjà lancé pour ce pack" }));
+            return Ok(refused(if session.is_some() { "Le jeu est déjà lancé pour ce pack" } else { "Le lancement de ce pack est déjà en cours" }, via));
         }
     }
+    let Some(session) = session else {
+        let r = play_official(s.clone(), id.clone()).await;
+        s.0.activity.lock().unwrap().running.remove(&id); // on ne possède pas le processus : pas de verrou de jeu
+        return Ok(r);
+    };
     let (s2, id2) = (s.clone(), id.clone());
     let launched = s
         .blocking(move |root| {
@@ -445,7 +453,7 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
     match launched {
         Err(reason) => {
             s.0.activity.lock().unwrap().running.remove(&id);
-            Ok(json!({ "started": false, "reason": reason }))
+            Ok(refused(reason, "direct"))
         }
         Ok((mut l, token)) => {
             let listed = l.server_listed;
@@ -460,7 +468,7 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
     }
 }
 
-async fn play_official(s: S, id: String) -> CmdResult<Value> {
+async fn play_official(s: S, id: String) -> Value {
     let s2 = s.clone();
     let r = s
         .blocking(move |root| {
@@ -471,8 +479,8 @@ async fn play_official(s: S, id: String) -> CmdResult<Value> {
             Ok(l)
         })
         .await;
-    Ok(match r {
-        Err(reason) => json!({ "started": false, "reason": reason }),
+    match r {
+        Err(reason) => refused(reason, "official"),
         Ok(l) => {
             let message = if l.opened {
                 "Profil prêt dans le Launcher Minecraft : clique sur Jouer".to_string()
@@ -481,7 +489,7 @@ async fn play_official(s: S, id: String) -> CmdResult<Value> {
             };
             json!({ "started": true, "reason": null, "serverListed": l.server_listed, "via": "official", "message": message })
         }
-    })
+    }
 }
 
 #[tauri::command]

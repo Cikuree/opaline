@@ -12,10 +12,60 @@ use std::path::{Path, PathBuf};
 /// Famille du paquet Microsoft Store du Launcher Minecraft.
 pub const STORE_FAMILY: &str = "Microsoft.4297127D64EC6_8wekyb3d8bbwe";
 const MANAGED: &str = "opaline.managed";
+/// Fichiers de `shared/libraries` à copier pour Forge / NeoForge (écrit à l'installation du loader).
+pub const LOADER_FILES: &str = "opaline-loader-files.json";
+/// Arguments JVM par défaut du Launcher officiel (champ « Arguments JVM » d'un nouveau profil) ; seul `-Xmx` est remplacé.
+pub const DEFAULT_JAVA_ARGS: &str =
+    "-Xmx2G -XX:+UnlockExperimentalVMOptions -XX:+UseG1GC -XX:G1NewSizePercent=20 -XX:G1ReservePercent=20 -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=32M";
 const NEED_LAUNCHER: &str = "Installe et ouvre une fois le Launcher Minecraft";
 
 pub fn profile_key(pack_id: &str) -> String {
     format!("opaline-{pack_id}")
+}
+
+/// Identifiant de version propre à Opaline dans `.minecraft/versions` : jamais de collision avec une installation manuelle.
+pub fn version_id(pack_id: &str) -> String {
+    format!("opaline-{pack_id}")
+}
+
+/// `DEFAULT_JAVA_ARGS` avec `-Xmx<mémoire>M`.
+pub fn java_args(memory_mb: u32) -> String {
+    DEFAULT_JAVA_ARGS.split(' ').map(|a| if a.starts_with("-Xmx") { format!("-Xmx{memory_mb}M") } else { a.to_string() }).collect::<Vec<_>>().join(" ")
+}
+
+/// Sortie de `tasklist` : vrai si l'un des noms d'image y figure (insensible à la casse).
+pub fn tasklist_has(output: &str, names: &[&str]) -> bool {
+    let low = output.to_ascii_lowercase();
+    names.iter().any(|n| low.lines().any(|l| l.split_whitespace().next() == Some(&n.to_ascii_lowercase())))
+}
+
+/// Le Launcher Minecraft tourne déjà : il réécrirait `launcher_profiles.json` en quittant. Windows : `MinecraftLauncher.exe` et
+/// `Minecraft.exe` (version Store) ; Linux : `minecraft-launcher`. En cas de doute (commande indisponible) : faux.
+pub fn launcher_running() -> bool {
+    use std::process::Command;
+    if cfg!(windows) {
+        let mut c = Command::new("tasklist");
+        c.args(["/NH", "/FO", "CSV"]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            c.creation_flags(0x0800_0000);
+        }
+        // sortie CSV : "image","pid",... -> on retire les guillemets pour ne garder que le nom en tête de ligne
+        return c
+            .output()
+            .is_ok_and(|o| tasklist_has(&String::from_utf8_lossy(&o.stdout).replace(['"', ','], " "), &["MinecraftLauncher.exe", "Minecraft.exe"]));
+    }
+    cfg!(target_os = "linux") && Command::new("pgrep").args(["-x", "minecraft-launcher"]).output().is_ok_and(|o| o.status.success())
+}
+
+/// Taille d'un fichier ; `None` s'il n'existe pas. Toute autre erreur est propagée.
+fn file_len(p: &Path) -> Result<Option<u64>> {
+    match fs::metadata(p) {
+        Ok(m) => Ok(Some(m.len())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e).with_context(|| format!("lecture de {}", p.display())),
+    }
 }
 
 /// `.minecraft` selon l'OS : `data_dir` = `%APPDATA%` (Windows) ou `~/Library/Application Support` (macOS).
@@ -154,35 +204,55 @@ pub fn sync_libraries(src_libs: &Path, dst_libs: &Path, libs: &[FabricLib]) -> R
     Ok(n)
 }
 
-/// Installe `versions/<id>/<id>.json` (et le jar du loader s'il existe) dans `.minecraft`. Une version qui existe déjà avec un
-/// autre contenu n'est remplacée que si Opaline l'a écrite (marqueur `opaline.managed`) : sinon erreur.
-pub fn install_version(dirs: &Dirs, mc: &Path, id: &str, libs: &[FabricLib]) -> Result<()> {
-    crate::safe::safe_file_name(id)?;
-    let json_src = fs::read(dirs.version_json(id)).with_context(|| format!("version {id} absente : lance d'abord l'installation du pack"))?;
-    let vdir = mc.join("versions").join(id);
-    let json_dst = vdir.join(format!("{id}.json"));
+/// Copie les fichiers listés par `opaline-loader-files.json` (sorties des processors Forge / NeoForge, libraries sans URL).
+fn sync_loader_files(dirs: &Dirs, src_id: &str, mc: &Path) -> Result<()> {
+    let list = dirs.versions().join(src_id).join(LOADER_FILES);
+    let bytes = fs::read(&list).with_context(|| format!("liste des fichiers du loader absente pour {src_id} : lance « Vérifier et réparer » sur le pack"))?;
+    let entries: Vec<Value> = serde_json::from_slice(&bytes).context("liste des fichiers du loader illisible : répare le pack")?;
+    for e in &entries {
+        let rel = e.get("path").and_then(Value::as_str).context("entrée sans chemin dans la liste des fichiers du loader")?;
+        sync_library(&safe_join(&dirs.libraries(), rel)?, &safe_join(&mc.join("libraries"), rel)?, e.get("sha1").and_then(Value::as_str))?;
+    }
+    Ok(())
+}
+
+/// Installe la version du loader `src_id` (`shared/versions`) sous l'identifiant `vid` (`opaline-<pack>`) dans `.minecraft`, avec
+/// le champ `id` réécrit, le jar du loader renommé s'il existe et les libraries copiées. `installer_loader` : Forge / NeoForge
+/// (la liste des fichiers produits par les processors est alors exigée). Le dossier de `vid` appartient à Opaline (marqueur
+/// `opaline.managed`) : un dossier de ce nom sans marqueur n'est jamais touché.
+pub fn install_version(dirs: &Dirs, mc: &Path, src_id: &str, vid: &str, libs: &[FabricLib], installer_loader: bool) -> Result<()> {
+    crate::safe::safe_file_name(src_id)?;
+    crate::safe::safe_file_name(vid)?;
+    let raw = fs::read(dirs.version_json(src_id)).with_context(|| format!("version {src_id} absente : lance d'abord l'installation du pack"))?;
+    let mut v: Value = serde_json::from_slice(&raw).context("JSON de version du loader illisible")?;
+    v.as_object_mut().context("JSON de version invalide")?.insert("id".into(), json!(vid));
+    let out = serde_json::to_vec_pretty(&v)?;
+    let vdir = mc.join("versions").join(vid);
     let managed = vdir.join(MANAGED);
-    match fs::read(&json_dst) {
-        Ok(old) if old == json_src => {}
-        Ok(_) if !managed.exists() => {
-            bail!("une version « {id} » d'un autre outil existe déjà dans .minecraft avec un contenu différent : Opaline ne la modifie pas")
-        }
-        _ => {
-            fs::create_dir_all(&vdir)?;
-            let tmp = json_dst.with_extension("opaline-tmp");
-            fs::write(&tmp, &json_src)?;
-            fs::rename(&tmp, &json_dst)?;
-        }
+    if vdir.exists() && !managed.exists() {
+        bail!("le dossier versions/{vid} existe dans .minecraft sans venir d'Opaline : Opaline n'y touche pas");
+    }
+    fs::create_dir_all(&vdir)?;
+    let json_dst = vdir.join(format!("{vid}.json"));
+    if fs::read(&json_dst).ok().as_deref() != Some(out.as_slice()) {
+        let tmp = json_dst.with_extension("opaline-tmp");
+        fs::write(&tmp, &out)?;
+        fs::rename(&tmp, &json_dst)?;
     }
     if !managed.exists() {
         fs::write(&managed, "Version écrite par Opaline.\n")?;
     }
-    // Forge / NeoForge : jar client sous le nom du loader (copie faite à l'installation, `${version_name}.jar`).
-    let (jar_src, jar_dst) = (dirs.client_jar(id), vdir.join(format!("{id}.jar")));
-    if jar_src.is_file() && fs::metadata(&jar_src)?.len() != fs::metadata(&jar_dst).map(|m| m.len()).unwrap_or(0) {
+    // Forge / NeoForge : jar client sous le nom du loader (`${version_name}.jar`), renommé comme la version.
+    let (jar_src, jar_dst) = (dirs.client_jar(src_id), vdir.join(format!("{vid}.jar")));
+    if let Some(len) = file_len(&jar_src)?
+        && file_len(&jar_dst)? != Some(len)
+    {
         atomic_copy(&jar_src, &jar_dst)?;
     }
     sync_libraries(&dirs.libraries(), &mc.join("libraries"), libs)?;
+    if installer_loader {
+        sync_loader_files(dirs, src_id, mc)?;
+    }
     Ok(())
 }
 
@@ -319,22 +389,70 @@ mod tests {
     }
 
     #[test]
-    fn version_install_never_overwrites_foreign_versions() {
+    fn version_is_written_under_the_opaline_id() {
         let d = tmp("ver");
         let (dirs, mc) = (Dirs::new(d.join("opaline")).for_pack("p").unwrap(), d.join("mc"));
-        let id = "fabric-loader-0.20.1-26.3";
-        fs::create_dir_all(dirs.versions().join(id)).unwrap();
-        fs::write(dirs.version_json(id), r#"{"id":"v1"}"#).unwrap();
-        let foreign = mc.join("versions").join(id);
-        fs::create_dir_all(&foreign).unwrap();
-        fs::write(foreign.join(format!("{id}.json")), r#"{"id":"autre"}"#).unwrap();
-        assert!(install_version(&dirs, &mc, id, &[]).is_err());
-        assert_eq!(fs::read_to_string(foreign.join(format!("{id}.json"))).unwrap(), r#"{"id":"autre"}"#);
-        // même contenu : accepté, marqué, puis mise à jour autorisée
-        fs::write(foreign.join(format!("{id}.json")), r#"{"id":"v1"}"#).unwrap();
-        install_version(&dirs, &mc, id, &[]).unwrap();
-        fs::write(dirs.version_json(id), r#"{"id":"v2"}"#).unwrap();
-        install_version(&dirs, &mc, id, &[]).unwrap();
-        assert_eq!(fs::read_to_string(foreign.join(format!("{id}.json"))).unwrap(), r#"{"id":"v2"}"#);
+        let src = "fabric-loader-0.20.1-26.3";
+        let vid = version_id("p");
+        fs::create_dir_all(dirs.versions().join(src)).unwrap();
+        fs::write(dirs.version_json(src), r#"{"id":"fabric-loader-0.20.1-26.3","inheritsFrom":"26.3","x":1}"#).unwrap();
+        // une installation manuelle du même loader n'est jamais touchée
+        let manual = mc.join("versions").join(src);
+        fs::create_dir_all(&manual).unwrap();
+        fs::write(manual.join(format!("{src}.json")), "manuel").unwrap();
+        install_version(&dirs, &mc, src, &vid, &[], false).unwrap();
+        let got: Value = serde_json::from_slice(&fs::read(mc.join("versions").join(&vid).join(format!("{vid}.json"))).unwrap()).unwrap();
+        assert_eq!((got["id"].as_str(), got["inheritsFrom"].as_str(), got["x"].as_i64()), (Some("opaline-p"), Some("26.3"), Some(1)));
+        assert_eq!(fs::read_to_string(manual.join(format!("{src}.json"))).unwrap(), "manuel");
+        // mise à jour du contenu : acceptée (dossier à Opaline) ; idempotent
+        fs::write(dirs.version_json(src), r#"{"id":"a","inheritsFrom":"26.3","x":2}"#).unwrap();
+        install_version(&dirs, &mc, src, &vid, &[], false).unwrap();
+        install_version(&dirs, &mc, src, &vid, &[], false).unwrap();
+        assert!(fs::read_to_string(mc.join("versions").join(&vid).join(format!("{vid}.json"))).unwrap().contains("\"x\": 2"));
+    }
+
+    #[test]
+    fn foreign_opaline_named_folder_is_refused() {
+        let d = tmp("foreign");
+        let (dirs, mc) = (Dirs::new(d.join("opaline")).for_pack("p").unwrap(), d.join("mc"));
+        fs::create_dir_all(dirs.versions().join("l")).unwrap();
+        fs::write(dirs.version_json("l"), r#"{"id":"l"}"#).unwrap();
+        fs::create_dir_all(mc.join("versions/opaline-p")).unwrap();
+        assert!(install_version(&dirs, &mc, "l", "opaline-p", &[], false).is_err());
+    }
+
+    #[test]
+    fn installer_loaders_copy_listed_files_and_jar() {
+        let d = tmp("forge");
+        let (dirs, mc) = (Dirs::new(d.join("opaline")).for_pack("p").unwrap(), d.join("mc"));
+        let src = "forge-1.20.1-47.4.28";
+        fs::create_dir_all(dirs.versions().join(src)).unwrap();
+        fs::write(dirs.version_json(src), format!(r#"{{"id":"{src}"}}"#)).unwrap();
+        fs::write(dirs.client_jar(src), b"jar").unwrap();
+        fs::create_dir_all(dirs.libraries().join("net/x")).unwrap();
+        fs::write(dirs.libraries().join("net/x/out.jar"), b"abc").unwrap();
+        let list = dirs.versions().join(src).join(LOADER_FILES);
+        assert!(install_version(&dirs, &mc, src, "opaline-p", &[], true).is_err(), "liste absente : réparation demandée");
+        fs::write(&list, r#"[{"path":"net/x/out.jar","sha1":"a9993e364706816aba3e25717850c26c9cd0d89d"},{"path":"net/x/absent.jar","sha1":null}]"#).unwrap();
+        install_version(&dirs, &mc, src, "opaline-p", &[], true).unwrap();
+        assert_eq!(fs::read(mc.join("libraries/net/x/out.jar")).unwrap(), b"abc");
+        assert_eq!(fs::read(mc.join("versions/opaline-p/opaline-p.jar")).unwrap(), b"jar");
+        fs::write(&list, r#"[{"path":"../evil.jar","sha1":null}]"#).unwrap();
+        assert!(install_version(&dirs, &mc, src, "opaline-p", &[], true).is_err(), "chemin hors libraries refusé");
+    }
+
+    #[test]
+    fn java_args_replace_only_xmx() {
+        let a = java_args(6144);
+        assert!(a.starts_with("-Xmx6144M ") && a.contains("-XX:+UseG1GC") && !a.contains("-Xmx2G"));
+        assert_eq!(a.matches("-Xmx").count(), 1);
+    }
+
+    #[test]
+    fn detects_launcher_processes() {
+        let out = "MinecraftLauncher.exe   1234 Console\nsvchost.exe 4 Services\n";
+        assert!(tasklist_has(out, &["MinecraftLauncher.exe", "Minecraft.exe"]));
+        assert!(tasklist_has("minecraft.exe  9", &["Minecraft.exe"]));
+        assert!(!tasklist_has("MinecraftBedrock.exe 1\nnotminecraft.exe 2", &["Minecraft.exe"]));
     }
 }

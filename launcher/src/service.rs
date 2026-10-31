@@ -220,29 +220,38 @@ pub struct OfficialLaunched {
     pub profile_name: String,
 }
 
-/// Mode officiel : prépare la version et le profil `opaline-<pack>` dans le `.minecraft` du Launcher officiel (qui connecte le
-/// compte et lance le jeu), puis l'ouvre si `open`. Rien n'est écrit tant que `launcher_profiles.json` n'est pas lisible.
-pub fn launch_official(root: &Dirs, e: &PackEntry, cfg: &Config, mc: &Path, open: bool) -> Result<OfficialLaunched> {
+/// Message quand le Launcher officiel tourne déjà.
+pub const LAUNCHER_RUNNING: &str = "Ferme le Launcher Minecraft puis relance JOUER (il écraserait le profil Opaline)";
+
+/// Mode officiel : prépare la version `opaline-<pack>` et le profil du même nom dans le `.minecraft` du Launcher officiel (qui
+/// connecte le compte et lance le jeu), puis l'ouvre. `interact` : refuse si le Launcher tourne (il réécrirait
+/// `launcher_profiles.json`) et l'ouvre à la fin ; faux pour les tests. Rien n'est écrit tant que `launcher_profiles.json`
+/// n'est pas lisible ; il est relu juste avant la fusion.
+pub fn launch_official(root: &Dirs, e: &PackEntry, cfg: &Config, mc: &Path, interact: bool) -> Result<OfficialLaunched> {
     if !e.supported() {
         bail!("ce pack n'est pas pris en charge par cette version d'Opaline");
     }
+    if interact && official::launcher_running() {
+        bail!("{LAUNCHER_RUNNING}");
+    }
     let profiles = official::profiles_path(mc)?;
-    let mut doc = official::read_profiles(&profiles)?;
+    official::read_profiles(&profiles)?;
     let dirs = root.for_pack(&e.id)?;
     let inst = install::load_installed(&dirs)?;
     let (server, server_listed) = e.server.as_ref().map(|s| list_entry(&dirs.instance(), &e.name, s)).unwrap_or_default();
     let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?
         .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
-    official::install_version(&dirs, mc, &inst.profile_id, &inst.fabric.libraries)?;
+    let vid = official::version_id(&e.id);
+    official::install_version(&dirs, mc, &inst.profile_id, &vid, &inst.fabric.libraries, inst.fabric.version_name.is_some())?;
     let profile_name = format!("Opaline · {}", e.name);
     let now = official::iso_utc(friends::now_secs());
-    let java_args = format!("-Xmx{memory_mb}M");
+    let java_args = official::java_args(memory_mb);
     let game_dir = dirs.instance();
-    let spec =
-        official::ProfileSpec { name: &profile_name, version_id: &inst.profile_id, game_dir: &game_dir, java_args: &java_args, icon: "Furnace", now: &now };
+    let spec = official::ProfileSpec { name: &profile_name, version_id: &vid, game_dir: &game_dir, java_args: &java_args, icon: "Furnace", now: &now };
+    let mut doc = official::read_profiles(&profiles)?; // relu après les copies : on ne fusionne jamais dans une copie périmée
     official::merge_profile(&mut doc, &official::profile_key(&e.id), &spec)?;
     official::write_profiles(&profiles, &doc)?;
-    Ok(OfficialLaunched { opened: open && official::open_launcher(), server, server_listed, profile_name })
+    Ok(OfficialLaunched { opened: interact && official::open_launcher(), server, server_listed, profile_name })
 }
 
 // ---------- Identité sans authentification (mode officiel) ----------

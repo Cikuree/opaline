@@ -151,6 +151,7 @@ export function initAccount() {
   $('#openUri').addEventListener('click', () => api.openUrl($('#codeBox').dataset.uri));
   for (const id of ['#cancelLogin', '#cancelBrowser']) $(id).addEventListener('click', async () => { attempt = null; try { await api.authCancel(); } catch { /* déjà terminé */ } stopLogin(); $('#btnLogin').focus(); });
   $('#btnLogout').addEventListener('click', async () => {
+    state.skip = false; LS.set('opaline.official', '0');
     try { const r = await api.authSignOut(); if (r?.warning) toast(r.warning); else toast('Déconnecté'); } catch (e) { toast(api.errMsg(e)); }
     await refreshAuth();
   });

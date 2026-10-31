@@ -20,7 +20,11 @@ const MODS = [['Fabric API', '0.131.0', 'both'], ['Classroom Run', '0.9.2', 'bot
   .map(([name, version, side, ok]) => ({ name, version, side, file: name.toLowerCase().replace(/\W+/g, '-') + '.jar', verified: ok !== false }));
 
 let settings = { perfMode: 'balanced', memoryMb: 6144, noRemember: false, systemRamMb: 16384 };
-let auth = q.has('signedout') ? { state: 'signedOut', profile: null, warning: null } : { state: 'signedIn', profile: { name: 'OddNode', uuid: '3f9a21c4-7be0-4a11-9c3d-0b6e5f51e51d' }, warning: null };
+// ?signedout : écran de connexion ; ?official : mode officiel avec pseudo ; ?notapproved : la connexion échoue comme avec une app Azure non approuvée.
+const UUID = '3f9a21c4-7be0-4a11-9c3d-0b6e5f51e51d';
+let identity = q.has('official') ? { name: 'OddNode', uuid: UUID } : null, pending = false;
+let signedIn = !(q.has('signedout') || q.has('official'));
+const authView = () => ({ state: signedIn ? 'signedIn' : 'signedOut', profile: signedIn ? { name: 'OddNode', uuid: UUID } : null, warning: null, mode: signedIn ? 'direct' : 'official', mojangPending: !signedIn && pending, identity: signedIn ? null : identity });
 
 const px = (w, h, fn) => { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); fn((col, x, y, a, b) => { g.fillStyle = col; g.fillRect(x, y, a, b); }); return c.toDataURL('image/png'); };
 const skinPng = (P) => px(64, 64, (R) => {
@@ -75,15 +79,23 @@ export async function invoke(cmd, a = {}) {
   await wait(60);
   switch (cmd) {
     case 'app_info': return { version: '0.1.0', update: q.has('update') ? { version: '0.1.1', url: 'https://github.com/Cikuree/opaline/releases/latest' } : null };
-    case 'auth_status': return auth;
-    case 'auth_start': { const attempt = ++attemptN; cancelled = false; setTimeout(() => { if (cancelled) return; auth = { state: 'signedIn', profile: { name: 'OddNode', uuid: '3f9a21c4-7be0-4a11-9c3d-0b6e5f51e51d' }, warning: null }; emit('auth://done', { attempt, ok: true, profile: auth.profile, error: null }); }, 6000); return a.mode === 'device' ? { attempt, mode: 'device', userCode: 'KQ7M4XNP', verificationUri: 'https://www.microsoft.com/link', expiresIn: 900 } : { attempt, mode: 'browser', authorizeUrl: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize' }; }
+    case 'auth_status': return authView();
+    case 'auth_start': { const attempt = ++attemptN; cancelled = false; setTimeout(() => { if (cancelled) return; if (q.has('notapproved')) { pending = true; emit('auth://done', { attempt, ok: false, profile: null, error: 'Application Azure non encore approuvée par Mojang (403 sur login_with_xbox).', mojangPending: true }); return; } signedIn = true; emit('auth://done', { attempt, ok: true, profile: authView().profile, error: null, mojangPending: false }); }, q.has('notapproved') ? 1500 : 6000); return a.mode === 'device' ? { attempt, mode: 'device', userCode: 'KQ7M4XNP', verificationUri: 'https://www.microsoft.com/link', expiresIn: 900 } : { attempt, mode: 'browser', authorizeUrl: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize' }; }
     case 'auth_cancel': cancelled = true; return null;
-    case 'auth_sign_out': auth = { state: 'signedOut', profile: null, warning: null }; return { warning: null };
+    case 'auth_sign_out': signedIn = false; return { warning: null };
+    case 'identity_set': {
+      const n = String(a.name || '').trim();
+      if (!n) { identity = null; return null; }
+      if (!/^[A-Za-z0-9_]{3,16}$/.test(n)) throw 'Pseudo invalide : 3 à 16 caractères, lettres, chiffres ou _';
+      if (n.toLowerCase() === 'inconnu') throw 'Aucun joueur Minecraft nommé « ' + n + ' »';
+      return (identity = { name: n, uuid: UUID });
+    }
+    case 'identity_skin': return identity ? { dataUrl: skins[0].dataUrl, model: 'classic' } : null;
     case 'packs_list': return structuredClone(packs);
     case 'pack_install': case 'pack_repair': runInstall(a.id); return null;
     case 'pack_changelog': return a.id === 'classroom-run' ? { added: ['Cloth Config 21.0.1'], removed: ['Indium 1.0.37'], updated: [{ name: 'Classroom Run', from: '0.9.2', to: '0.9.3' }, { name: 'Sodium', from: '0.7.1', to: '0.7.2' }] } : { added: [], removed: [], updated: [] };
     case 'pack_mods': return a.id === 'classroom-run' ? MODS : packs.find((p) => p.id === a.id)?.installed ? MODS.slice(0, 5).map((m) => ({ ...m, verified: true })) : [];
-    case 'play': if (!packs.find((p) => p.id === a.id)?.installed) throw 'Le pack n’est pas installé.'; setTimeout(() => emit('game://exited', q.has('crash') ? { packId: a.id, code: 1, logTail: '[12:01:03] [main/ERROR]: Échec du chargement du mod « sodium ».\njava.lang.IllegalStateException: démo de plantage précoce' } : { packId: a.id, code: 0, logTail: null }), 5000); return { started: true, reason: null, serverListed: packs.find((p) => p.id === a.id)?.hasServer !== false };
+    case 'play': if (!packs.find((p) => p.id === a.id)?.installed) throw 'Le pack n’est pas installé.'; if (!signedIn) return { started: true, reason: null, serverListed: true, via: 'official', message: 'Profil prêt dans le Launcher Minecraft : clique sur Jouer' }; setTimeout(() => emit('game://exited', q.has('crash') ? { packId: a.id, code: 1, logTail: '[12:01:03] [main/ERROR]: Échec du chargement du mod « sodium ».\njava.lang.IllegalStateException: démo de plantage précoce' } : { packId: a.id, code: 0, logTail: null }), 5000); return { started: true, reason: null, serverListed: packs.find((p) => p.id === a.id)?.hasServer !== false, via: 'direct' };
     case 'server_status': {
       if (a.id === 'solo') return null; // pack sans serveur
       const ts = a.id !== 'survie'; // « survie » = serveur public hébergé : ping direct, sans Tailscale
