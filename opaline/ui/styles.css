@@ -45,7 +45,7 @@ h3{font-size:15px;font-weight:700}
 .search:focus-within{box-shadow:0 0 0 2px var(--coral)}
 .search input{background:none;border:0;outline:0;width:100%;color:var(--ink)} .search input::placeholder{color:var(--mute)}
 .card{background:var(--panel);border-radius:24px;padding:20px;position:relative;min-width:0;container-type:inline-size}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 20px;border-radius:999px;font-weight:700;font-size:14px;background:var(--win-deep);color:var(--ink);transition:transform .2s var(--ease),background .2s,box-shadow .2s}
+.btn{display:inline-flex;flex-shrink:0;align-items:center;justify-content:center;gap:8px;height:42px;padding:0 20px;border-radius:999px;font-weight:700;font-size:14px;background:var(--win-deep);color:var(--ink);transition:transform .2s var(--ease),background .2s,box-shadow .2s}
 .btn:hover{background:#5a2630;transform:translateY(-1px)}
 .btn.primary{background:var(--grad);color:var(--on-coral);box-shadow:0 10px 20px -8px rgba(0,0,0,.35)}
 .btn.primary:hover{filter:brightness(1.07)}
@@ -161,7 +161,8 @@ tbody tr.sel td,tbody tr:hover td{background:var(--panel-hi)} tbody tr[tabindex]
 .toast{position:absolute;top:24px;left:50%;transform:translate(-50%,-30px);background:var(--cream);color:var(--on-coral);border-radius:999px;padding:12px 22px;font-weight:700;font-size:14px;opacity:0;pointer-events:none;transition:transform .25s var(--ease),opacity .25s;z-index:10}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 /* login */
-.login{align-items:center;justify-content:center;text-align:center;min-height:100%;gap:18px}
+.login{align-items:center;justify-content:center;text-align:center;min-height:100%;gap:18px;overflow-y:auto}
+.login>*{flex-shrink:0}
 .login .art{display:flex;gap:10px;align-items:flex-end;margin-bottom:6px}
 .code{font-size:clamp(28px,6cqi,48px);font-weight:800;letter-spacing:.14em;background:var(--win-deep);border-radius:20px;padding:14px 28px;font-family:ui-monospace,Consolas,monospace;color:var(--cream);margin-top:8px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
