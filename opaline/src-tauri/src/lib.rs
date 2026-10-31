@@ -18,14 +18,43 @@ use tauri_plugin_opener::OpenerExt;
 
 type CmdResult<T> = Result<T, String>;
 
+/// Services externes (injectables pour des tests sur fixtures ; production : valeurs par défaut).
+#[derive(Clone)]
+pub struct Services {
+    pub install: opaline_core::install::Endpoints,
+    pub skins: skins::Endpoints,
+    pub session_server: String,
+}
+
+impl Default for Services {
+    fn default() -> Services {
+        Services { install: Default::default(), skins: Default::default(), session_server: head::SESSION_SERVER.to_string() }
+    }
+}
+
+/// Packs en cours d'installation ou de jeu : une seule structure, un seul verrou (test-et-insertion atomiques).
+#[derive(Default)]
+struct Activity {
+    installing: HashSet<String>,
+    running: HashSet<String>,
+}
+
+#[derive(Default)]
+struct Login {
+    attempt: u64,
+    cancel: Option<Arc<AtomicBool>>,
+}
+
 struct Inner {
     root: Dirs,
+    svc: Services,
     auth: auth::AuthManager,
     /// Une seule installation à la fois : les dossiers partagés (Java, bibliothèques) ne supportent pas deux écritures concurrentes.
     install_lock: tokio::sync::Mutex<()>,
-    installing: Mutex<HashSet<String>>,
-    running: Mutex<HashSet<String>>,
-    login_cancel: Mutex<Option<Arc<AtomicBool>>>,
+    activity: Mutex<Activity>,
+    login: Mutex<Login>,
+    /// Dernière adresse de serveur résolue (à masquer des erreurs).
+    last_server: Mutex<Option<String>>,
     skins_synced: AtomicBool,
 }
 
@@ -34,7 +63,10 @@ struct S(Arc<Inner>);
 
 impl S {
     fn sanitize(&self, e: anyhow::Error) -> String {
-        service::sanitize_error(&format!("{e}"), &self.0.root)
+        let token = self.0.auth.current_token();
+        let server = self.0.last_server.lock().unwrap().clone();
+        let secrets: Vec<&str> = token.iter().chain(server.iter()).map(String::as_str).collect();
+        service::sanitize_error_with(&format!("{e}"), &self.0.root, &secrets)
     }
 
     /// Exécute `f` hors du fil de l'interface ; l'erreur est nettoyée.
@@ -68,7 +100,7 @@ impl S {
         let s = self.clone();
         std::thread::spawn(move || {
             let (Ok(token), Ok(c)) = (s.token(), auth::http_client()) else { return };
-            let _ = skins::sync_current(&c, &skins::Endpoints::default(), &token, &skins::Wardrobe::new(s.0.root.skins()));
+            let _ = skins::sync_current(&c, &s.0.svc.skins, &token, &skins::Wardrobe::new(s.0.root.skins()));
         });
     }
 }
@@ -139,9 +171,14 @@ async fn auth_start(app: AppHandle, state: State<'_, S>) -> CmdResult<Value> {
     }
     let s = state.inner().clone();
     let cancel = Arc::new(AtomicBool::new(false));
-    if let Some(old) = s.0.login_cancel.lock().unwrap().replace(cancel.clone()) {
-        old.store(true, Ordering::SeqCst);
-    }
+    let attempt = {
+        let mut l = s.0.login.lock().unwrap();
+        if let Some(old) = l.cancel.replace(cancel.clone()) {
+            old.store(true, Ordering::SeqCst);
+        }
+        l.attempt += 1;
+        l.attempt
+    };
     let (tx, rx) = std::sync::mpsc::channel::<Value>();
     let s2 = s.clone();
     std::thread::spawn(move || {
@@ -153,18 +190,23 @@ async fn auth_start(app: AppHandle, state: State<'_, S>) -> CmdResult<Value> {
                 auth::CLIENT_ID,
                 !cfg.no_remember,
                 |dc| {
-                    let _ = tx.send(json!({ "userCode": dc.user_code, "verificationUri": dc.verification_uri, "expiresIn": dc.expires_in }));
+                    let _ =
+                        tx.send(json!({ "attempt": attempt, "userCode": dc.user_code, "verificationUri": dc.verification_uri, "expiresIn": dc.expires_in }));
                 },
                 &cancel,
             )
         });
+        // Une tentative annulée (auth_cancel, nouvelle tentative, déconnexion) n'émet jamais auth://done.
+        if cancel.load(Ordering::SeqCst) {
+            return;
+        }
         let payload = match result {
             Ok(session) => {
                 s2.0.skins_synced.store(false, Ordering::SeqCst);
                 s2.sync_skins_once();
-                json!({ "ok": true, "profile": { "name": session.username, "uuid": session.uuid }, "error": null })
+                json!({ "attempt": attempt, "ok": true, "profile": { "name": session.username, "uuid": session.uuid }, "error": null })
             }
-            Err(e) => json!({ "ok": false, "profile": null, "error": s2.sanitize(e) }),
+            Err(e) => json!({ "attempt": attempt, "ok": false, "profile": null, "error": s2.sanitize(e) }),
         };
         let _ = app.emit("auth://done", payload);
     });
@@ -176,7 +218,7 @@ async fn auth_start(app: AppHandle, state: State<'_, S>) -> CmdResult<Value> {
 
 #[tauri::command]
 async fn auth_cancel(state: State<'_, S>) -> CmdResult<()> {
-    if let Some(c) = state.0.login_cancel.lock().unwrap().take() {
+    if let Some(c) = state.0.login.lock().unwrap().cancel.take() {
         c.store(true, Ordering::SeqCst);
     }
     Ok(())
@@ -185,14 +227,14 @@ async fn auth_cancel(state: State<'_, S>) -> CmdResult<()> {
 #[tauri::command]
 async fn auth_sign_out(state: State<'_, S>) -> CmdResult<Value> {
     let s = state.inner().clone();
-    if let Some(c) = s.0.login_cancel.lock().unwrap().take() {
+    if let Some(c) = s.0.login.lock().unwrap().cancel.take() {
         c.store(true, Ordering::SeqCst);
     }
     state
         .blocking(move |_| {
             let r = s.0.auth.sign_out();
             s.0.skins_synced.store(false, Ordering::SeqCst);
-            let warning = r.err().map(|e| format!("{e}")).or_else(|| s.0.auth.take_warning());
+            let warning = r.err().map(|e| format!("{e}")).or_else(|| s.0.auth.take_warning()).map(|w| s.sanitize(anyhow!(w)));
             Ok(json!({ "warning": warning }))
         })
         .await
@@ -215,32 +257,45 @@ struct InstallDone {
 
 /// Lance l'installation en tâche de fond ; progression par `install://progress`, fin par `install://done`.
 async fn start_install(app: AppHandle, s: S, id: String) -> CmdResult<()> {
-    if !s.0.installing.lock().unwrap().insert(id.clone()) {
-        return Err("Une installation de ce pack est déjà en cours".into());
+    {
+        let mut a = s.0.activity.lock().unwrap();
+        if a.running.contains(&id) {
+            return Err("Le jeu est en cours pour ce pack : fermez-le avant d'installer ou de réparer".into());
+        }
+        if !a.installing.insert(id.clone()) {
+            return Err("Une installation de ce pack est déjà en cours".into());
+        }
     }
     let progress = Arc::new(Progress::default());
     let finished = Arc::new(AtomicBool::new(false));
     {
         let (app, progress, finished, id) = (app.clone(), progress.clone(), finished.clone(), id.clone());
         tauri::async_runtime::spawn(async move {
-            while !finished.load(Ordering::Relaxed) {
-                let stage = progress.stage.lock().unwrap().clone();
-                if !stage.is_empty() {
-                    let _ = app.emit(
-                        "install://progress",
-                        json!({ "packId": id, "stage": stage, "done": progress.done.load(Ordering::Relaxed), "total": progress.total.load(Ordering::Relaxed) }),
-                    );
+            // Étapes terminées d'abord (ordre d'exécution, compteurs finaux), puis l'étape courante si elle a bougé.
+            let (mut cursor, mut last) = (0usize, None::<(String, usize, usize)>);
+            loop {
+                let stop = finished.load(Ordering::Relaxed);
+                for ev in progress.pending(&mut cursor) {
+                    if last.as_ref() != Some(&ev) {
+                        let _ = app.emit("install://progress", json!({ "packId": id, "stage": ev.0, "done": ev.1, "total": ev.2 }));
+                        last = Some(ev);
+                    }
                 }
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                if stop {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(150)).await;
             }
         });
     }
     tauri::async_runtime::spawn(async move {
         let _guard = s.0.install_lock.lock().await;
         let (s2, id2) = (s.clone(), id.clone());
-        let r = s.blocking(move |root| service::install_pack(root, &id2, &progress, None)).await;
+        let r = s.blocking(move |root| service::install_pack_with(root, &id2, &progress, None, &s2.0.svc.install)).await;
         finished.store(true, Ordering::Relaxed);
-        s2.0.installing.lock().unwrap().remove(&id);
+        // `install://done` après la dernière progression : laisse l'émetteur vider les étapes restantes.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        s.0.activity.lock().unwrap().installing.remove(&id);
         let done = InstallDone { pack_id: id, ok: r.is_ok(), error: r.err() };
         let _ = app.emit("install://done", done);
     });
@@ -298,8 +353,14 @@ async fn textures_dir(state: State<'_, S>) -> CmdResult<Value> {
 #[tauri::command]
 async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Value> {
     let s = state.inner().clone();
-    if !s.0.running.lock().unwrap().insert(id.clone()) {
-        return Ok(json!({ "started": false, "reason": "Le jeu est déjà lancé pour ce pack" }));
+    {
+        let mut a = s.0.activity.lock().unwrap();
+        if a.installing.contains(&id) {
+            return Ok(json!({ "started": false, "reason": "Une installation ou une réparation de ce pack est en cours : attendez la fin" }));
+        }
+        if !a.running.insert(id.clone()) {
+            return Ok(json!({ "started": false, "reason": "Le jeu est déjà lancé pour ce pack" }));
+        }
     }
     let (s2, id2) = (s.clone(), id.clone());
     let launched = s
@@ -308,19 +369,20 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
             let session = service::session_for_play(&cfg, &s2.0.auth)?;
             let e = service::entry(root, &id2)?;
             let l = service::launch_pack(root, &e, &cfg, &session)?;
+            *s2.0.last_server.lock().unwrap() = Some(l.server.clone());
             Ok((l, session.access_token().to_string()))
         })
         .await;
     match launched {
         Err(reason) => {
-            s.0.running.lock().unwrap().remove(&id);
+            s.0.activity.lock().unwrap().running.remove(&id);
             Ok(json!({ "started": false, "reason": reason }))
         }
         Ok((mut l, token)) => {
             std::thread::spawn(move || {
                 let code = l.child.wait().ok().and_then(|st| st.code());
                 let tail = service::log_tail(&l.log, &token, &l.server, &s.0.root, 40);
-                s.0.running.lock().unwrap().remove(&id);
+                s.0.activity.lock().unwrap().running.remove(&id);
                 let _ = app.emit("game://exited", json!({ "packId": id, "code": code, "logTail": tail }));
             });
             Ok(json!({ "started": true, "reason": null }))
@@ -370,7 +432,7 @@ async fn skin_apply(state: State<'_, S>, id: String) -> CmdResult<()> {
         .blocking(move |r| {
             let w = skins::Wardrobe::new(r.skins());
             let (e, png) = w.get(&id)?;
-            skins::apply_skin(&auth::http_client()?, &skins::Endpoints::default(), &s.token()?, &e.model, &png)?;
+            skins::apply_skin(&auth::http_client()?, &s.0.svc.skins, &s.token()?, &e.model, &png)?;
             w.set_active(Some(&id))
         })
         .await
@@ -389,13 +451,13 @@ async fn skin_delete(state: State<'_, S>, id: String) -> CmdResult<()> {
 #[tauri::command]
 async fn capes_list(state: State<'_, S>) -> CmdResult<Vec<skins::CapeView>> {
     let s = state.inner().clone();
-    state.blocking(move |_| Ok(skins::parse_capes(&skins::get_profile(&auth::http_client()?, &skins::Endpoints::default(), &s.token()?)?))).await
+    state.blocking(move |_| Ok(skins::parse_capes(&skins::get_profile(&auth::http_client()?, &s.0.svc.skins, &s.token()?)?))).await
 }
 
 #[tauri::command]
 async fn cape_set(state: State<'_, S>, id: Option<String>) -> CmdResult<()> {
     let s = state.inner().clone();
-    state.blocking(move |_| skins::set_cape(&auth::http_client()?, &skins::Endpoints::default(), &s.token()?, id.as_deref())).await
+    state.blocking(move |_| skins::set_cape(&auth::http_client()?, &s.0.svc.skins, &s.token()?, id.as_deref())).await
 }
 
 #[tauri::command]
@@ -405,23 +467,30 @@ async fn friends(state: State<'_, S>) -> CmdResult<Vec<friends::Friend>> {
 
 #[tauri::command]
 async fn player_head(state: State<'_, S>, uuid: String) -> CmdResult<Value> {
+    let s = state.inner().clone();
     state
         .blocking(move |r| {
             let c = auth::http_client().context("réseau indisponible")?;
-            Ok(json!({ "dataUrl": head::player_head(r, &c, &uuid, head::SESSION_SERVER)? }))
+            Ok(json!({ "dataUrl": head::player_head(r, &c, &uuid, &s.0.svc.session_server)? }))
         })
         .await
 }
 
 pub fn run() {
+    run_with(Services::default())
+}
+
+/// Démarre l'application avec des services donnés (tests sur fixtures).
+pub fn run_with(svc: Services) {
     let root = Dirs::new(Dirs::default_root());
     let state = S(Arc::new(Inner {
         root,
+        svc,
         auth: auth::AuthManager::default(),
         install_lock: tokio::sync::Mutex::new(()),
-        installing: Mutex::default(),
-        running: Mutex::default(),
-        login_cancel: Mutex::default(),
+        activity: Mutex::default(),
+        login: Mutex::default(),
+        last_server: Mutex::default(),
         skins_synced: AtomicBool::new(false),
     }));
     tauri::Builder::default()
