@@ -48,8 +48,8 @@ fn connected_but_server_unreachable_message() {
 #[test]
 fn magic_dns_suffix_gives_the_server_host() {
     let j = r#"{"BackendState":"Running","MagicDNSSuffix":"tail1234.ts.net"}"#;
-    assert_eq!(server_host("classroom", parse_magic_dns_suffix(j).as_deref()), "classroom.tail1234.ts.net");
-    assert_eq!(server_host("classroom", parse_magic_dns_suffix(&status("Running")).as_deref()), "classroom");
+    assert_eq!(server_host("home-server", parse_magic_dns_suffix(j).as_deref()), "home-server.tail1234.ts.net");
+    assert_eq!(server_host("home-server", parse_magic_dns_suffix(&status("Running")).as_deref()), "home-server");
 }
 
 #[test]

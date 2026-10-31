@@ -11,7 +11,7 @@ fn release_asset(name: &str) -> String {
 }
 
 pub fn packs_json_url() -> String {
-    release_asset("packs.json")
+    format!("https://github.com/{REPO}/releases/download/packs/packs.json")
 }
 
 pub fn launcher_json_url() -> String {
@@ -191,6 +191,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn catalog_and_launcher_urls() {
+        assert_eq!(packs_json_url(), "https://github.com/Cikuree/opaline/releases/download/packs/packs.json");
+        assert_eq!(launcher_json_url(), "https://github.com/Cikuree/opaline/releases/latest/download/launcher.json");
+    }
+
+    #[test]
     fn stats_url_strips_game_port() {
         assert_eq!(stats_url("play.example.fr:25565", 25580, "stats"), "http://play.example.fr:25580/stats");
         assert_eq!(stats_url("play.example.fr", 25580, "/history/3"), "http://play.example.fr:25580/history/3");
@@ -199,10 +205,10 @@ mod tests {
 
     #[test]
     fn host_choice() {
-        assert_eq!(choose_host("classroom", Some("x.ts.net"), None), "classroom.x.ts.net");
-        assert_eq!(choose_host("classroom", None, None), "classroom");
-        assert_eq!(choose_host("classroom", Some("x.ts.net"), Some("127.0.0.1:9999")), "127.0.0.1");
-        assert_eq!(choose_host("classroom", Some("x.ts.net"), Some("  ")), "classroom.x.ts.net");
+        assert_eq!(choose_host("home-server", Some("x.ts.net"), None), "home-server.x.ts.net");
+        assert_eq!(choose_host("home-server", None, None), "home-server");
+        assert_eq!(choose_host("home-server", Some("x.ts.net"), Some("127.0.0.1:9999")), "127.0.0.1");
+        assert_eq!(choose_host("home-server", Some("x.ts.net"), Some("  ")), "home-server.x.ts.net");
     }
 
     #[test]

@@ -128,8 +128,8 @@ mod tests {
         assert_eq!(parse_magic_dns_suffix(r#"{"CurrentTailnet":{"MagicDNSSuffix":"x.ts.net."}}"#).as_deref(), Some("x.ts.net"));
         assert_eq!(parse_magic_dns_suffix(r#"{"MagicDNSSuffix":"a b;rm"}"#), None);
         assert_eq!(parse_magic_dns_suffix("{}"), None);
-        assert_eq!(server_host("classroom", Some("x.ts.net")), "classroom.x.ts.net");
-        assert_eq!(server_host("classroom", None), "classroom");
+        assert_eq!(server_host("home-server", Some("x.ts.net")), "home-server.x.ts.net");
+        assert_eq!(server_host("home-server", None), "home-server");
     }
 
     #[test]

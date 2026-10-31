@@ -97,7 +97,7 @@ pub fn redact_text(text: &str, token: &str, server: Option<&str>) -> String {
     }
     if let Some(sv) = server.filter(|s| !s.is_empty()) {
         s = s.replace(sv, "<serveur>");
-        // Hôte seul aussi (log du jeu), mais seulement s'il est assez distinctif (un nom court comme `classroom` est aussi un mot courant).
+        // Hôte seul aussi (log du jeu), mais seulement s'il est assez distinctif (un nom court comme `home-server` est aussi un mot courant).
         if let Some((h, _)) = sv.rsplit_once(':').filter(|(h, _)| h.contains('.')) {
             s = s.replace(h, "<serveur>");
         }

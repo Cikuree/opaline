@@ -77,8 +77,8 @@ Ensuite, pour les deux : XBL -> XSTS -> `login_with_xbox` -> entitlements -> pro
 
 ## Serveur, Tailscale, mise à jour
 
-- Adresse du serveur : jamais affichée ni saisie. Au lancement, `classroom.<MagicDNSSuffix>:25565` où le suffixe vient de
-  `tailscale status --json` (calculé à l'exécution, jamais écrit ni loggé), repli `classroom:25565`. Surcharge dev : `CLASSROOM_SERVER`
+- Adresse du serveur : jamais affichée ni saisie. Au lancement, `home-server.<MagicDNSSuffix>:25565` où le suffixe vient de
+  `tailscale status --json` (calculé à l'exécution, jamais écrit ni loggé), repli `home-server:25565`. Surcharge dev : `CLASSROOM_SERVER`
   (le contrôle du MOTD est alors ignoré). Stats : port 25580.
 - Jouer est autorisé si le ping SLP répond et que le MOTD contient « Classroom Run » (sinon « Serveur inattendu »). Côté serveur :
   `server.properties` `motd=Classroom Run`. L'état Tailscale (`tailscale status --json`, `BackendState` = `Running`) ne sert qu'au message d'aide quand le ping échoue.

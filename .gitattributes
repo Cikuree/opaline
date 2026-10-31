@@ -9,4 +9,9 @@
 
 
 # packwiz hashes the exact bytes
-packs/** text eol=lf
+packs/** -text
+packs/**/*.toml text eol=lf
+packs/**/*.txt text eol=lf
+packs/**/*.json text eol=lf
+packs/**/*.cfg text eol=lf
+packs/**/*.properties text eol=lf

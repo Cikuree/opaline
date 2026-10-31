@@ -163,13 +163,13 @@ fn command_for(session: &Session, server: Option<&str>, extra_jvm: Option<&str>)
 #[test]
 fn command_line_is_redacted_for_logs() {
     let s = Session::microsoft("Steve".into(), "uuid".into(), "MC-TOKEN-SECRET-123".into());
-    let cmd = command_for(&s, Some("classroom:25565"), Some("-Dtoken=MC-TOKEN-SECRET-123")).unwrap();
+    let cmd = command_for(&s, Some("home-server:25565"), Some("-Dtoken=MC-TOKEN-SECRET-123")).unwrap();
     // la commande réelle contient bien le jeton (sinon le test ne prouve rien)
     assert!(cmd.iter().any(|a| a.contains(SECRET)));
-    let logged = launch::redact(&cmd, s.access_token(), Some("classroom:25565"));
+    let logged = launch::redact(&cmd, s.access_token(), Some("home-server:25565"));
     assert_no_secret("ligne de commande loggée", &logged);
     assert!(logged.contains("--accessToken <masqué>"));
-    assert!(logged.contains("<serveur>") && !logged.contains("classroom:25565"));
+    assert!(logged.contains("<serveur>") && !logged.contains("home-server:25565"));
 }
 
 #[test]

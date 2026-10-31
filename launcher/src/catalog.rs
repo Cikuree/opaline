@@ -146,7 +146,7 @@ mod tests {
     const J: &str = r#"{"packs":[
       {"id":"classroom-run","name":"Classroom Run","description":"d","mc":"26.3","loader":"fabric","loaderVersion":"0.20.1","modsCount":4,
        "thumbnail":"ender_eye","widgets":["classroomRun","server"],"pack":"https://github.com/x/pack-classroom-run.zip","packHash":"ABCDEF0123",
-       "server":{"host":"classroom","port":25565,"motd":"Classroom Run","statsPort":25580}},
+       "server":{"host":"home-server","port":25565,"motd":"Classroom Run","statsPort":25580}},
       {"id":"../evil","name":"x","mc":"1","loader":"fabric","pack":"https://x","packHash":"abcdef0123","server":{"host":"a","port":1,"motd":"m"}},
       {"id":"neo","name":"Neo","mc":"1","loader":"neoforge","pack":"https://x/n.zip","packHash":"abcdef0123","server":{"host":"neo","port":1,"motd":"m"}},
       {"id":"http","name":"x","mc":"1","loader":"fabric","pack":"http://evil/x.zip","packHash":"abcdef0123","server":{"host":"a","port":1,"motd":"m"}},

@@ -4,7 +4,7 @@ thumbnail = "ender_eye"
 widgets = ["classroomRun", "server"]
 
 [server]
-host = "classroom"
+host = "home-server"
 port = 25565
 motd = "Classroom Run"
 statsPort = 25580
