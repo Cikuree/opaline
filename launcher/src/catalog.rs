@@ -89,6 +89,11 @@ impl PackEntry {
     }
 }
 
+/// Même règle que `pack-tools.py` : segments non vides `[a-z0-9-]+` séparés par des points.
+fn valid_host(h: &str) -> bool {
+    !h.is_empty() && h.split('.').all(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'))
+}
+
 fn plain_token(s: &str, extra: &[char]) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-' || extra.contains(&c))
 }
@@ -96,7 +101,7 @@ fn plain_token(s: &str, extra: &[char]) -> bool {
 /// Entrée utilisable : identifiants simples (ils deviennent dossiers, fichiers, hôtes d'URL), URL du zip en https
 /// (http seulement vers la boucle locale, pour les tests).
 fn validate(e: &PackEntry) -> Result<()> {
-    if !plain_token(&e.id, &[]) || !e.server.as_ref().is_none_or(|s| plain_token(&s.host, &['.'])) || !(e.thumbnail.is_empty() || plain_token(&e.thumbnail, &[])) {
+    if !plain_token(&e.id, &[]) || !e.server.as_ref().is_none_or(|s| valid_host(&s.host)) || !(e.thumbnail.is_empty() || plain_token(&e.thumbnail, &[])) {
         bail!("identifiant invalide dans le catalogue");
     }
     let local = e.pack.starts_with("http://127.0.0.1") || e.pack.starts_with("http://localhost");
@@ -172,6 +177,16 @@ mod tests {
         assert!(!p[2].view(None, false).has_server && p[0].view(None, false).has_server);
         assert!(p[0].view(None, false).has_stats && !p[1].view(None, false).has_stats && !p[2].view(None, false).has_stats);
         assert!(parse_catalog("{}").is_err() && parse_catalog("nope").is_err());
+    }
+
+    #[test]
+    fn host_validation_matches_pack_tools() {
+        for ok in ["home-server", "mon.minestrator.com", "10.0.0.2"] {
+            assert!(valid_host(ok), "{ok}");
+        }
+        for bad in ["", ".a", "a.", "a..b", "Mon.Host", "a b", "a:25565", "::1", "a_b"] {
+            assert!(!valid_host(bad), "{bad}");
+        }
     }
 
     #[test]

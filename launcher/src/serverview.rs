@@ -72,9 +72,23 @@ pub fn build(st: Option<&ServerStatus>, motd: &str, ts: Option<TailscaleState>, 
     }
 }
 
-/// État Tailscale pour cette exécution (adresse de dev : Tailscale non exigé).
+static SUFFIX_CACHE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Dernier suffixe MagicDNS vu par `tailscale_info` (mémoire seulement, jamais écrit ni loggé). Aucun appel à Tailscale.
+pub fn cached_magic_suffix() -> Option<String> {
+    SUFFIX_CACHE.lock().ok()?.clone()
+}
+
+/// État Tailscale pour cette exécution (adresse de dev : Tailscale non exigé). Met à jour le cache du suffixe.
 pub fn tailscale_info() -> tailscale::TailscaleInfo {
-    if crate::config::server_overridden() { tailscale::TailscaleInfo { state: TailscaleState::Connected, magic_dns_suffix: None } } else { tailscale::status() }
+    if crate::config::server_overridden() {
+        return tailscale::TailscaleInfo { state: TailscaleState::Connected, magic_dns_suffix: None };
+    }
+    let info = tailscale::status();
+    if let Ok(mut c) = SUFFIX_CACHE.lock() {
+        *c = info.magic_dns_suffix.clone();
+    }
+    info
 }
 
 /// Une vérification (3 s au plus par étape) : nom court = Tailscale puis ping ; serveur public = ping direct.

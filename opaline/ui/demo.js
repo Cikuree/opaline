@@ -83,7 +83,7 @@ export async function invoke(cmd, a = {}) {
     case 'pack_install': case 'pack_repair': runInstall(a.id); return null;
     case 'pack_changelog': return a.id === 'classroom-run' ? { added: ['Cloth Config 21.0.1'], removed: ['Indium 1.0.37'], updated: [{ name: 'Classroom Run', from: '0.9.2', to: '0.9.3' }, { name: 'Sodium', from: '0.7.1', to: '0.7.2' }] } : { added: [], removed: [], updated: [] };
     case 'pack_mods': return a.id === 'classroom-run' ? MODS : packs.find((p) => p.id === a.id)?.installed ? MODS.slice(0, 5).map((m) => ({ ...m, verified: true })) : [];
-    case 'play': if (!packs.find((p) => p.id === a.id)?.installed) throw 'Le pack n’est pas installé.'; setTimeout(() => emit('game://exited', q.has('crash') ? { packId: a.id, code: 1, logTail: '[12:01:03] [main/ERROR]: Échec du chargement du mod « sodium ».\njava.lang.IllegalStateException: démo de plantage précoce' } : { packId: a.id, code: 0, logTail: null }), 5000); return { started: true, reason: null };
+    case 'play': if (!packs.find((p) => p.id === a.id)?.installed) throw 'Le pack n’est pas installé.'; setTimeout(() => emit('game://exited', q.has('crash') ? { packId: a.id, code: 1, logTail: '[12:01:03] [main/ERROR]: Échec du chargement du mod « sodium ».\njava.lang.IllegalStateException: démo de plantage précoce' } : { packId: a.id, code: 0, logTail: null }), 5000); return { started: true, reason: null, serverListed: packs.find((p) => p.id === a.id)?.hasServer !== false };
     case 'server_status': {
       if (a.id === 'solo') return null; // pack sans serveur
       const ts = a.id !== 'survie'; // « survie » = serveur public hébergé : ping direct, sans Tailscale

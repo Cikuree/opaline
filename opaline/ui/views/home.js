@@ -8,6 +8,7 @@ const GR = ['linear-gradient(135deg,#e0574f,#f07a5a)', 'linear-gradient(135deg,#
 const STATUS = { upd: 'Mise à jour dispo', ok: 'Installé', no: 'Non installé', unsupported: 'Non pris en charge' };
 export const statusOf = (p) => (!p.supported ? 'unsupported' : !p.installed ? 'no' : p.updateAvailable ? 'upd' : 'ok');
 
+const listed = new Set(); // packs dont le serveur figure dans la liste Multijoueur (retour de `play`)
 const servers = new Map(); // id -> ServerView | null (inconnu)
 let recent = [];
 let statsAt = 0;
@@ -158,6 +159,7 @@ export function renderHome() {
   $('#cardServer').hidden = !srv; ['cardSplits', 'cardStat', 'cardDeaths'].forEach((i) => ($('#' + i).hidden = !cr)); $('#cardNews').hidden = !news;
   renderHero(p, st, cr);
   if (srv) renderServer(p);
+  $('#srvList').hidden = !listed.has(p.id);
   if (cr) { renderSplits(s); renderDeaths(); hydrateHeads($('#deaths')); }
   if (news) renderNews(p);
   $('#btnPlay').dataset.st = st;
@@ -175,7 +177,8 @@ export function initHome() {
     try {
       const r = await api.play(p.id);
       if (!r.started) return toast(r.reason || 'Le jeu n’a pas pu démarrer.');
-      state.inGame = true; emit('game'); toast('Lancement de ' + p.name + '…');
+      if (r.serverListed) listed.add(p.id); else listed.delete(p.id);
+      state.inGame = true; emit('game'); renderHome(); toast('Lancement de ' + p.name + '…');
     } catch (e) { toast(api.errMsg(e)); }
   });
   $('#crashClose').addEventListener('click', () => ($('#crash').hidden = true));

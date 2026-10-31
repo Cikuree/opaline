@@ -5,7 +5,7 @@ use crate::catalog::{self, PackEntry, PackView};
 use crate::changelog::{self, Changelog, ModView};
 use crate::config::{self, Config, Dirs};
 use crate::download::{self, Progress};
-use crate::{friends, install, launch, mojang, packwiz, perf, serverview, servers, stats, sysmem, tailscale, textures, update};
+use crate::{friends, install, launch, mojang, packwiz, perf, serverview, servers, stats, sysmem, textures, update};
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -168,13 +168,15 @@ pub fn session_for_play(cfg: &Config, mgr: &AuthManager) -> Result<Session> {
 }
 
 fn magic_suffix() -> Option<String> {
-    if config::server_overridden() { None } else { tailscale::status().magic_dns_suffix }
+    serverview::tailscale_info().magic_dns_suffix
 }
 
 pub struct Launched {
     pub child: Child,
     /// Adresse du serveur du pack, ou vide (à masquer des journaux : le jeu peut s'y connecter plus tard).
     pub server: String,
+    /// Le serveur du pack figure dans `servers.dat` (faux : pas de serveur, suffixe MagicDNS inconnu, ou écriture impossible).
+    pub server_listed: bool,
     pub log: PathBuf,
 }
 
@@ -186,7 +188,7 @@ pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) 
     }
     let dirs = root.for_pack(&e.id)?;
     let inst = install::load_installed(&dirs)?;
-    let server = e.server.as_ref().map(|s| list_entry(&dirs.instance(), &e.name, s)).unwrap_or_default();
+    let (server, server_listed) = e.server.as_ref().map(|s| list_entry(&dirs.instance(), &e.name, s)).unwrap_or_default();
     let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?
         .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
     let env = mojang::Env::current(&[]);
@@ -200,18 +202,24 @@ pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) 
         env: &env,
     })?;
     let child = launch::spawn(&cmd, &dirs)?;
-    Ok(Launched { child, server, log: dirs.instance().join("logs").join("launcher-game.log") })
+    Ok(Launched { child, server, server_listed, log: dirs.instance().join("logs").join("launcher-game.log") })
 }
 
-/// Ajoute le serveur à `servers.dat` et renvoie son adresse (pour masquage des journaux). Rien n'est loggé de l'adresse.
-fn list_entry(instance: &Path, pack_name: &str, s: &catalog::ServerInfo) -> String {
-    // Seul un nom court a besoin de Tailscale (suffixe MagicDNS) ; un serveur public est utilisé tel quel.
-    let suffix = if config::is_short_host(&s.host) { magic_suffix() } else { None };
-    let ip = config::list_addr(&s.host, s.port, suffix.as_deref());
-    if let Err(err) = servers::add_server(instance, pack_name, &ip) {
-        eprintln!("liste Multijoueur non modifiée : {}", sanitize_error_with(&format!("{err:#}"), &Dirs::new(instance), &[&ip]));
+/// Ajoute (ou met à jour) le serveur dans `servers.dat` ; renvoie son adresse (pour masquage des journaux) et si l'entrée y figure.
+/// Aucun appel à Tailscale : un nom court utilise le suffixe MagicDNS déjà connu ; inconnu, l'entrée n'est pas écrite cette fois-ci
+/// (nouvel essai au lancement suivant). Rien n'est loggé de l'adresse ; un échec n'empêche pas le lancement.
+fn list_entry(instance: &Path, pack_name: &str, s: &catalog::ServerInfo) -> (String, bool) {
+    let suffix = if config::is_short_host(&s.host) { serverview::cached_magic_suffix() } else { None };
+    let addr = config::server_addr(&s.host, s.port, suffix.as_deref());
+    if suffix.is_none() && config::is_short_host(&s.host) && !config::server_overridden() {
+        return (addr, false);
     }
-    config::server_addr(&s.host, s.port, suffix.as_deref())
+    let ip = config::list_addr(&s.host, s.port, suffix.as_deref());
+    let listed = servers::add_server(instance, pack_name, &ip).unwrap_or_else(|err| {
+        eprintln!("liste Multijoueur non modifiée : {}", sanitize_error_with(&format!("{err:#}"), &Dirs::new(instance), &[&ip]));
+        false
+    });
+    (addr, listed)
 }
 
 /// Dernières lignes du journal du jeu, sans jeton, sans adresse du serveur, sans chemin personnel.
@@ -319,6 +327,22 @@ pub fn app_update(current: &str) -> Option<update::Update> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_entry_needs_known_suffix_for_short_hosts_only() {
+        if config::server_overridden() || serverview::cached_magic_suffix().is_some() {
+            return;
+        }
+        let d = std::env::temp_dir().join(format!("opaline-list-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        let info = |host: &str| catalog::ServerInfo { host: host.into(), port: 25565, motd: "m".into(), stats_port: 0 };
+        let (_, listed) = list_entry(&d, "Pack", &info("home-server"));
+        assert!(!listed && !d.join("servers.dat").exists(), "suffixe inconnu : rien d'écrit");
+        let (addr, listed) = list_entry(&d, "Pack", &info("mon.minestrator.com"));
+        assert!(listed && d.join("servers.dat").is_file());
+        assert_eq!(addr, "mon.minestrator.com:25565");
+        std::fs::remove_dir_all(&d).unwrap();
+    }
 
     #[test]
     fn mask_tailnet_hosts_with_scheme() {
