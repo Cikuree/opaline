@@ -20,8 +20,8 @@ pub fn normalize_uuid(u: &str) -> Result<String> {
     Ok(s)
 }
 
-/// URL de la texture de skin d'après la propriété `textures` (base64) du profil.
-pub fn skin_url_from_profile(profile: &Value) -> Result<String> {
+/// Contenu décodé de la propriété `textures` (base64) du profil.
+fn textures_json(profile: &Value) -> Result<Value> {
     let value = profile
         .get("properties")
         .and_then(Value::as_array)
@@ -30,9 +30,20 @@ pub fn skin_url_from_profile(profile: &Value) -> Result<String> {
         .and_then(Value::as_str)
         .context("profil sans texture")?;
     let raw = base64::engine::general_purpose::STANDARD.decode(value).context("texture illisible")?;
-    let v: Value = serde_json::from_slice(&raw).context("texture illisible")?;
+    serde_json::from_slice(&raw).context("texture illisible")
+}
+
+/// URL de la texture de skin d'après la propriété `textures` (base64) du profil.
+pub fn skin_url_from_profile(profile: &Value) -> Result<String> {
+    let v = textures_json(profile)?;
     let url = v.pointer("/textures/SKIN/url").and_then(Value::as_str).context("profil sans skin")?;
     crate::skins::official_texture_url(url).context("adresse de texture refusée (hôte non officiel)")
+}
+
+/// `"slim"` (bras fins) ou `"classic"`, d'après les métadonnées du skin.
+pub fn skin_model_from_profile(profile: &Value) -> &'static str {
+    let slim = textures_json(profile).is_ok_and(|v| v.pointer("/textures/SKIN/metadata/model").and_then(Value::as_str) == Some("slim"));
+    if slim { "slim" } else { "classic" }
 }
 
 /// RGBA 8 bits d'un PNG de skin (64×64 ou 64×32).

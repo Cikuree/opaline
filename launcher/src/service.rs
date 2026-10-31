@@ -5,7 +5,7 @@ use crate::catalog::{self, PackEntry, PackView};
 use crate::changelog::{self, Changelog, ModView};
 use crate::config::{self, Config, Dirs};
 use crate::download::{self, Progress};
-use crate::{friends, install, launch, mojang, packwiz, perf, serverview, servers, stats, sysmem, textures, update};
+use crate::{friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update};
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -155,16 +155,23 @@ pub fn settings_set(root: &Dirs, mode: Option<perf::PerfMode>, memory_mb: Option
 // ---------- Jeu ----------
 
 /// Session pour jouer : hors ligne en dev (`CLASSROOM_DEV_OFFLINE=1`), sinon Microsoft (mémoire, puis trousseau).
-pub fn session_for_play(cfg: &Config, mgr: &AuthManager) -> Result<Session> {
+/// `None` : pas de session Opaline (non connecté, ou connexion non configurée) : JOUER passe par le Launcher officiel.
+pub fn try_session(cfg: &Config, mgr: &AuthManager) -> Result<Option<Session>> {
     if auth::dev_offline() {
-        return Ok(Session::offline(cfg.nickname.trim()));
+        return Ok(Some(Session::offline(cfg.nickname.trim())));
     }
     if !auth::configured() {
+        return Ok(None);
+    }
+    mgr.ensure_session(&auth::http_client()?, &auth::Endpoints::default(), auth::CLIENT_ID, !cfg.no_remember)
+}
+
+/// Comme `try_session`, mais l'absence de session est une erreur (commandes qui exigent le jeton).
+pub fn session_for_play(cfg: &Config, mgr: &AuthManager) -> Result<Session> {
+    if !auth::dev_offline() && !auth::configured() {
         bail!("Connexion Microsoft non configurée");
     }
-    let client = auth::http_client()?;
-    mgr.ensure_session(&client, &auth::Endpoints::default(), auth::CLIENT_ID, !cfg.no_remember)?
-        .context("connexion Microsoft requise : connectez-vous avec Microsoft")
+    try_session(cfg, mgr)?.context("connexion Microsoft requise : connectez-vous avec Microsoft")
 }
 
 fn magic_suffix() -> Option<String> {
@@ -203,6 +210,65 @@ pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) 
     })?;
     let child = launch::spawn(&cmd, &dirs)?;
     Ok(Launched { child, server, server_listed, log: dirs.instance().join("logs").join("launcher-game.log") })
+}
+
+pub struct OfficialLaunched {
+    /// Le Launcher Minecraft a pu être ouvert (sinon l'utilisateur l'ouvre lui-même).
+    pub opened: bool,
+    pub server: String,
+    pub server_listed: bool,
+    pub profile_name: String,
+}
+
+/// Mode officiel : prépare la version et le profil `opaline-<pack>` dans le `.minecraft` du Launcher officiel (qui connecte le
+/// compte et lance le jeu), puis l'ouvre si `open`. Rien n'est écrit tant que `launcher_profiles.json` n'est pas lisible.
+pub fn launch_official(root: &Dirs, e: &PackEntry, cfg: &Config, mc: &Path, open: bool) -> Result<OfficialLaunched> {
+    if !e.supported() {
+        bail!("ce pack n'est pas pris en charge par cette version d'Opaline");
+    }
+    let profiles = official::profiles_path(mc)?;
+    let mut doc = official::read_profiles(&profiles)?;
+    let dirs = root.for_pack(&e.id)?;
+    let inst = install::load_installed(&dirs)?;
+    let (server, server_listed) = e.server.as_ref().map(|s| list_entry(&dirs.instance(), &e.name, s)).unwrap_or_default();
+    let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?
+        .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
+    official::install_version(&dirs, mc, &inst.profile_id, &inst.fabric.libraries)?;
+    let profile_name = format!("Opaline · {}", e.name);
+    let now = official::iso_utc(friends::now_secs());
+    let java_args = format!("-Xmx{memory_mb}M");
+    let game_dir = dirs.instance();
+    let spec =
+        official::ProfileSpec { name: &profile_name, version_id: &inst.profile_id, game_dir: &game_dir, java_args: &java_args, icon: "Furnace", now: &now };
+    official::merge_profile(&mut doc, &official::profile_key(&e.id), &spec)?;
+    official::write_profiles(&profiles, &doc)?;
+    Ok(OfficialLaunched { opened: open && official::open_launcher(), server, server_listed, profile_name })
+}
+
+// ---------- Identité sans authentification (mode officiel) ----------
+
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct IdentityView {
+    pub name: String,
+    pub uuid: String,
+}
+
+pub fn identity_get(root: &Dirs) -> Option<IdentityView> {
+    let c = Config::load(root);
+    (!c.mc_name.is_empty() && !c.mc_uuid.is_empty()).then_some(IdentityView { name: c.mc_name, uuid: c.mc_uuid })
+}
+
+/// Mémorise le pseudo Minecraft (résolu via l'API publique Mojang). Pseudo vide : l'oublie.
+pub fn identity_set(root: &Dirs, name: &str, api: &str) -> Result<Option<IdentityView>> {
+    let mut c = Config::load(root);
+    if name.trim().is_empty() {
+        c.mc_name.clear();
+        c.mc_uuid.clear();
+    } else {
+        (c.mc_name, c.mc_uuid) = identity::lookup(&short_client()?, api, name)?;
+    }
+    c.save(root)?;
+    Ok(identity_get(root))
 }
 
 /// Ajoute (ou met à jour) le serveur dans `servers.dat` ; renvoie son adresse (pour masquage des journaux) et si l'entrée y figure.

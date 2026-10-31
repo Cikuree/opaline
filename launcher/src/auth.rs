@@ -249,6 +249,11 @@ pub fn parse_profile(v: &Value) -> Result<(String, String)> {
 const NO_LICENSE: &str = "Ce compte Microsoft ne possède pas Minecraft : Java Edition.";
 const NOT_APPROVED: &str = "Application Azure non encore approuvée par Mojang (403 sur login_with_xbox).";
 
+/// Vrai si l'erreur de connexion est le refus Mojang « application non approuvée » (l'interface bascule alors en mode officiel).
+pub fn is_not_approved(msg: &str) -> bool {
+    msg.contains(NOT_APPROVED)
+}
+
 // ---------- Réseau ----------
 
 fn send(req: reqwest::blocking::RequestBuilder) -> Result<(u16, Value)> {

@@ -27,11 +27,14 @@ pub struct Config {
     pub perf_mode: PerfMode,
     /// « Ne pas mémoriser la connexion sur ce PC » : le refresh token reste en mémoire, jamais dans le trousseau.
     pub no_remember: bool,
+    /// Pseudo Minecraft saisi en mode officiel (tête et skin affichés sans authentification) et son UUID résolu.
+    pub mc_name: String,
+    pub mc_uuid: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { nickname: "Player".into(), memory_mb: 4096, perf_mode: PerfMode::Balanced, no_remember: false }
+        Config { nickname: "Player".into(), memory_mb: 4096, perf_mode: PerfMode::Balanced, no_remember: false, mc_name: String::new(), mc_uuid: String::new() }
     }
 }
 
