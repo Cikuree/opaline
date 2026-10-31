@@ -63,7 +63,7 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 }]}
 ```
 
-- `loader` vaut `fabric` pour l'instant. Les autres loaders (neoforge…) sont refusés proprement : le pack est affiché « non pris en charge ».
+- `loader` vaut `fabric`, `quilt`, `neoforge` ou `forge` (tous pris en charge ; `loaderVersion` = version du loader). Installation : voir docs/api/loaders.md (Fabric/Quilt via leur meta ; NeoForge/Forge en exécutant les processors client de l'installeur officiel dans l'instance, sorties vérifiées par sha1 quand l'installeur les fournit). Un loader inconnu donne `supported: false`.
 - L'hôte du serveur n'est jamais affiché dans l'interface.
 
 ## 4. Commandes Tauri (`invoke(nom, args)`)
