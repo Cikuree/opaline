@@ -292,6 +292,16 @@ body:has(.window.max){padding:0}
   .col .pl.off .avatar{filter:grayscale(.6) brightness(.85)}
   .window.colmini .col .pl[data-tip]:hover::after,.window.colmini .col .pl[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;right:calc(100% + 14px);top:50%;transform:translateY(-50%);background:var(--cream);color:var(--on-coral);font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px;white-space:nowrap;z-index:9;pointer-events:none}
 }
+.hero>*{min-width:0}
+.hero .stats>div{min-width:0;max-width:100%}
+.hero .stats span{overflow-wrap:anywhere}
+.hero .acts{align-items:center}
+.hero .acts .play,.hero .acts .btn{height:52px;padding:0 24px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:10px;font-size:15px;line-height:1}
+.hero .acts .play{padding:0 clamp(26px,7cqi,36px);font-size:clamp(15px,3.4cqi,17px)}
+.hero .acts .bi{width:18px;height:18px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hero .acts .play .bi{stroke:none;fill:currentColor}
+.hero .acts .btn:disabled{opacity:.7}
+.spin-i{animation:spin 1s linear infinite}
 </style>
 </head>
 <body>
@@ -315,6 +325,9 @@ body:has(.window.max){padding:0}
  <symbol id="i-max" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
  <symbol id="i-restore" viewBox="0 0 24 24"><path d="M9 8V7a1.5 1.5 0 011.5-1.5H17A1.5 1.5 0 0118.5 7v6.5A1.5 1.5 0 0117 15h-1"/><rect x="5.5" y="9" width="10" height="10" rx="1.5"/></symbol>
  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 001.5.9l10.5-6.5a1 1 0 000-1.8L9.5 4.6A1 1 0 008 5.5z" fill="currentColor" stroke="none"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+ <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-2.4-5.7M20 4v5h-5"/></symbol>
  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M5 20h14"/></symbol>
 </svg>
 
@@ -380,9 +393,9 @@ body:has(.window.max){padding:0}
         <div class="stats" id="heroStats">
           <div><b>12:34:56</b><span>Chrono total</span></div>
           <div><b>19</b><span>Morts cumulées</span></div>
-          <div><b style="font-size:16px;line-height:1.5">Œil de l&rsquo;Ender</b><span>Meilleur split · 3:12:08</span></div>
+          <div><b style="font-size:clamp(14px,4cqi,18px);line-height:1.4">Œil de l&rsquo;Ender</b><span>Meilleur split · 3:12:08</span></div>
         </div>
-        <div class="acts"><button class="play" id="btnPlay">JOUER</button><button class="btn cream" id="btnUpd" hidden>Mettre à jour</button></div>
+        <div class="acts"><button class="play" id="btnPlay"><svg class="bi" aria-hidden="true"><use href="#i-play"/></svg><span class="bl">JOUER</span></button><button class="btn cream" id="btnUpd" hidden><svg class="bi i" aria-hidden="true"><use href="#i-down"/></svg><span class="bl">Mettre à jour</span></button></div>
       </article>
 
       <article class="card server" aria-labelledby="srvT">
@@ -609,9 +622,9 @@ $('#rail').addEventListener('keydown',e=>{
 $$('[data-go]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.go)));
 let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),2600)}
 function copy(t,m){try{navigator.clipboard&&navigator.clipboard.writeText(t).catch(()=>{})}catch(e){}toast(m)}
-let pt;function progress(title,sub,done){
+let pt;function progress(title,sub,done,tick){
   const p=$('#prog');p.classList.add('on');$('#progT').textContent=title;$('#progS').textContent=sub;let v=0;clearInterval(pt);
-  pt=setInterval(()=>{v=Math.min(100,v+Math.random()*9+3);$('#bar').style.width=v+'%';$('#pct').textContent=Math.round(v)+' %';$('#track').setAttribute('aria-valuenow',Math.round(v));
+  pt=setInterval(()=>{v=Math.min(100,v+Math.random()*9+3);$('#bar').style.width=v+'%';$('#pct').textContent=Math.round(v)+' %';$('#track').setAttribute('aria-valuenow',Math.round(v));tick&&tick(v);
     if(v>=100){clearInterval(pt);setTimeout(()=>{p.classList.remove('on');done&&done()},500)}},260);
 }
 
@@ -695,7 +708,7 @@ const PACKS=[
   news:[['1.2.0','Premier pack : Create, Steam n’ Rails et 110 autres mods.']],on:[],off:[['Zéphyr',5,'Vu il y a 3 j']]}
 ];
 const STATUS={upd:'Mise à jour dispo',ok:'Installé',no:'Non installé'};
-let pk=0;
+let pk=0,updPct=null;
 const eff=()=>ts==='on'&&PACKS[pk].srv.up;
 const CR_STATS=$('#heroStats').innerHTML,CR_ART=$('#heroArt').innerHTML;
 function playerRow(p,off){const st=off?'hors ligne':'en ligne';return`<button type="button" class="pl ${off?'off':''}" data-tip="${p[0]} · ${st}" aria-label="${p[0]}, ${st}. ${p[2]}"><div class="avwrap"><div class="avatar">${headSvg(p[1],44)}</div><span class="dot ${off?'idle':''}" role="img" aria-label="${off?'Hors ligne':'En ligne'}"></span></div>${off?'':'<span class="ingame">En jeu</span>'}<div class="tx"><div class="n">${p[0]}</div><div class="s">${off?'Hors ligne · ':''}${p[2]}</div></div></button>`}
@@ -708,8 +721,12 @@ function renderPack(){
   $('#heroStats').innerHTML=pk===0?CR_STATS:`<div><b>${p.total}</b><span>Mods</span></div><div><b>${p.mc}</b><span>Minecraft</span></div><div><b style="font-size:18px;line-height:1.4">${p.loader}</b><span>Chargeur</span></div>`;
   $('#heroArt').innerHTML=pk===0?CR_ART:T(p.tex,80,p.icon,'dragon sm')+T('diamond',48,'diamond','eye')+T('diamond_pickaxe',48,'pickaxe','dia');
   paint();
-  const play=$('#btnPlay');play.textContent=p.status==='no'?'INSTALLER':'JOUER';play.disabled=p.status!=='no'&&!on;
-  $('#btnUpd').hidden=p.status!=='upd';
+  const play=$('#btnPlay');$('.bl',play).textContent=p.status==='no'?'INSTALLER':'JOUER';play.firstElementChild.firstElementChild.setAttribute('href',p.status==='no'?'#i-down':'#i-play');play.disabled=p.status!=='no'&&!on;
+  const ub=$('#btnUpd'),ui=ub.firstElementChild,ul=$('.bl',ub);ub.hidden=p.status==='no';
+  ui.classList.remove('spin-i');
+  if(updPct!==null&&p.status==='upd'){ub.disabled=true;ui.firstElementChild.setAttribute('href','#i-refresh');ui.classList.add('spin-i');ul.textContent=Math.round(updPct)+' %'}
+  else if(p.status==='upd'){ub.disabled=false;ui.firstElementChild.setAttribute('href','#i-down');ul.textContent='Mettre à jour'}
+  else{ub.disabled=true;ui.firstElementChild.setAttribute('href','#i-check');ul.textContent='À jour'}
   $('#srvName').textContent=p.name;$('#srvPill').innerHTML=on?'<span class="dot"></span>En ligne':'<span class="dot off"></span>Hors ligne';
   $('#lat').textContent=on?p.srv.lat+' ms':'—';$('#kvPl').textContent=on?p.srv.pl+'/'+p.srv.max:'—';$('#kvVer').textContent=p.mc;
   $('#srvMsg').hidden=on;$('#srvMsg').textContent='Serveur injoignable : vérifie que Tailscale est connecté, sinon demande l’accès à l’hôte.';
@@ -736,7 +753,7 @@ function renderFiles(){
 }
 function act(){
   const p=PACKS[pk];
-  if(p.status==='upd')progress('Mise à jour de '+p.name+' '+p.next,'Téléchargement de '+p.size,()=>{p.status='ok';p.ver=p.next;p.chg=null;renderPack();toast(p.name+' est à jour')});
+  if(p.status==='upd'){updPct=0;renderPack();progress('Mise à jour de '+p.name+' '+p.next,'Téléchargement de '+p.size,()=>{updPct=null;p.status='ok';p.ver=p.next;p.chg=null;renderPack();toast(p.name+' est à jour')},v=>{updPct=v;const ul=$('#btnUpd .bl');if(ul)ul.textContent=Math.round(v)+' %'})}
   else if(p.status==='no')progress('Installation de '+p.name,'Téléchargement de '+p.size,()=>{p.status='ok';p.ver=p.next;p.mods=SAMPLE;renderPack();toast(p.name+' est installé')});
 }
 const setPack=i=>{pk=i;renderPack()};
