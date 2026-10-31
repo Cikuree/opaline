@@ -40,7 +40,15 @@ statsPort = 25580                  # 0 si pas d'endpoint HTTP (packs non Classro
 | `launcher.json` | `{"version": "X.Y.Z", "windows": "<url installeur>", "linux": "<url AppImage>"}` |
 | `classroom-run-prism.zip` | instance Prism (inchangé) |
 
-Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/packs.json` et `.../launcher.json`.
+Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launcher.json` (mise à jour d'Opaline).
+
+### Release permanente `packs` (catalogue et packs)
+
+- Les packs sont publiés indépendamment des versions d'Opaline : à chaque push sur `main` qui touche `packs/**`, le workflow `packs.yml` reconstruit `packs.json` et chaque `pack-<id>.zip`, puis les remplace dans la release au tag fixe **`packs`** (pré-release, assets écrasés).
+- Opaline lit le catalogue à l'adresse fixe `https://github.com/Cikuree/opaline/releases/download/packs/packs.json` ; dans `packs.json`, `pack` pointe vers `.../releases/download/packs/pack-<id>.zip`.
+- Le pack `classroom-run` référence le jar du mod de la dernière release `v*` (URL + sha512), régénéré par `packs.yml`.
+- Fichiers d'un pack qui ne sont pas sur Modrinth (configs, `options.txt`, mods ou packs de ressources introuvables) : committés dans `packs/<id>/` et indexés par hash comme fichiers non-métafichier.
+- Une release `v*` ne publie plus `packs.json` ni les `pack-<id>.zip` (elle déclenche seulement `packs.yml` pour rafraîchir l'URL du jar).
 
 ## 3. `packs.json`
 
