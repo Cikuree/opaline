@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Verifier version launcher == tag
         run: |
-          v=$(sed -n 's/^version = "\(.*\)"/\1/p' launcher/Cargo.toml | head -n1)
+          v=$(sed -n 's/^version = "\(.*\)"/\1/p' launcher/Cargo.toml | head -n1 | tr -d '')
           [ "${GITHUB_REF_NAME#v}" = "$v" ] || { echo "tag $GITHUB_REF_NAME != launcher $v"; exit 1; }
       - name: Build launcher
         env:
@@ -31,7 +31,7 @@ jobs:
           CLASSROOM_MS_CLIENT_ID: ${{ vars.MS_CLIENT_ID }}
         run: |
           cd launcher
-          cargo build --release
+          cargo build --release --locked
           mkdir -p ../dist
           cp "target/release/${{ matrix.bin }}" "../dist/${{ matrix.asset }}"
       - uses: actions/upload-artifact@v4
@@ -74,7 +74,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
-          # pack.zip : contenu de pack/ a la racine, avec classroomrun.pw.toml et index recalcules
+          # pack.zip : dossier pack/ (avec classroomrun.pw.toml et index recalcules)
           zip -qr dist/pack.zip pack
           PACK_HASH=$(python3 -c "import tomllib;print(tomllib.load(open('pack/pack.toml','rb'))['index']['hash'])")
           printf '{"version":"%s","windows":"%s/classroom-launcher-windows.exe","linux":"%s/classroom-launcher-linux","pack":"%s/pack.zip","pack_hash":"%s"}\n' \

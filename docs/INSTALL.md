@@ -4,10 +4,10 @@ Les téléchargements sont sur la page **Releases** du dépôt.
 
 ## Joueur
 
-1. Ouvrir la page **Releases** du dépôt et télécharger le launcher : `classroom-launcher-windows.exe` (Windows) ou `classroom-launcher-linux` (Linux).
+1. Ouvrir la page **Releases** du dépôt et télécharger le launcher : `classroom-launcher-windows.exe` (Windows) ou `classroom-launcher-linux` (Linux). Sous Linux, rendre le fichier exécutable : `chmod +x classroom-launcher-linux`.
 2. Le lancer et se connecter avec son compte Microsoft (le compte doit posséder Minecraft Java).
 3. Cliquer **Installer** (Minecraft 26.3, Fabric, mods, Sodium, Iris et shaders), puis **Jouer**.
-4. Les mises à jour du pack sont appliquées par le launcher.
+4. Les mises à jour du pack sont proposées par le launcher au clic sur Jouer.
 
 ### Alternative : Prism Launcher
 
