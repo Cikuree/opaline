@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Verifier version launcher == tag
         run: |
-          v=$(sed -n 's/^version = "\(.*\)"/\1/p' launcher/Cargo.toml | head -n1 | tr -d '')
+          v=$(sed -n 's/^version = "\(.*\)"/\1/p' launcher/Cargo.toml | head -n1 | tr -d '\r')
           [ "${GITHUB_REF_NAME#v}" = "$v" ] || { echo "tag $GITHUB_REF_NAME != launcher $v"; exit 1; }
       - name: Build launcher
         env:
