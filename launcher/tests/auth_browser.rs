@@ -26,7 +26,7 @@ fn port_of(uri: &str) -> u16 {
 fn serve(state: &'static str, timeout: Duration) -> (u16, Arc<AtomicBool>, std::thread::JoinHandle<anyhow::Result<b::Redirect>>) {
     let (l, uri) = b::bind_loopback().unwrap();
     assert!(uri.starts_with("http://localhost:"));
-    assert!(l.local_addr().unwrap().ip().is_loopback());
+    assert!(l.iter().all(|l| l.local_addr().unwrap().ip().is_loopback()));
     let cancel = Arc::new(AtomicBool::new(false));
     let c2 = cancel.clone();
     (port_of(&uri), cancel, std::thread::spawn(move || b::wait_for_redirect(l, state, &c2, timeout)))
@@ -131,4 +131,89 @@ fn denied_and_failed_flows_leak_nothing() {
     srv.queue("/ms/token", &[(400, r#"{"error":"invalid_grant"}"#)]);
     let e = err("code=LEAKY-CODE&state={state}");
     assert!(e.contains("invalid_grant") && !e.contains("LEAKY-CODE") && !e.contains("PRIVATE"));
+}
+
+fn join_within(h: std::thread::JoinHandle<anyhow::Result<b::Redirect>>, max: Duration) -> anyhow::Result<b::Redirect> {
+    let t = std::time::Instant::now();
+    let r = h.join().unwrap();
+    assert!(t.elapsed() < max, "trop lent : {:?}", t.elapsed());
+    r
+}
+
+/// Connexion lente : un octet par 500 ms, gardée ouverte.
+fn slow_client(port: u16) -> TcpStream {
+    let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    s.write_all(b"G").unwrap();
+    let mut s2 = s.try_clone().unwrap();
+    std::thread::spawn(move || {
+        for _ in 0..6 {
+            std::thread::sleep(Duration::from_millis(500));
+            if s2.write_all(b"E").is_err() {
+                break;
+            }
+        }
+    });
+    s
+}
+
+#[test]
+fn slow_connection_blocks_neither_redirect_nor_cancel() {
+    let (port, _c, h) = serve("ST", Duration::from_secs(20));
+    let _slow = slow_client(port);
+    std::thread::sleep(Duration::from_millis(100));
+    let ok = http(port, "GET /?code=C1&state=ST HTTP/1.1\r\n\r\n");
+    assert!(ok.starts_with("HTTP/1.1 200"));
+    assert!(matches!(join_within(h, Duration::from_secs(2)).unwrap(), b::Redirect::Code(c) if c == "C1"));
+
+    let (port, cancel, h) = serve("ST", Duration::from_secs(20));
+    let _slow = slow_client(port);
+    std::thread::sleep(Duration::from_millis(100));
+    cancel.store(true, Ordering::SeqCst);
+    assert!(join_within(h, Duration::from_secs(1)).is_err());
+    assert!(TcpStream::connect(("127.0.0.1", port)).is_err(), "port libéré");
+}
+
+#[test]
+fn second_attempt_cuts_the_first() {
+    let (p1, c1, h1) = serve("A", Duration::from_secs(20));
+    let (_p2, _c2, h2) = serve("B", Duration::from_secs(20));
+    c1.store(true, Ordering::SeqCst); // ce que fait `auth_start` pour l'ancienne tentative
+    assert!(join_within(h1, Duration::from_secs(1)).is_err());
+    assert!(TcpStream::connect(("127.0.0.1", p1)).is_err());
+    drop(h2);
+}
+
+#[test]
+fn big_and_non_utf8_headers() {
+    let (port, _c, h) = serve("ST", Duration::from_secs(10));
+    let big = format!("GET /?code=BIG&state=ST HTTP/1.1\r\nCookie: {}\r\n\r\n", "a".repeat(20_000));
+    assert!(http(port, &big).starts_with("HTTP/1.1 200"));
+    assert!(matches!(h.join().unwrap().unwrap(), b::Redirect::Code(c) if c == "BIG"));
+
+    let (port, _c, h) = serve("ST", Duration::from_secs(10));
+    let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    s.write_all(b"GET /?\xff\xfe HTTP/1.1\r\n\r\n").unwrap();
+    let mut out = String::new();
+    let _ = s.read_to_string(&mut out);
+    assert!(out.starts_with("HTTP/1.1 400"));
+    let r = http(port, "GET /?code=OK&state=ST HTTP/1.1\r\nX-Bin: \u{fffd}\r\n\r\n");
+    assert!(r.starts_with("HTTP/1.1 200"));
+    assert!(h.join().unwrap().is_ok());
+}
+
+#[test]
+fn listens_on_ipv6_loopback_when_available() {
+    let (ls, uri) = b::bind_loopback().unwrap();
+    if ls.len() < 2 {
+        eprintln!("IPv6 indisponible : test ignoré");
+        return;
+    }
+    let port = port_of(&uri);
+    let h = std::thread::spawn(move || b::wait_for_redirect(ls, "ST", &AtomicBool::new(false), Duration::from_secs(10)));
+    let mut s = TcpStream::connect(("::1", port)).unwrap();
+    s.write_all(b"GET /?code=V6&state=ST HTTP/1.1\r\n\r\n").unwrap();
+    let mut out = String::new();
+    let _ = s.read_to_string(&mut out);
+    assert!(out.starts_with("HTTP/1.1 200"));
+    assert!(matches!(h.join().unwrap().unwrap(), b::Redirect::Code(c) if c == "V6"));
 }

@@ -9,7 +9,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use reqwest::Url;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
-use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -124,43 +124,89 @@ fn page(title: &str, text: &str) -> String {
     )
 }
 
-fn respond(mut s: TcpStream, status: &str, body: &str) {
-    let msg = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\n\
-         X-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'\r\nConnection: close\r\n\r\n{body}",
-        body.len()
-    );
-    let _ = s.write_all(msg.as_bytes());
-    let _ = s.flush();
-}
-
-/// Lit l'en-tête de requête (8 Kio max, 2 s max). Pas de corps lu.
-fn read_head(s: &mut TcpStream) -> Option<String> {
-    s.set_nonblocking(false).ok()?;
-    s.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
-    let mut buf = Vec::new();
-    let mut chunk = [0u8; 1024];
-    while buf.len() < 8192 && !buf.windows(4).any(|w| w == b"\r\n\r\n") {
-        match s.read(&mut chunk) {
-            Ok(0) | Err(_) => break,
-            Ok(n) => buf.extend_from_slice(&chunk[..n]),
+/// Écoute sur 127.0.0.1 et, au mieux, sur [::1] au même port (`localhost` peut résoudre vers l'un ou l'autre).
+/// Retourne les écouteurs (non bloquants) et l'URI de redirection `http://localhost:<port>`.
+pub fn bind_loopback() -> Result<(Vec<TcpListener>, String)> {
+    let fail = |_| anyhow!("impossible d'ouvrir le port local de redirection");
+    let mut v4 = None;
+    for _ in 0..8 {
+        let l = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).map_err(fail)?;
+        let port = l.local_addr()?.port();
+        if let Ok(l6) = TcpListener::bind(SocketAddr::from((Ipv6Addr::LOCALHOST, port))) {
+            return finish_bind(vec![l, l6], port);
+        }
+        v4 = Some((l, port));
+        // IPv6 absent (pas de ::1) : inutile de réessayer ; sinon le port est pris côté IPv6, on en tente un autre.
+        if TcpListener::bind(SocketAddr::from((Ipv6Addr::LOCALHOST, 0))).is_err() {
+            break;
         }
     }
-    String::from_utf8(buf).ok()
+    let (l, port) = v4.ok_or_else(|| anyhow!("impossible d'ouvrir le port local de redirection"))?;
+    finish_bind(vec![l], port)
 }
 
-/// Écoute sur 127.0.0.1, port éphémère. Retourne l'écouteur et l'URI de redirection `http://localhost:<port>`.
-pub fn bind_loopback() -> Result<(TcpListener, String)> {
-    let l = TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, 0))).map_err(|_| anyhow!("impossible d'ouvrir le port local de redirection"))?;
-    l.set_nonblocking(true)?;
-    let port = l.local_addr()?.port();
-    Ok((l, format!("http://localhost:{port}")))
+fn finish_bind(ls: Vec<TcpListener>, port: u16) -> Result<(Vec<TcpListener>, String)> {
+    for l in &ls {
+        l.set_nonblocking(true)?;
+    }
+    Ok((ls, format!("http://localhost:{port}")))
+}
+
+const HEAD_MAX: usize = 8192;
+const READ_BUDGET: Duration = Duration::from_secs(2);
+const DRAIN_BUDGET: Duration = Duration::from_secs(1);
+const MAX_PENDING: usize = 32;
+
+/// Connexion en cours de lecture, sans fil dédié : une connexion lente ne bloque jamais la boucle.
+struct Conn {
+    s: TcpStream,
+    buf: Vec<u8>,
+    born: Instant,
+    /// Réponse envoyée : on vide le reste de la requête (borné) pour que le navigateur ne reçoive pas de RST.
+    answered: bool,
+}
+
+fn drain_briefly(mut s: TcpStream) {
+    let _ = s.shutdown(std::net::Shutdown::Write);
+    let until = Instant::now() + Duration::from_millis(200);
+    let mut chunk = [0u8; 4096];
+    while Instant::now() < until {
+        match s.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => std::thread::sleep(Duration::from_millis(10)),
+            Err(_) => break,
+        }
+    }
+}
+
+fn respond(s: &mut TcpStream, status: &str, body: &str) {
+    let msg = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    let _ = s.set_nonblocking(false);
+    let _ = s.set_write_timeout(Some(Duration::from_secs(1)));
+    let _ = s.write_all(msg.as_bytes());
+    let _ = s.flush();
+    let _ = s.set_nonblocking(true);
+}
+
+/// Ligne de requête si elle est complète (seule elle est décodée, en UTF-8 strict).
+fn request_line(buf: &[u8]) -> Option<Result<&str, Reject>> {
+    match buf.iter().position(|&b| b == b'\n') {
+        Some(i) => Some(std::str::from_utf8(&buf[..i]).map_err(|_| Reject::Malformed)),
+        None if buf.len() >= HEAD_MAX => Some(Err(Reject::Malformed)),
+        None => None,
+    }
 }
 
 /// Attend UNE requête valide ; les autres reçoivent une erreur HTTP sans corps et l'attente continue.
-/// Le serveur s'arrête (l'écouteur est consommé) après la réponse.
-pub fn wait_for_redirect(listener: TcpListener, state: &str, cancel: &AtomicBool, timeout: Duration) -> Result<Redirect> {
+/// `cancel` et l'échéance sont vérifiés toutes les 20 ms quoi que fassent les clients. Les écouteurs sont
+/// consommés : le port est libéré au retour.
+pub fn wait_for_redirect(listeners: Vec<TcpListener>, state: &str, cancel: &AtomicBool, timeout: Duration) -> Result<Redirect> {
     let deadline = Instant::now() + timeout;
+    let mut conns: Vec<Conn> = Vec::new();
     loop {
         if cancel.load(Ordering::Relaxed) {
             bail!("connexion annulée");
@@ -168,30 +214,70 @@ pub fn wait_for_redirect(listener: TcpListener, state: &str, cancel: &AtomicBool
         if Instant::now() > deadline {
             bail!("délai dépassé : relancez la connexion");
         }
-        let mut s = match listener.accept() {
-            Ok((s, _)) => s,
-            Err(_) => {
-                std::thread::sleep(Duration::from_millis(50));
-                continue;
+        for l in &listeners {
+            while let Ok((s, _)) = l.accept() {
+                if conns.len() < MAX_PENDING && s.set_nonblocking(true).is_ok() {
+                    conns.push(Conn { s, buf: Vec::new(), born: Instant::now(), answered: false });
+                }
             }
-        };
-        let parsed = match read_head(&mut s) {
-            Some(h) => parse_redirect_request(&h, state),
-            None => Err(Reject::Malformed),
-        };
-        match parsed {
-            Ok(r) => {
-                let body = match &r {
-                    Redirect::Code(_) => page("Connexion réussie", "Tu peux revenir sur Opaline."),
-                    Redirect::Denied(_) => page("Connexion refusée", "Tu peux fermer cet onglet et réessayer depuis Opaline."),
-                };
-                respond(s, "200 OK", &body);
-                return Ok(r);
-            }
-            Err(Reject::Method) => respond(s, "405 Method Not Allowed", ""),
-            Err(Reject::NotFound) => respond(s, "404 Not Found", ""),
-            Err(_) => respond(s, "400 Bad Request", ""),
         }
+        let mut i = 0;
+        while i < conns.len() {
+            let c = &mut conns[i];
+            let mut eof = false;
+            let mut chunk = [0u8; 2048];
+            loop {
+                match c.s.read(&mut chunk) {
+                    Ok(0) => {
+                        eof = true;
+                        break;
+                    }
+                    Ok(n) => {
+                        if !c.answered && c.buf.len() < HEAD_MAX {
+                            c.buf.extend_from_slice(&chunk[..n.min(HEAD_MAX - c.buf.len())]);
+                        }
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                    Err(_) => {
+                        eof = true;
+                        break;
+                    }
+                }
+            }
+            if !c.answered
+                && let Some(line) = request_line(&c.buf)
+            {
+                match line.and_then(|l| parse_redirect_request(l.trim_end_matches('\r'), state)) {
+                    Ok(r) => {
+                        let body = match &r {
+                            Redirect::Code(_) => page("Connexion réussie", "Tu peux revenir sur Opaline."),
+                            Redirect::Denied(_) => page("Connexion refusée", "Tu peux fermer cet onglet et réessayer depuis Opaline."),
+                        };
+                        let mut s = conns.swap_remove(i).s;
+                        respond(&mut s, "200 OK", &body);
+                        drain_briefly(s);
+                        return Ok(r);
+                    }
+                    Err(rej) => {
+                        let status = match rej {
+                            Reject::Method => "405 Method Not Allowed",
+                            Reject::NotFound => "404 Not Found",
+                            _ => "400 Bad Request",
+                        };
+                        respond(&mut c.s, status, "");
+                        c.answered = true;
+                        c.born = Instant::now();
+                    }
+                }
+            }
+            let limit = if c.answered { DRAIN_BUDGET } else { READ_BUDGET };
+            if eof || c.born.elapsed() > limit {
+                conns.swap_remove(i);
+            } else {
+                i += 1;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(20));
     }
 }
 

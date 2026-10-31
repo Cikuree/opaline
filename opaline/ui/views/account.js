@@ -110,8 +110,9 @@ export function initAccount() {
     } catch (e) { loginMsg(api.errMsg(e)); $('#btnLogin').hidden = false; $('#btnDevice').hidden = false; }
   };
   $('#btnLogin').addEventListener('click', () => start('browser'));
-  $('#btnDevice').addEventListener('click', () => start('device'));
-  $('#reopenPage').addEventListener('click', () => api.openUrl($('#browserBox').dataset.uri));
+  const device = async () => { if (attempt !== null) { attempt = null; try { await api.authCancel(); } catch { /* déjà terminé */ } stopLogin(); } start('device'); };
+  $('#btnDevice').addEventListener('click', device); $('#btnDevice2').addEventListener('click', device);
+  $('#reopenPage').addEventListener('click', async () => { try { await api.openUrl($('#browserBox').dataset.uri); } catch { toast('Impossible d’ouvrir le navigateur : copie l’adresse depuis Opaline ou utilise un code.'); } });
   $('#copyCode').addEventListener('click', () => copy($('#codeBox').dataset.code, 'Code copié'));
   $('#openUri').addEventListener('click', () => api.openUrl($('#codeBox').dataset.uri));
   for (const id of ['#cancelLogin', '#cancelBrowser']) $(id).addEventListener('click', async () => { attempt = null; try { await api.authCancel(); } catch { /* déjà terminé */ } stopLogin(); $('#btnLogin').focus(); });
