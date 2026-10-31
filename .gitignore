@@ -25,13 +25,10 @@ tokens.json
 .env
 .env.*
 
-# Mondes, replays, données de run
+# Mondes, données de run
 /world/
 /worlds/
 /saves/
-/replay_recordings/
-/replays/
-*.mcpr
 config/classroomrun/runs/
 /logs/
 /crash-reports/

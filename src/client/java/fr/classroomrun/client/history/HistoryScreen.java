@@ -8,21 +8,15 @@ import fr.classroomrun.client.history.HistoryModel.Series;
 import fr.classroomrun.net.HistoryRequestPayload;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.gui.screens.TitleScreen;
-import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.network.chat.Component;
 
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.nio.file.Path;
 import java.util.List;
 
 /**
  * "Historique des morts": list of runs, then the deaths of a run with their context (cause, message, attacker, position,
- * dimension, who dealt the fatal hit, health of the team over the last 10 s) and a "Voir le replay" button.
- * Data comes from {@link HistoryClient}; everything here runs on the client main thread except the download.
+ * dimension, who dealt the fatal hit, health of the team over the last 10 s).
+ * Data comes from {@link HistoryClient}; everything here runs on the client main thread.
  */
 public final class HistoryScreen extends Screen {
 	private static final int[] PALETTE = {0xFF55FFFF, 0xFFFF5555, 0xFF55FF55, 0xFFFFFF55, 0xFFFF55FF, 0xFFFFAA00, 0xFFAAAAAA, 0xFF5555FF};
@@ -36,8 +30,6 @@ public final class HistoryScreen extends Screen {
 	private int shownRun = -1;
 	private RunDetail detail;
 	private int selectedDeath;
-	private volatile String replayStatus = "";
-	private volatile boolean downloading;
 
 	public HistoryScreen() {
 		super(Component.literal("Historique des morts"));
@@ -103,7 +95,6 @@ public final class HistoryScreen extends Screen {
 	private void openRun(int run) {
 		this.shownRun = run;
 		this.selectedDeath = 0;
-		this.replayStatus = "";
 		HistoryClient.request(run);
 	}
 
@@ -149,99 +140,16 @@ public final class HistoryScreen extends Screen {
 				int index = i;
 				Button b = addRenderableWidget(Button.builder(Component.literal("Mort " + (i + 1)), btn -> {
 					this.selectedDeath = index;
-					this.replayStatus = "";
 					rebuildWidgets();
 				}).bounds(x + i * (w + 4), 34, w, 20).build());
 				b.active = i != this.selectedDeath;
 			}
-		}
-		Death death = selected();
-		if (death != null && death.replay() != null && HistoryClient.replayModLoaded() && HistoryClient.httpPort() > 0) {
-			Button b = addRenderableWidget(Button.builder(Component.literal("Voir le replay"), btn -> confirmReplay(death))
-					.bounds(this.width / 2 - 75, this.height - 56, 150, 20).build());
-			b.active = !this.downloading;
 		}
 	}
 
 	private Death selected() {
 		return this.detail != null && this.selectedDeath < this.detail.deaths().size()
 				? this.detail.deaths().get(this.selectedDeath) : null;
-	}
-
-	// ---------------------------------------------------------------- replay
-
-	/**
-	 * Host of the HTTP endpoint: the remote address of the live connection first (what we really reached), the server
-	 * list entry as last resort. Behind a TCP proxy or tunnel that address is the proxy's, which usually does not
-	 * forward the HTTP port: the download then fails with an error shown to the player.
-	 */
-	private String serverHost() {
-		if (this.minecraft.getConnection() != null) {
-			SocketAddress a = this.minecraft.getConnection().getConnection().getRemoteAddress();
-			if (a instanceof InetSocketAddress inet) {
-				return inet.getHostString();
-			}
-		}
-		ServerData data = this.minecraft.getCurrentServer();
-		return data != null ? HistoryModel.host(data.ip) : "localhost"; // integrated server
-	}
-
-	private void confirmReplay(Death death) {
-		if (this.downloading || death.replay() == null) {
-			return;
-		}
-		this.minecraft.gui.setScreen(new ConfirmScreen(yes -> {
-			this.minecraft.gui.setScreen(this);
-			if (yes) {
-				startReplay(death);
-			}
-		}, Component.literal("Voir le replay"), Component.literal("Tu vas quitter le serveur pour voir le replay.")));
-	}
-
-	private void startReplay(Death death) {
-		this.downloading = true;
-		this.replayStatus = "Telechargement du replay...";
-		rebuildWidgets();
-		HistoryModel.ReplayRef ref = death.replay();
-		var url = ReplayDownloader.url(serverHost(), HistoryClient.httpPort(), ref.path());
-		Path target = this.minecraft.gameDirectory.toPath().resolve("replay_recordings").resolve("classroomrun")
-				.resolve(ReplayDownloader.fileName(ref.path()));
-		Thread t = new Thread(() -> {
-			Path file = null;
-			String error = null;
-			try {
-				file = ReplayDownloader.download(url, target);
-			} catch (Exception e) {
-				error = "Echec du telechargement : " + e.getMessage();
-			}
-			Path downloaded = file;
-			String failure = error;
-			this.minecraft.execute(() -> {
-				if (failure != null) {
-					this.replayStatus = failure;
-					finishDownload();
-					return;
-				}
-				try {
-					this.minecraft.disconnectWithProgressScreen(); // startReplay does not leave the server by itself
-					ReplayModBridge.open(downloaded, ref.offsetMs());
-					this.replayStatus = "";
-				} catch (Exception | LinkageError e) {
-					this.replayStatus = "Ouverture impossible : " + e.getMessage();
-					this.minecraft.gui.setScreen(new TitleScreen()); // already disconnected
-				}
-				finishDownload();
-			});
-		}, "classroomrun-replay-download");
-		t.setDaemon(true);
-		t.start();
-	}
-
-	private void finishDownload() {
-		this.downloading = false;
-		if (this.minecraft.gui.screen() == this) {
-			rebuildWidgets();
-		}
 	}
 
 	// ---------------------------------------------------------------- rendering
@@ -280,26 +188,11 @@ public final class HistoryScreen extends Screen {
 		int graphW = Math.min(360, this.width - 24);
 		int graphH = Math.max(40, Math.min(80, this.height - y - 100));
 		drawGraph(g, x, y + 14, graphW, graphH, d.health());
-		replayText(g, d);
 	}
 
 	private int line(GuiGraphicsExtractor g, int x, int y, String label, String value) {
 		g.text(this.font, label + " : " + value, x, y, WHITE);
 		return y + 11;
-	}
-
-	private void replayText(GuiGraphicsExtractor g, Death d) {
-		int cx = this.width / 2;
-		if (d.replay() == null) {
-			g.centeredText(this.font, "Pas d'enregistrement pour cette mort (ServerReplay absent ou run sans replay).", cx, this.height - 50, GRAY);
-		} else if (!HistoryClient.replayModLoaded()) {
-			g.centeredText(this.font, "ReplayMod est necessaire pour revoir cette mort (installez-le cote client).", cx, this.height - 50, 0xFFFFAA00);
-		} else if (HistoryClient.httpPort() <= 0) {
-			g.centeredText(this.font, "Endpoint HTTP du serveur desactive : telechargement impossible.", cx, this.height - 50, 0xFFFFAA00);
-		}
-		if (!this.replayStatus.isEmpty()) {
-			g.centeredText(this.font, this.replayStatus, cx, this.height - 70, 0xFFFFFF55);
-		}
 	}
 
 	/** Step graph of the health of each player over the 10 s before the death: x = time (-10 s .. 0), y = health points. */

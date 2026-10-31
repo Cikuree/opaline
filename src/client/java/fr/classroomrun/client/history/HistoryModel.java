@@ -28,11 +28,8 @@ public final class HistoryModel {
 	public record Series(String name, List<Sample> samples) {
 	}
 
-	public record ReplayRef(String path, long offsetMs) {
-	}
-
 	public record Death(String at, String name, String cause, String message, @Nullable String attacker, String fatalBy,
-			int x, int y, int z, String dimension, @Nullable ReplayRef replay, List<Series> health) {
+			int x, int y, int z, String dimension, List<Series> health) {
 	}
 
 	public record RunDetail(int run, String startedAt, List<Death> deaths) {
@@ -86,11 +83,6 @@ public final class HistoryModel {
 			y = (int) element(p.get(1));
 			z = (int) element(p.get(2));
 		}
-		ReplayRef replay = null;
-		if (o.has("replay") && o.get("replay").isJsonObject() && !string(o.getAsJsonObject("replay"), "path").isEmpty()) {
-			JsonObject r = o.getAsJsonObject("replay");
-			replay = new ReplayRef(string(r, "path"), (long) number(r, "offsetMs"));
-		}
 		List<Series> health = new ArrayList<>();
 		if (o.has("health") && o.get("health").isJsonArray()) {
 			for (JsonElement s : o.getAsJsonArray("health")) {
@@ -100,7 +92,7 @@ public final class HistoryModel {
 			}
 		}
 		return new Death(string(o, "at"), string(o, "name"), string(o, "cause"), string(o, "message"),
-				nullableString(o, "attacker"), string(o, "fatalBy"), x, y, z, string(o, "dimension"), replay, health);
+				nullableString(o, "attacker"), string(o, "fatalBy"), x, y, z, string(o, "dimension"), health);
 	}
 
 	private static List<Sample> samples(JsonObject series) {
@@ -159,16 +151,5 @@ public final class HistoryModel {
 		} catch (DateTimeParseException e) {
 			return iso;
 		}
-	}
-
-	/** Host part of a server address as typed by the player ({@code host}, {@code host:port}, {@code [::1]:port}). */
-	public static String host(String address) {
-		String a = address.trim();
-		if (a.startsWith("[")) {
-			int end = a.indexOf(']');
-			return end > 0 ? a.substring(1, end) : a;
-		}
-		int colon = a.indexOf(':');
-		return colon >= 0 && colon == a.lastIndexOf(':') ? a.substring(0, colon) : a;
 	}
 }

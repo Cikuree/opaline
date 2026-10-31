@@ -4,18 +4,3 @@ hash-format = "sha256"
 file = "mods/fabric-api.pw.toml"
 hash = "cb2e20a2792a2f96a7cc9603a50278fabe50877a886a7dd589e3dbec44589c4d"
 metafile = true
-
-[[files]]
-file = "mods/fabric-language-kotlin.pw.toml"
-hash = "e901f09e51be030e620ed9e543b84ca5f1bf988f5508ab7e5c95ab43779b6e52"
-metafile = true
-
-[[files]]
-file = "mods/replaymod.pw.toml"
-hash = "8c8108e94a567291f5fd59ace744e30aaa08b1ab873bd28fee47308307be8f04"
-metafile = true
-
-[[files]]
-file = "mods/server-replay.pw.toml"
-hash = "af012a363db483f12a54213f3b51189cfdb11ce2bca9bba825ae76bce3b1748b"
-metafile = true

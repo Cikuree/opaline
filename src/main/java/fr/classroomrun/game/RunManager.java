@@ -182,7 +182,6 @@ public final class RunManager {
 		try {
 			this.http = new StatsHttpServer(this.config.httpBind, port);
 			this.http.start();
-			this.journal.attachHttp(this.http, port);
 			ClassroomRun.LOGGER.info("Stats endpoint listening on {}:{}", this.config.httpBind, port);
 		} catch (IOException | RuntimeException e) {
 			this.http = null;
@@ -258,7 +257,7 @@ public final class RunManager {
 			fresh.delete();
 			throw e;
 		}
-		this.journal.closeRun(); // saves the replays before anything of the old run is deleted
+		this.journal.closeRun();
 		this.worlds = fresh;
 		this.classroom = placed;
 		this.resetCountdown = -1;

@@ -10,25 +10,21 @@ Le dépôt est privé : il faut y avoir accès.
 4. Lancer l'instance (Minecraft 26.3, Fabric Loader 0.20.1, Java 25 : Prism le propose automatiquement).
 5. À chaque nouvelle version : télécharger le nouveau zip et le réimporter (nouvelle instance ; supprimer l'ancienne).
 
-L'instance contient : Fabric API, ReplayMod et le mod `classroomrun`.
+L'instance contient : Fabric API et le mod `classroomrun`.
 
 ## Hôte du serveur
 
 Serveur Fabric 26.3, loader 0.20.1, Java 25. Dans `mods/` :
 
 - le jar `classroomrun-<version>.jar` (page Releases) ;
-- les mods `side = "server"` ou `"both"` de `pack/mods/*.pw.toml` : Fabric API, ServerReplay, Fabric Language Kotlin (dépendance requise de ServerReplay) ;
+- les mods `side = "server"` ou `"both"` de `pack/mods/*.pw.toml` : Fabric API ;
 - Fantasy est déjà inclus dans le jar `classroomrun` : ne pas l'ajouter.
-
-Ne pas installer ReplayMod côté serveur (client uniquement).
 
 ### Sécurité de l'endpoint HTTP
 
-`GET /stats` et `GET /replay?path=...` n'ont **aucune authentification**. Un fichier `.mcpr` contient tout ce que le joueur a reçu, **y compris le chat**. Seuls les chemins écrits dans un journal sont servis (liste blanche), mais quiconque peut joindre le port peut les télécharger.
+`GET /stats` n'a **aucune authentification** : quiconque peut joindre le port lit les stats de la run.
 
-- Dans `config/classroomrun/config.json`, mets `httpBind` sur l'interface LAN voulue (pas `0.0.0.0` si le serveur est exposé sur Internet), ou `httpPort` à `0` pour désactiver l'endpoint (l'historique reste visible, le bouton « Voir le replay » disparaît).
-- Derrière un proxy TCP ou un tunnel, le client joint l'hôte du proxy : le port HTTP doit y être redirigé aussi.
-- Les replays sont dans `recordings/classroomrun/run_<n>/<uuid>/` ; pense à les purger.
+- Dans `config/classroomrun/config.json`, mets `httpBind` sur l'interface LAN voulue (pas `0.0.0.0` si le serveur est exposé sur Internet), ou `httpPort` à `0` pour désactiver l'endpoint (l'historique des morts reste visible).
 
 ## Pour les mainteneurs
 

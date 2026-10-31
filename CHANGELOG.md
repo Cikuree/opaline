@@ -1,5 +1,11 @@
 # Changelog
 
+## Retrait du replay
+- Retrait complet de ServerReplay et de ReplayMod : plus d'enregistrement, de marqueurs, de route `GET /replay`, de téléchargement ni de bouton « Voir le replay ».
+- `HistoryPayload` perd `httpPort` et le JSON de détail perd le champ `replay` (`CONTRACT.md` mis à jour). Les anciens journaux qui contiennent `replay` restent lisibles : le champ est ignoré.
+- Le journal des morts et l'écran « Historique des morts » restent (runs, morts, contexte, graphe des vies).
+- Le pack packwiz perd `replaymod`, `server-replay` et `fabric-language-kotlin`. Le serveur HTTP ne sert plus que `GET /stats`.
+
 ## Étape 2 — journal, replay et launcher
 - **Contrat** : `HistoryRequestPayload` (client → serveur) et `HistoryPayload` (index des runs et détail des morts en JSON), documentés dans `CONTRACT.md`.
 - **Journal des morts** : un `journal.jsonl` par run dans `config/classroomrun/runs/<n>/`.
