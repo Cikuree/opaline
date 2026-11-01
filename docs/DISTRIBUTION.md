@@ -6,13 +6,12 @@ Tout le projet vit dans un seul dépôt public : https://github.com/Cikuree/opal
 
 | Asset | Contenu |
 |---|---|
-| `classroomrun-X.Y.Z.jar` | le mod |
 | `Opaline_X.Y.Z_x64-setup.exe` | installeur Opaline Windows |
 | `Opaline_X.Y.Z_amd64.AppImage` | Opaline Linux |
 | `launcher.json` | `{"version": "X.Y.Z", "windows": "<url installeur>", "linux": "<url AppImage>", "windowsSha256": "<hex>", "linuxSha256": "<hex>"}` |
 | `classroom-run-prism.zip` | l'instance Prism importable (mods et fichiers du pack inclus) |
 
-Fin de release, `release.yml` appelle `packs.yml`, qui rafraîchit l'URL du jar dans le pack `classroom-run`.
+Fin de release, `release.yml` appelle `packs.yml`. Le mod n'est pas dans la release `v*` : `packs.yml` le compile à chaque push qui touche le mod ou les packs et le publie sur la release `packs`.
 
 ## Release permanente `packs` (pré-release, tag fixe)
 

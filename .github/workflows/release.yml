@@ -89,10 +89,6 @@ jobs:
           distribution: temurin
           java-version: 25
           cache: gradle
-      - name: Verifier version == tag
-        run: |
-          v=$(sed -n 's/^version=//p' gradle.properties | tr -d '\r')
-          [ "${GITHUB_REF_NAME#v}" = "$v" ] || { echo "tag $GITHUB_REF_NAME != version $v"; exit 1; }
       - run: ./gradlew build
       - uses: actions/download-artifact@v4
         with:
@@ -100,12 +96,11 @@ jobs:
           merge-multiple: true
       - name: Instance Prism
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          jar=$(ls build/libs/classroomrun-*.jar | grep -v -- '-sources' | head -n1)
-          [ "$(basename "$jar")" = "classroomrun-$VERSION.jar" ] || { echo "jar inattendu: $jar"; exit 1; }
-          echo "JAR=$jar" >> "$GITHUB_ENV"
-          # le zip Prism embarque le jar de ce tag ; packs.yml republie ensuite le pack avec l'URL de la release
-          python3 scripts/pack-tools.py add-jar --pack packs/classroom-run --jar "$jar" --version "$VERSION" --repo "$GITHUB_REPOSITORY"
+          # le mod a sa propre version (gradle.properties), publiée sur la release packs par packs.yml
+          v=$(sed -n 's/^version=//p' gradle.properties | tr -d '\r')
+          jar="build/libs/classroomrun-$v.jar"
+          [ -f "$jar" ] || { echo "jar manquant: $jar"; ls build/libs; exit 1; }
+          python3 scripts/pack-tools.py add-jar --pack packs/classroom-run --jar "$jar" --version "$v" --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/packs/"
           python3 scripts/build-prism-instance.py --pack packs/classroom-run --jar "$jar" --out dist/classroom-run-prism.zip
       - name: Release
         env:
@@ -119,7 +114,7 @@ jobs:
           WIN_SHA="$(sha256sum "dist/installers/$WIN" | cut -d' ' -f1)"
           LIN_SHA="$(sha256sum "dist/installers/$LIN" | cut -d' ' -f1)"
           printf '{"version":"%s","windows":"%s/%s","linux":"%s/%s","windowsSha256":"%s","linuxSha256":"%s"}\n' "$VERSION" "$BASE" "$WIN" "$BASE" "$LIN" "$WIN_SHA" "$LIN_SHA" > dist/launcher.json
-          gh release create "$GITHUB_REF_NAME" "$JAR" dist/installers/* \
+          gh release create "$GITHUB_REF_NAME" dist/installers/* \
             dist/classroom-run-prism.zip dist/launcher.json --title "$GITHUB_REF_NAME" --generate-notes
   packs:
     needs: release

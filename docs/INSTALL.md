@@ -22,7 +22,7 @@ L'instance contient : Fabric API, le mod `classroomrun`, et côté client Sodium
 
 Serveur Fabric 26.3, loader 0.20.1, Java 25. Dans `mods/` :
 
-- le jar `classroomrun-<version>.jar` (page Releases) ;
+- le jar `classroomrun-<version>.jar` de la release `packs` (https://github.com/Cikuree/opaline/releases/tag/packs) ;
 - les mods `side = "server"` ou `"both"` de `packs/classroom-run/mods/*.pw.toml` : Fabric API ;
 - Fantasy est déjà inclus dans le jar `classroomrun` : ne pas l'ajouter.
 
@@ -48,4 +48,4 @@ Dans Microsoft Entra (Inscriptions d'applications), compte « Comptes Microsoft 
 
 1. Mettre le même numéro `X.Y.Z` dans `version` de `gradle.properties`, `opaline/src-tauri/tauri.conf.json` et `opaline/src-tauri/Cargo.toml` (et `launcher/Cargo.toml`), puis commit. La CI ignore un fichier absent mais refuse un fichier dont la version diffère du tag.
 2. Créer le tag et le pousser : `git tag vX.Y.Z` puis `git push origin vX.Y.Z`.
-3. La CI (`release.yml`) construit Opaline (NSIS Windows, AppImage Linux), le mod, génère `packs/classroom-run/mods/classroomrun.pw.toml` (sha512 du jar, URL vers l'asset de release), puis crée la release : jar, installeurs Opaline, `pack-<id>.zip` par pack (dossier `pack/` à la racine), `packs.json`, `launcher.json`, `classroom-run-prism.zip`. Rien n'est commité sur `main` par la CI. La variable de dépôt `MS_CLIENT_ID` est lue au build.
+3. La CI (`release.yml`) construit Opaline (NSIS Windows, AppImage Linux) et crée la release : installeurs Opaline, `launcher.json`, `classroom-run-prism.zip`. Le mod a sa propre version (`gradle.properties`) : `packs.yml` le compile à chaque push qui touche le mod ou les packs, le publie sur la release `packs` et régénère `classroomrun.pw.toml` (sha512 du jar, URL de la release `packs`), avec `pack-<id>.zip` et `packs.json`. Rien n'est commité sur `main` par la CI. La variable de dépôt `MS_CLIENT_ID` est lue au build.

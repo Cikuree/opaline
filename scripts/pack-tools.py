@@ -3,8 +3,8 @@
 
   pack-tools.py index [--pack packs/classroom-run]
       Regenere index.toml (tous les *.pw.toml de mods/ et shaderpacks/) puis le hash d'index de pack.toml.
-  pack-tools.py add-jar --jar J --version X.Y.Z --repo OWNER/REPO [--pack packs/classroom-run]
-      Ecrit mods/classroomrun.pw.toml (side both, url = asset de release du depot --repo, sha512 du jar), puis reindexe.
+  pack-tools.py add-jar --jar J --version X.Y.Z --base-url https://github.com/OWNER/REPO/releases/download/packs/ [--pack packs/classroom-run]
+      Ecrit mods/classroomrun.pw.toml (side both, url = --base-url + classroomrun-X.Y.Z.jar, sha512 du jar), puis reindexe.
   pack-tools.py catalog --base-url https://github.com/OWNER/REPO/releases/download/packs/ [--out packs.json]
       Genere packs.json (contrat Opaline §3) depuis tous les packs/<id>/ ; valide chaque opaline.toml.
 Fichiers bruts (configs, options.txt, mods hors Modrinth...) : tout fichier de packs/<id>/ hors pack.toml, index.toml,
@@ -169,15 +169,15 @@ def catalog(root, base, out):
     print("catalogue:", out, [p["id"] for p in packs])
 
 
-def add_jar(pack, jar, version, repo):
+def add_jar(pack, jar, version, base_url):
     if not re.fullmatch(r"\d+\.\d+\.\d+", version):
         sys.exit(f"version invalide: {version}")
-    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
-        sys.exit(f"depot invalide: {repo}")
+    if not re.fullmatch(r"https://github\.com/[\w.-]+/[\w.-]+/releases/download/[\w.-]+/", base_url):
+        sys.exit(f"base d'URL invalide: {base_url}")
     name = f"classroomrun-{version}.jar"
     h = hashlib.sha512(jar.read_bytes()).hexdigest()
     body = (f'name = "Classroom Run"\nfilename = "{name}"\nside = "both"\n\n[download]\n'
-            f'url = "https://github.com/{repo}/releases/download/v{version}/{name}"\nhash-format = "sha512"\nhash = "{h}"\n')
+            f'url = "{base_url}{name}"\nhash-format = "sha512"\nhash = "{h}"\n')
     (pack / "mods" / "classroomrun.pw.toml").write_bytes(body.encode())
 
 
@@ -189,7 +189,6 @@ if __name__ == "__main__":
     ap.add_argument("--out", type=Path, default=Path("packs.json"))
     ap.add_argument("--jar", type=Path)
     ap.add_argument("--version")
-    ap.add_argument("--repo", help="OWNER/REPO des releases (ex. $GITHUB_REPOSITORY)")
     a = ap.parse_args()
     if a.cmd == "catalog":
         if not a.base_url:
@@ -201,7 +200,7 @@ if __name__ == "__main__":
         a.out.write_bytes(make_zip(a.pack))
         sys.exit(0)
     if a.cmd == "add-jar":
-        if not (a.jar and a.jar.is_file() and a.version and a.repo):
-            sys.exit("--jar (existant), --version et --repo requis")
-        add_jar(a.pack, a.jar, a.version, a.repo)
+        if not (a.jar and a.jar.is_file() and a.version and a.base_url):
+            sys.exit("--jar (existant), --version et --base-url requis")
+        add_jar(a.pack, a.jar, a.version, a.base_url)
     reindex(a.pack)

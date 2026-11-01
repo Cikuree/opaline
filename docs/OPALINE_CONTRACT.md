@@ -35,7 +35,6 @@ statsPort = 25580                  # 0 si pas d'endpoint HTTP (packs non Classro
 |---|---|
 | `packs.json` | catalogue (format §3) |
 | `pack-<id>.zip` | le dossier `packs/<id>/` publié (avec, pour classroom-run, `mods/classroomrun.pw.toml` généré) ; à la racine du zip, un dossier `pack/` |
-| `classroomrun-X.Y.Z.jar` | le mod |
 | installeurs Opaline | Windows : `Opaline_X.Y.Z_x64-setup.exe` ; Linux : `Opaline_X.Y.Z_amd64.AppImage` |
 | `launcher.json` | `{"version": "X.Y.Z", "windows": "<url installeur>", "linux": "<url AppImage>", "windowsSha256": "<hex>", "linuxSha256": "<hex>"}` : les sha256 sont ceux des fichiers de la release ; sans hash (anciennes releases), pas de mise à jour automatique |
 | `classroom-run-prism.zip` | instance Prism (inchangé) |
@@ -46,9 +45,9 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 
 - Les packs sont publiés indépendamment des versions d'Opaline : à chaque push sur `main` qui touche `packs/**`, le workflow `packs.yml` reconstruit `packs.json` et chaque `pack-<id>.zip`, puis les remplace dans la release au tag fixe **`packs`** (pré-release, assets écrasés).
 - Opaline lit le catalogue à l'adresse fixe `https://github.com/Cikuree/opaline/releases/download/packs/packs.json` ; dans `packs.json`, `pack` pointe vers `.../releases/download/packs/pack-<id>.zip`.
-- Le pack `classroom-run` référence le jar du mod de la dernière release `v*` (URL + sha512), régénéré par `packs.yml`.
+- Le mod est compilé par `packs.yml` (version de `gradle.properties`, jar reproductible) et publié sur la release `packs` (`classroomrun-X.Y.Z.jar`) ; le pack `classroom-run` le référence (URL + sha512). Un changement du mod ne demande donc pas de nouvelle version d'Opaline.
 - Fichiers d'un pack qui ne sont pas sur Modrinth (configs, `options.txt`, mods ou packs de ressources introuvables) : committés dans `packs/<id>/` et indexés par hash comme fichiers non-métafichier.
-- Une release `v*` ne publie plus `packs.json` ni les `pack-<id>.zip` (elle déclenche seulement `packs.yml` pour rafraîchir l'URL du jar).
+- Une release `v*` ne publie plus `packs.json` ni les `pack-<id>.zip` (elle déclenche seulement `packs.yml`).
 
 ## 3. `packs.json`
 
