@@ -1,5 +1,10 @@
 # Changelog
 
+## Opaline 0.4.0 : choix du lancement, amis par pseudo
+- **Réglage « Lancer le jeu avec »** : Opaline ou Launcher Minecraft, au choix une fois connecté ; sans connexion, le jeu passe toujours par le Launcher Minecraft.
+- **Amis** : ajout et retrait par pseudo Minecraft (tête affichée), fusionnés avec les joueurs vus sur le serveur du pack ; « Ajouter » sur un joueur vu.
+- **Interface** : croix de la recherche couleur corail, « Aucun ami en ligne » centré, items flottants de l'accueil sans saut au rafraîchissement.
+
 ## Opaline 0.3.0 : jouer via le Launcher Minecraft
 - **Second mode de lancement** : sans connexion Opaline, JOUER prépare le pack, crée le profil « Opaline · <pack> » dans le Launcher Minecraft officiel (présélectionné) et l'ouvre ; le compte et le skin y sont gérés. Version dédiée `opaline-<pack>` dans `.minecraft`, fichiers Forge/NeoForge copiés, autres profils conservés (sauvegarde `launcher_profiles.json.opaline.bak`), refus si le Launcher est déjà ouvert.
 - **Connexion Microsoft facultative** : en attendant la validation de l'app par Mojang, message explicite et bascule en mode Launcher Minecraft ; dès la validation, la connexion redonne le lancement direct, sans nouvelle version.
