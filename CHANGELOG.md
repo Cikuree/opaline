@@ -1,5 +1,8 @@
 # Changelog
 
+## Opaline 0.6.3 : serveurs Tailscale partagés
+- Un serveur Tailscale partagé depuis le réseau d'un ami (« Shared in ») est trouvé par son nom MagicDNS complet : statut du serveur et liste Multijoueur corrects.
+
 ## Opaline 0.6.2 : finitions visuelles
 - **Mes resource packs et shaders** : glisser-déposer de .zip dans « Fichiers & mods », type reconnu automatiquement, conservés aux mises à jour.
 - **Apparence** : cartes, barre de navigation et colonne d'amis plus sombres (#361617) et légèrement translucides sur le fond animé, sans contour ; fond animé plus doux et plus rose, halo de la souris plus clair ; barre de défilement fine et discrète ; cases à cocher aux couleurs d'Opaline ; texte discret plus lisible sur le fond.
