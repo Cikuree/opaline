@@ -52,19 +52,24 @@ export function renderFriends() {
   hydrateHeads($('#col'));
 }
 
+let refreshing = false; // pas de nouvel appel tant que le précédent (découverte comprise) n'est pas fini
 export async function refreshFriends() {
+  if (refreshing) return;
+  refreshing = true;
   try {
     const r = await api.friends();
     state.friends = r.friends || []; state.p2p = r.p2p || { state: 'ok', listenFailed: false };
-  } catch { state.friends = []; }
+  } catch { state.friends = []; state.p2p = { state: 'ok', listenFailed: false }; } finally { refreshing = false; }
   renderFriends();
 }
+/** Après un ajout ou un retrait : attend la fin d'un relevé en cours puis en relance un, pour ne pas afficher une liste périmée. */
+const refreshNow = async () => { while (refreshing) await new Promise((r) => setTimeout(r, 100)); await refreshFriends(); };
 
 /** Attend la fin d'installation d'un pack (événement `install://done`). */
 const waitInstall = (id) => {
-  let fin = null, off = () => {};
-  const p = new Promise((res) => { api.listen('install://done', (e) => { if (e.packId === id) { fin = e; res(e); } }).then((u) => (off = u)); });
-  return { p, fin: () => fin, off: () => off() };
+  let fin = null, lp; // `off` attend la résolution de `listen` : pas de listener resté abonné
+  const p = new Promise((res) => { lp = api.listen('install://done', (e) => { if (e.packId === id) { fin = e; res(e); } }); });
+  return { p, fin: () => fin, off: () => lp.then((u) => u()) };
 };
 
 let joining = false;
@@ -90,6 +95,8 @@ export async function joinPack(id) {
 let invite = null, inviteTimer;
 const hideInvite = () => { invite = null; $('#inviteToast').classList.remove('on'); };
 function showInvite(i) {
+  if (!pack(i?.packId)) return; // pack absent du catalogue : ignorée
+  if (invite) return; // déjà une invitation affichée : pas de remplacement silencieux (le clic ne doit pas viser un autre pack)
   invite = i; $('#inviteTx').textContent = `${i.fromName} t’invite sur ${packName(i.packId)}`;
   $('#inviteToast').classList.add('on'); clearTimeout(inviteTimer); inviteTimer = setTimeout(hideInvite, 20000);
 }
@@ -104,7 +111,7 @@ async function onAction(e) {
       case 'add': await api.friendAdd(f.name); toast(f.name + ' ajouté'); break;
       case 'rm': await api.friendRemove(f.uuid); break;
     }
-    await refreshFriends();
+    await refreshNow();
   } catch (err) { toast(api.errMsg(err)); }
 }
 
@@ -119,7 +126,7 @@ export const initFriends = () => {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const n = $('#addName').value.trim(); if (!n) return;
-    try { await api.friendAdd(n); $('#addName').value = ''; form.hidden = true; $('#friendAdd').setAttribute('aria-expanded', 'false'); toast(n + ' ajouté'); await refreshFriends(); } catch (err) { toast(api.errMsg(err)); }
+    try { await api.friendAdd(n); $('#addName').value = ''; form.hidden = true; $('#friendAdd').setAttribute('aria-expanded', 'false'); toast(n + ' ajouté'); await refreshNow(); } catch (err) { toast(api.errMsg(err)); }
   });
   $('#col').addEventListener('click', onAction);
   $('#inviteJoin').addEventListener('click', () => { const i = invite; hideInvite(); if (i) joinPack(i.packId); });

@@ -4,8 +4,8 @@ use crate::friends::{dashed, is_mc_name};
 use crate::tailscale::is_tailnet_ip;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::{Read, Write};
-use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::io::{ErrorKind, Read, Write};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -87,7 +87,8 @@ impl Gate {
 pub trait Handler: Send + Sync {
     /// `None` : pas d'identité (présence désactivée).
     fn presence(&self) -> Option<Presence>;
-    fn is_friend(&self, uuid: &str) -> bool;
+    /// Invitation acceptable : `uuid` est dans la liste d'amis ET `from` (IP source de la connexion) est l'adresse connue de cet ami.
+    fn may_invite(&self, uuid: &str, from: IpAddr) -> bool;
     fn on_invite(&self, invite: Invite);
 }
 
@@ -109,7 +110,13 @@ fn parse_head(head: &str) -> Option<Request> {
     for l in lines {
         let (k, v) = l.split_once(':')?;
         match k.trim().to_ascii_lowercase().as_str() {
-            "content-length" => content_length = Some(v.trim().parse().ok()?),
+            "content-length" => {
+                let n = v.trim().parse().ok()?;
+                if content_length.is_some_and(|c| c != n) {
+                    return None; // deux longueurs différentes : requête ambiguë
+                }
+                content_length = Some(n);
+            }
             "transfer-encoding" => chunked = true,
             _ => {}
         }
@@ -122,7 +129,7 @@ fn err(code: u16) -> (u16, String) {
 }
 
 /// Route une requête déjà lue. Méthodes et chemins inconnus : 404.
-fn route(req: &Request, body: &[u8], h: &dyn Handler, gate: &Mutex<Gate>) -> (u16, String) {
+fn route(req: &Request, body: &[u8], from: IpAddr, h: &dyn Handler, gate: &Mutex<Gate>) -> (u16, String) {
     match (req.method.as_str(), req.path.as_str()) {
         ("GET", "/opaline/v1/presence") => match h.presence() {
             Some(p) => (200, serde_json::to_string(&p).unwrap_or_default()),
@@ -130,7 +137,7 @@ fn route(req: &Request, body: &[u8], h: &dyn Handler, gate: &Mutex<Gate>) -> (u1
         },
         ("POST", "/opaline/v1/invite") => {
             let Some(inv) = parse_invite(body) else { return err(400) };
-            if !h.is_friend(&inv.from_uuid) {
+            if !h.may_invite(&inv.from_uuid, from) {
                 return err(403);
             }
             if !gate.lock().unwrap().allow(&inv.from_uuid, Instant::now()) {
@@ -208,9 +215,10 @@ fn reason(code: u16) -> &'static str {
 }
 
 fn serve(mut s: TcpStream, h: &dyn Handler, gate: &Mutex<Gate>) {
+    let Ok(peer) = s.peer_addr() else { return };
     let _ = s.set_write_timeout(Some(READ_TIMEOUT));
     let (code, body) = match read_request(&mut s) {
-        Ok((req, body)) => route(&req, &body, h, gate),
+        Ok((req, body)) => route(&req, &body, peer.ip(), h, gate),
         Err(c) => err(c),
     };
     let _ = write!(s, "HTTP/1.1 {code} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", reason(code), body.len());
@@ -219,6 +227,7 @@ fn serve(mut s: TcpStream, h: &dyn Handler, gate: &Mutex<Gate>) {
 /// Serveur d'écoute ; s'arrête (et libère le port) à la destruction.
 pub struct Server {
     stop: Arc<AtomicBool>,
+    dead: Arc<AtomicBool>,
     addr: SocketAddr,
     thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -238,7 +247,8 @@ impl Server {
         listener.set_nonblocking(true)?;
         let addr = listener.local_addr()?;
         let (stop, active, gate) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicUsize::new(0)), Arc::new(Mutex::new(Gate::default())));
-        let stop2 = stop.clone();
+        let (stop2, dead) = (stop.clone(), Arc::new(AtomicBool::new(false)));
+        let dead2 = dead.clone();
         let thread = std::thread::spawn(move || {
             while !stop2.load(Ordering::SeqCst) {
                 match listener.accept() {
@@ -255,11 +265,22 @@ impl Server {
                             active.fetch_sub(1, Ordering::SeqCst);
                         });
                     }
-                    Err(_) => std::thread::sleep(Duration::from_millis(25)),
+                    Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::Interrupted | ErrorKind::ConnectionAborted | ErrorKind::ConnectionReset) => {
+                        std::thread::sleep(Duration::from_millis(25));
+                    }
+                    Err(_) => {
+                        dead2.store(true, Ordering::SeqCst); // écoute tombée : `Hosting::sync` relie le port
+                        break;
+                    }
                 }
             }
         });
-        Ok(Server { stop, addr, thread: Some(thread) })
+        Ok(Server { stop, dead, addr, thread: Some(thread) })
+    }
+
+    /// Faux si la boucle d'écoute s'est arrêtée sur une erreur.
+    pub fn is_alive(&self) -> bool {
+        !self.dead.load(Ordering::SeqCst)
     }
 
     pub fn local_addr(&self) -> SocketAddr {
@@ -295,7 +316,7 @@ impl Hosting {
             self.cur = None;
             return HostState::Off;
         };
-        if self.cur.as_ref().is_some_and(|(i, _)| *i == ip) {
+        if self.cur.as_ref().is_some_and(|(i, s)| *i == ip && s.is_alive()) {
             return HostState::Listening;
         }
         self.cur = None; // libère le port avant de relier
@@ -309,14 +330,25 @@ impl Hosting {
     }
 }
 
-/// Un échange HTTP/1.1 minimal (réponse ≤ 8 Ko) ; `None` si injoignable, trop lent ou illisible.
+/// Un échange HTTP/1.1 minimal (réponse ≤ 8 Ko) ; `None` si injoignable, illisible ou plus long que `timeout` au total.
 fn exchange(addr: SocketAddr, req: &str, timeout: Duration) -> Option<(u16, Vec<u8>)> {
+    let deadline = Instant::now() + timeout;
     let mut s = TcpStream::connect_timeout(&addr, timeout).ok()?;
-    s.set_read_timeout(Some(timeout)).ok()?;
     s.set_write_timeout(Some(timeout)).ok()?;
     s.write_all(req.as_bytes()).ok()?;
-    let mut buf = Vec::new();
-    (&mut s).take(8192).read_to_end(&mut buf).ok()?;
+    let (mut buf, mut tmp) = (Vec::new(), [0u8; 1024]);
+    loop {
+        // Échéance totale : un pair qui goutte-à-goutte ne retient pas la découverte.
+        let left = deadline.checked_duration_since(Instant::now()).filter(|d| !d.is_zero())?;
+        s.set_read_timeout(Some(left)).ok()?;
+        match s.read(&mut tmp).ok()? {
+            0 => break,
+            n => buf.extend_from_slice(&tmp[..n]),
+        }
+        if buf.len() > 8192 {
+            return None;
+        }
+    }
     let end = buf.windows(4).position(|w| w == b"\r\n\r\n")?;
     let code = std::str::from_utf8(&buf[..end]).ok()?.split(' ').nth(1)?.parse().ok()?;
     Some((code, buf[end + 4..].to_vec()))
@@ -402,7 +434,8 @@ mod tests {
         let r = parse_head("POST /x HTTP/1.1\r\nHost: a\r\ncontent-LENGTH: 12").unwrap();
         assert_eq!((r.method.as_str(), r.path.as_str(), r.content_length, r.chunked), ("POST", "/x", Some(12), false));
         assert!(parse_head("POST /x HTTP/1.1\r\nTransfer-Encoding: chunked").unwrap().chunked);
-        for bad in ["GET /x", "GET /x HTTP/2", "GET /x HTTP/1.1\r\nsans-deux-points", "POST /x HTTP/1.1\r\nContent-Length: -1", "GET /a b HTTP/1.1"] {
+        assert_eq!(parse_head("POST /x HTTP/1.1\r\nContent-Length: 5\r\nContent-Length: 5").unwrap().content_length, Some(5));
+        for bad in ["POST /x HTTP/1.1\r\nContent-Length: 5\r\nContent-Length: 6", "GET /x", "GET /x HTTP/2", "GET /x HTTP/1.1\r\nsans-deux-points", "POST /x HTTP/1.1\r\nContent-Length: -1", "GET /a b HTTP/1.1"] {
             assert!(parse_head(bad).is_none(), "{bad}");
         }
     }

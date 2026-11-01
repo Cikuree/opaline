@@ -82,16 +82,22 @@ pub struct TailscaleInfo {
 
 /// Une seule exécution de `tailscale status --json` (délai 3 s) : état et suffixe MagicDNS.
 pub fn status() -> TailscaleInfo {
+    snapshot().0
+}
+
+/// Une seule exécution de `tailscale status --json` : état, suffixe MagicDNS et IPv4 des pairs en ligne (vide si non connecté).
+pub fn snapshot() -> (TailscaleInfo, Vec<Ipv4Addr>) {
     let Some(cli) = cli_path() else {
-        return TailscaleInfo { state: TailscaleState::NotInstalled, magic_dns_suffix: None };
+        return (TailscaleInfo { state: TailscaleState::NotInstalled, magic_dns_suffix: None }, Vec::new());
     };
     // CLI présente mais en échec (service arrêté, délai dépassé) : non connecté.
     let Some(json) = run(Command::new(cli).args(["status", "--json"]), Duration::from_secs(3)) else {
-        return TailscaleInfo { state: TailscaleState::Disconnected, magic_dns_suffix: None };
+        return (TailscaleInfo { state: TailscaleState::Disconnected, magic_dns_suffix: None }, Vec::new());
     };
     let state = parse_backend_state(&json).unwrap_or(TailscaleState::Disconnected);
-    let magic_dns_suffix = (state == TailscaleState::Connected).then(|| parse_magic_dns_suffix(&json)).flatten();
-    TailscaleInfo { state, magic_dns_suffix }
+    let connected = state == TailscaleState::Connected;
+    let magic_dns_suffix = connected.then(|| parse_magic_dns_suffix(&json)).flatten();
+    (TailscaleInfo { state, magic_dns_suffix }, if connected { parse_online_peers(&json) } else { Vec::new() })
 }
 
 /// Adresse du tailnet : 100.64.0.0/10 (CGNAT, plage réservée à Tailscale).
@@ -120,11 +126,6 @@ pub fn parse_own_ipv4(out: &str) -> Option<Ipv4Addr> {
 /// IPv4 Tailscale de ce PC (`tailscale ip -4`).
 pub fn own_ipv4() -> Option<Ipv4Addr> {
     parse_own_ipv4(&run(Command::new(cli_path()?).args(["ip", "-4"]), Duration::from_secs(3))?)
-}
-
-/// IPv4 des pairs en ligne (une exécution de `tailscale status --json`, délai 3 s).
-pub fn online_peers() -> Vec<Ipv4Addr> {
-    cli_path().and_then(|c| run(Command::new(c).args(["status", "--json"]), Duration::from_secs(3))).map(|j| parse_online_peers(&j)).unwrap_or_default()
 }
 
 #[cfg(test)]

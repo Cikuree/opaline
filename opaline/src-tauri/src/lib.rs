@@ -10,7 +10,7 @@ use opaline_core::{auth, auth_browser, friends, head, identity, official, p2p, s
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -85,13 +85,15 @@ struct P2pHandler {
 impl p2p::Handler for P2pHandler {
     fn presence(&self) -> Option<p2p::Presence> {
         let (name, uuid) = self.s.my_identity()?;
+        // shortcut: en mode Launcher officiel le processus n'est pas suivi, `inGame` reste faux ; à lever si on suit le processus du Launcher.
         let pack_id = self.s.0.activity.lock().unwrap().running.iter().min().cloned();
         let pack_version = pack_id.as_ref().and_then(|id| self.s.0.root.for_pack(id).ok()).and_then(|d| opaline_core::install::installed_hash(&d));
         Some(p2p::Presence { app: "opaline".into(), v: 1, uuid: friends::dashed(&uuid)?, name, in_game: pack_id.is_some(), pack_id, pack_version, app_version: self.app.package_info().version.to_string() })
     }
 
-    fn is_friend(&self, uuid: &str) -> bool {
-        friends::list_load(&self.s.0.root).contains_key(uuid)
+    fn may_invite(&self, uuid: &str, from: IpAddr) -> bool {
+        // L'IP source doit être celle vue à la dernière découverte pour cet UUID (sinon n'importe quel pair du tailnet usurperait un ami).
+        friends::list_load(&self.s.0.root).contains_key(uuid) && self.s.0.peers.lock().unwrap().get(uuid).is_some_and(|ip| IpAddr::V4(*ip) == from)
     }
 
     fn on_invite(&self, i: p2p::Invite) {
@@ -619,9 +621,10 @@ async fn friends(state: State<'_, S>) -> CmdResult<Value> {
     state
         .blocking(move |r| {
             let seen = service::friends_list(r).unwrap_or_else(|_| friends::record(r, &[], friends::now_secs()));
-            let (me, connected) = (s.my_identity(), tailscale::status().state == tailscale::TailscaleState::Connected);
-            let pstate = if me.is_none() { "noIdentity" } else if !connected { "noTailscale" } else { "ok" };
-            let found = if pstate == "ok" { p2p::discover(&tailscale::online_peers(), p2p::PORT, p2p::DISCOVERY_TIMEOUT) } else { Vec::new() };
+            let me = s.my_identity();
+            let (info, peers) = tailscale::snapshot(); // un seul appel à la CLI
+            let pstate = if me.is_none() { "noIdentity" } else if info.state != tailscale::TailscaleState::Connected { "noTailscale" } else { "ok" };
+            let found = if pstate == "ok" { p2p::discover(&peers, p2p::PORT, p2p::DISCOVERY_TIMEOUT) } else { Vec::new() };
             *s.0.peers.lock().unwrap() = found.iter().map(|(ip, p)| (p.uuid.clone(), *ip)).collect();
             let presences: Vec<p2p::Presence> = found.into_iter().map(|(_, p)| p).collect();
             let list = friends::merge(&friends::list_load(r), seen, &presences, me.as_ref().map(|m| m.1.as_str()));
@@ -716,14 +719,14 @@ pub fn run_with(svc: Services) {
                     let _ = handle.emit("textures://ready", json!({ "dir": dir.to_string_lossy() }));
                 }
             });
-            // Écoute P2P : suit l'état de Tailscale (réessai rapide tant qu'elle n'est pas active).
+            // Écoute P2P : suit l'état de Tailscale (5 s tant qu'elle n'est pas active, sinon 30 s).
             let handler: Arc<dyn p2p::Handler> = Arc::new(P2pHandler { s: state.clone(), app: app.handle().clone() });
             let s = state.clone();
             std::thread::spawn(move || {
                 loop {
                     s.sync_host(&handler);
                     let listening = *s.0.host_state.lock().unwrap() == p2p::HostState::Listening;
-                    std::thread::sleep(Duration::from_secs(if listening { 15 } else { 5 }));
+                    std::thread::sleep(Duration::from_secs(if listening { 30 } else { 5 }));
                 }
             });
             Ok(())

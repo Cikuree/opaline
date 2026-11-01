@@ -1,7 +1,8 @@
 //! Serveur de présence P2P : requêtes réelles sur 127.0.0.1 (le test seul peut choisir l'adresse ; l'application n'écoute que sur l'IP Tailscale).
 use opaline_core::p2p::{self, Handler, Invite, Presence, Server};
 use std::io::{Read, Write};
-use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -11,14 +12,16 @@ const STRANGER: &str = "00000000-0000-0000-0000-000000000002";
 #[derive(Default)]
 struct Fake {
     invites: Mutex<Vec<Invite>>,
+    /// Simule un ami dont l'IP connue diffère de l'IP source.
+    wrong_source: AtomicBool,
 }
 
 impl Handler for Fake {
     fn presence(&self) -> Option<Presence> {
         Some(Presence { app: "opaline".into(), v: 1, uuid: "00000000-0000-0000-0000-0000000000aa".into(), name: "Moi".into(), in_game: true, pack_id: Some("survie".into()), pack_version: Some("a1b2".into()), app_version: "0.3.0".into() })
     }
-    fn is_friend(&self, uuid: &str) -> bool {
-        uuid == FRIEND
+    fn may_invite(&self, uuid: &str, from: IpAddr) -> bool {
+        uuid == FRIEND && from.is_loopback() && !self.wrong_source.load(Ordering::SeqCst)
     }
     fn on_invite(&self, invite: Invite) {
         self.invites.lock().unwrap().push(invite);
@@ -136,4 +139,39 @@ fn only_tailnet_addresses_can_be_hosted() {
     }
     let mut host = p2p::Hosting::default();
     assert_eq!(host.sync(None, &h), p2p::HostState::Off);
+}
+
+#[test]
+fn invite_from_another_source_address_is_refused() {
+    let (srv, h) = start();
+    h.wrong_source.store(true, Ordering::SeqCst);
+    assert!(post(srv.local_addr(), &invite(FRIEND)).starts_with("HTTP/1.1 403"));
+    assert!(h.invites.lock().unwrap().is_empty());
+}
+
+#[test]
+fn conflicting_content_lengths_are_refused() {
+    let (srv, _) = start();
+    let r = raw(srv.local_addr(), b"POST /opaline/v1/invite HTTP/1.1\r\nContent-Length: 2\r\nContent-Length: 3\r\n\r\n{}");
+    assert!(r.starts_with("HTTP/1.1 400"), "{r}");
+    assert!(srv.is_alive());
+}
+
+#[test]
+fn trickling_peer_is_dropped_at_the_total_deadline() {
+    let slow = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = slow.local_addr().unwrap();
+    std::thread::spawn(move || {
+        if let Ok((mut s, _)) = slow.accept() {
+            for _ in 0..20 {
+                if s.write_all(b"x").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(300));
+            }
+        }
+    });
+    let t = std::time::Instant::now();
+    assert!(p2p::query_presence(addr, Duration::from_millis(800)).is_none());
+    assert!(t.elapsed() < Duration::from_millis(1500), "{:?}", t.elapsed());
 }
