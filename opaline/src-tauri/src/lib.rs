@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -604,6 +604,29 @@ async fn open_folder(app: AppHandle, state: State<'_, S>, id: String, kind: Stri
     app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|_| "Impossible d'ouvrir le dossier".to_string())
 }
 
+/// Ouvre la carte du serveur (BlueMap...) dans une fenêtre séparée vers l'URL externe du catalogue. Cette fenêtre n'a aucune capability
+/// (`capabilities/default.json` ne vise que `main`) et le gestionnaire de commandes refuse tout appel venant d'une autre fenêtre.
+#[tauri::command]
+async fn open_map(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<()> {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let (name, url) = state
+        .blocking(move |r| {
+            let e = service::entry(r, &id)?;
+            let url = e.server.and_then(|s| s.map).filter(|m| opaline_core::catalog::valid_map(m)).context("ce serveur n'a pas de carte")?;
+            Ok((e.name, url))
+        })
+        .await?;
+    let url: tauri::Url = url.parse().map_err(|_| "Adresse de carte invalide".to_string())?;
+    // Une seule carte à la fois ; libellé neuf à chaque ouverture (la fermeture d'une fenêtre est asynchrone).
+    for (label, w) in app.webview_windows() {
+        if label.starts_with("map-") {
+            let _ = w.close();
+        }
+    }
+    let label = format!("map-{}", N.fetch_add(1, Ordering::Relaxed));
+    WebviewWindowBuilder::new(&app, label, WebviewUrl::External(url)).title(format!("Carte – {name}")).inner_size(1100.0, 720.0).build().map(|_| ()).map_err(|_| "Impossible d'ouvrir la carte".to_string())
+}
+
 #[tauri::command]
 async fn textures_dir(state: State<'_, S>) -> CmdResult<Value> {
     state.blocking(|r| Ok(json!({ "dir": service::textures_dir(r).map(|d| d.to_string_lossy().into_owned()) }))).await
@@ -817,6 +840,17 @@ fn watch_servers(s: S, app: AppHandle) {
     });
 }
 
+/// Les commandes de l'application ne répondent qu'à la fenêtre principale (jamais à une fenêtre de carte vers un site externe).
+fn guarded(h: impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static) -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
+    move |inv| {
+        if inv.message.webview().label() != "main" {
+            inv.resolver.reject("accès refusé");
+            return true;
+        }
+        h(inv)
+    }
+}
+
 pub fn run() {
     run_with(Services::default())
 }
@@ -858,7 +892,7 @@ pub fn run_with(svc: Services) {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(guarded(tauri::generate_handler![
             app_info,
             app_update_install,
             auth_status,
@@ -880,6 +914,7 @@ pub fn run_with(svc: Services) {
             settings_get,
             settings_set,
             open_folder,
+            open_map,
             backups_list,
             extra_mods_list,
             extra_mod_add,
@@ -898,7 +933,7 @@ pub fn run_with(svc: Services) {
             cape_set,
             friends,
             player_head
-        ])
+        ]))
         .run(tauri::generate_context!())
         .expect("erreur au démarrage d'Opaline");
 }

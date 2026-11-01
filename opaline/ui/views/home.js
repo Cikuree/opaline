@@ -105,6 +105,7 @@ function renderHero(p, st, cr) {
 function renderServer(p) {
   const s = servers.get(p.id), on = !!s?.online;
   $('#srvName').textContent = p.name;
+  $('#srvMap').hidden = !p.hasMap;
   $('#srvPill').innerHTML = s ? (on ? '<span class="dot"></span>En ligne' : '<span class="dot off"></span>Hors ligne') : '<span class="dot idle"></span>Inconnu';
   $('#lat').textContent = on && s.latencyMs != null ? s.latencyMs + ' ms' : '—';
   $('#kvPl').textContent = on ? `${s.players.online}/${s.players.max}` : '—';
@@ -194,6 +195,7 @@ export function initHome() {
       state.inGame = true; emit('game'); renderHome(); toast('Lancement de ' + p.name + (r.joining ? ' : connexion au serveur…' : '…'));
     } catch (e) { toast(api.errMsg(e)); }
   });
+  $('#srvMap').addEventListener('click', () => { const p = current(); if (p) api.openMap(p.id).catch((e) => toast(api.errMsg(e))); });
   $('#crashClose').addEventListener('click', () => ($('#crash').hidden = true));
   $('#demoTs')?.addEventListener('change', (e) => { api.demoControls.help = e.target.value; refreshServers(); });
   $('#demoTsL').hidden = !api.demoControls;

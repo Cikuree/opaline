@@ -7,6 +7,8 @@
       Ecrit mods/classroomrun.pw.toml (side both, url = --base-url + classroomrun-X.Y.Z.jar, sha512 du jar), puis reindexe.
   pack-tools.py catalog --base-url https://github.com/OWNER/REPO/releases/download/packs/ [--out packs.json]
       Genere packs.json (contrat Opaline §3) depuis tous les packs/<id>/ ; valide chaque opaline.toml.
+  [server] map = "<url http(s)>" facultatif : carte du serveur (BlueMap...) ; validee (http/https, hote sans identifiants, 300 caracteres
+maximum, ASCII visible) et exposee dans packs.json (server.map).
   [overrides] facultatif d'opaline.toml : archive des fichiers non commites (resourcepacks, datapacks...) publiee a part ;
 catalog valide url / sha256 / size et les expose dans packs.json. packHash = hash d'index sans [overrides] (inchange) ;
 avec : sha256_hex(utf8("<hash d'index>" + LF + "<sha256 de l'archive>")) (minuscules, LF = un saut de ligne).
@@ -17,6 +19,7 @@ opaline.toml, *.pw.toml et fichiers caches est indexe (metafile = false, sha256)
 Hashes sha256 sur les octets exacts (packs/ doit rester en LF).
 """
 import argparse, hashlib, io, json, re, sys, tomllib, zipfile
+from urllib.parse import urlsplit
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -124,7 +127,23 @@ def load_opaline(pack):
         v = s.get(k)
         if type(v) is not int or not 0 <= v <= 65535 or (k == "port" and v == 0):
             bad(f"`server.{k}` requis, entier 0-65535" + (" (0 = pas d'endpoint)" if k == "statsPort" else ", > 0"))
+    if "map" in s and not valid_map(s["map"]):
+        bad(f"`server.map` doit etre une URL http(s) sans identifiants ni espaces, {MAP_MAX_LEN} caracteres au plus")
     return o
+
+
+MAP_MAX_LEN = 300  # launcher/src/catalog.rs MAP_MAX_LEN
+
+
+def valid_map(u):
+    """Meme regle que catalog::valid_map (Rust) : http(s), hote present, aucun identifiant, ASCII visible, longueur bornee."""
+    if not isinstance(u, str) or not 0 < len(u) <= MAP_MAX_LEN or not all(0x21 <= ord(c) <= 0x7E and c != "\\" for c in u):
+        return False
+    try:
+        p = urlsplit(u)
+        return p.scheme in ("http", "https") and bool(p.hostname) and p.username is None and p.password is None and "@" not in p.netloc and p.port != 0
+    except ValueError:
+        return False
 
 
 OVERRIDES_BASE = "https://github.com/Cikuree/opaline/releases/download/packs/"

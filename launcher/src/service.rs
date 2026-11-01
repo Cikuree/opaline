@@ -576,7 +576,7 @@ mod tests {
         }
         let d = std::env::temp_dir().join(format!("opaline-list-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
-        let info = |host: &str| catalog::ServerInfo { host: host.into(), port: 25565, motd: "m".into(), stats_port: 0 };
+        let info = |host: &str| catalog::ServerInfo { host: host.into(), port: 25565, motd: "m".into(), stats_port: 0, map: None };
         let (_, listed) = list_entry(&d, "Pack", &info("home-server"));
         assert!(!listed && !d.join("servers.dat").exists(), "suffixe inconnu : rien d'écrit");
         let (addr, listed) = list_entry(&d, "Pack", &info("mon.minestrator.com"));

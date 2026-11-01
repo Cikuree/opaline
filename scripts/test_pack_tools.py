@@ -31,3 +31,21 @@ for name, bad in {
     r = run(bad); assert isinstance(r, str) and "overrides" in r, (name, r)
 assert run(ok.replace("123456789", str(2 * 1024**3)))["overrides"]["size"] == 2 * 1024**3
 print("ok")
+# [server] map : validee, exposee dans packs.json, absente sinon
+def run_map(value):
+    root = Path(tempfile.mkdtemp()); shutil.copytree(repo / "packs/classroom-run", root / "classroom-run")
+    f = root / "classroom-run/opaline.toml"; f.write_text(f.read_text("utf-8").rstrip("\n") + f"\nmap = {value}\n", "utf-8")
+    out = root / "o.json"
+    try:
+        pt.catalog(root, B, out); return json.loads(out.read_text("utf-8"))["packs"][0]["server"]
+    except SystemExit as e:
+        return str(e)
+    finally: shutil.rmtree(root)
+assert "map" not in base["server"]
+for good_url in ["https://map.example.fr/", "http://91.197.6.154:8100/#world:0:0:0", "https://m.example.fr/map?x=1&y=2"]:
+    assert run_map(json.dumps(good_url))["map"] == good_url, good_url
+for name, bad_url in {"ftp": "ftp://x.fr/", "javascript": "javascript:alert(1)", "sans schema": "map.example.fr", "identifiants": "https://u:p@x.fr/", "user seul": "https://u@x.fr/",
+  "arobase": "https://x.fr@evil.fr/", "espace": "https://x.fr/a b", "vide": "", "trop long": "https://x.fr/" + "a" * 300, "unicode": "https://x.fr/é", "sans hote": "https:///x", "file": "file:///c:/x", "port 0": "https://x.fr:0/", "antislash": "https://x.fr\\@evil.fr/", "un slash": "https:/x.fr/", "trois slashs": "https:///x.fr"}.items():
+    r = run_map(json.dumps(bad_url)); assert isinstance(r, str) and "server.map" in r, (name, r)
+r = run_map("12"); assert isinstance(r, str) and "server.map" in r, r
+print("ok map")

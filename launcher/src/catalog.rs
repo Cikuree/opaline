@@ -13,6 +13,22 @@ pub struct ServerInfo {
     pub motd: String,
     #[serde(default)]
     pub stats_port: u16,
+    /// Carte du serveur (BlueMap...), URL http(s) validée par `valid_map` ; ouverte dans une fenêtre séparée sans accès à l'application.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub map: Option<String>,
+}
+
+/// Longueur maximale d'une URL de carte : même limite que `pack-tools.py`.
+pub const MAP_MAX_LEN: usize = 300;
+
+/// Même règle que `pack-tools.py` : http(s) avec hôte, aucun identifiant, ASCII visible sans antislash, longueur bornée.
+pub fn valid_map(u: &str) -> bool {
+    let lower = u.to_ascii_lowercase();
+    let rest = lower.strip_prefix("http://").or_else(|| lower.strip_prefix("https://"));
+    if u.is_empty() || u.len() > MAP_MAX_LEN || !u.bytes().all(|b| (0x21..=0x7E).contains(&b) && b != b'\\') || rest.is_none_or(|r| r.starts_with('/')) {
+        return false;
+    }
+    reqwest::Url::parse(u).is_ok_and(|p| p.host_str().is_some_and(|h| !h.is_empty()) && p.username().is_empty() && p.password().is_none() && p.port() != Some(0))
 }
 
 /// Archive des fichiers « overrides » d'un pack (resourcepacks, datapacks, shaderpacks...) publiée à côté du zip du pack.
@@ -79,6 +95,8 @@ pub struct PackView {
     pub has_server: bool,
     /// Serveur avec endpoint de statistiques (`statsPort` ≠ 0).
     pub has_stats: bool,
+    /// Le serveur annonce une carte (bouton « Carte »).
+    pub has_map: bool,
     pub supported: bool,
     pub installed: bool,
     pub update_available: bool,
@@ -105,6 +123,7 @@ impl PackEntry {
             widgets: self.widgets.clone(),
             has_server: self.server.is_some(),
             has_stats: self.server.as_ref().is_some_and(|s| s.stats_port != 0),
+            has_map: self.server.as_ref().is_some_and(|s| s.map.is_some()),
             supported: self.supported(),
             installed,
             update_available,
@@ -148,7 +167,12 @@ fn validate(e: &PackEntry) -> Result<()> {
 pub fn parse_catalog(json: &str) -> Result<Vec<PackEntry>> {
     let v: serde_json::Value = serde_json::from_str(json).context("catalogue invalide")?;
     let list = v.get("packs").and_then(|p| p.as_array()).context("catalogue : champ « packs » absent")?;
-    Ok(list.iter().filter_map(|x| serde_json::from_value::<PackEntry>(x.clone()).ok()).filter(|e| validate(e).is_ok()).collect())
+    let mut packs: Vec<PackEntry> = list.iter().filter_map(|x| serde_json::from_value::<PackEntry>(x.clone()).ok()).filter(|e| validate(e).is_ok()).collect();
+    // Carte invalide : seule la carte est ignorée, le pack reste utilisable.
+    for s in packs.iter_mut().filter_map(|p| p.server.as_mut()) {
+        s.map = s.map.take().filter(|m| valid_map(m));
+    }
+    Ok(packs)
 }
 
 fn cache_file(dirs: &Dirs) -> std::path::PathBuf {
@@ -230,6 +254,31 @@ mod tests {
         assert_eq!(pack_version_hash("abc", o).len(), 64);
         // vecteur partagé avec scripts/test_pack_tools.py (même formule des deux côtés)
         assert_eq!(pack_version_hash("ABCDEF0123", o), "43d3f77780af2ff9fa4f009f1b6ea2cb6bb5cac91bb33342c2fce45866e35288");
+    }
+
+    #[test]
+    fn map_url_validation_matches_pack_tools() {
+        for ok in ["https://map.example.fr/", "http://91.197.6.154:8100/#world:0:0:0", "https://m.example.fr/map?x=1&y=2", "HTTP://X.FR/"] {
+            assert!(valid_map(ok), "{ok}");
+        }
+        let long = format!("https://x.fr/{}", "a".repeat(300));
+        for bad in ["ftp://x.fr/", "javascript:alert(1)", "map.example.fr", "https://u:p@x.fr/", "https://u@x.fr/", "https://x.fr@evil.fr/", "https://x.fr/a b", "", &long, "https://x.fr/é", "https:///x", "file:///c:/x", "https://x.fr:0/", "https://x.fr\\@evil.fr/", "https:/x.fr/", "https://"] {
+            assert!(!valid_map(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn map_is_exposed_and_an_invalid_map_is_dropped_without_dropping_the_pack() {
+        let e = |m: &str| format!(r#"{{"packs":[{{"id":"a","name":"A","mc":"1","loader":"fabric","pack":"https://x/a.zip","packHash":"abcdef0123","server":{{"host":"h","port":1,"motd":"m"{m}}}}}]}}"#);
+        let p = parse_catalog(&e(r#","map":"https://map.example.fr/""#)).unwrap();
+        assert_eq!(p[0].server.as_ref().unwrap().map.as_deref(), Some("https://map.example.fr/"));
+        assert!(p[0].view(None, false).has_map);
+        for m in [r#","map":"https://u:p@x.fr/""#, r#","map":"ftp://x""#, r#","map":12"#] {
+            let p = parse_catalog(&e(m)).unwrap_or_default();
+            assert!(p.is_empty() || !p[0].view(None, false).has_map, "{m}");
+        }
+        assert_eq!(parse_catalog(&e(r#","map":"ftp://x""#)).unwrap().len(), 1);
+        assert!(!parse_catalog(&e("")).unwrap()[0].view(None, false).has_map);
     }
 
     #[test]
