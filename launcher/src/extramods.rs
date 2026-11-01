@@ -53,8 +53,12 @@ pub struct Index {
 }
 
 impl Index {
+    /// Les entrées dont le fichier n'existe plus sont ignorées (jar supprimé à la main, retrait interrompu).
     pub fn load(instance: &Path) -> Index {
-        fs::read_to_string(extra_dir(instance).join(INDEX)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        let dir = extra_dir(instance);
+        let mut idx: Index = fs::read_to_string(dir.join(INDEX)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        idx.mods.retain(|e| dir.join(&e.file).is_file());
+        idx
     }
 
     pub fn save(&self, instance: &Path) -> Result<()> {
@@ -105,8 +109,13 @@ pub struct PackInfo {
 }
 
 pub fn pack_info(dirs: &Dirs) -> PackInfo {
+    pack_info_opt(dirs).unwrap_or_default()
+}
+
+/// `None` : instantané du pack illisible ou absent (on ne sait pas quels fichiers de `mods/` sont ceux du pack).
+fn pack_info_opt(dirs: &Dirs) -> Option<PackInfo> {
     let mut p = PackInfo::default();
-    let Ok(snap) = changelog::load_snapshot(dirs) else { return p };
+    let snap = changelog::load_snapshot(dirs).ok()?;
     for m in snap.mods.iter().filter(|m| m.dir == "mods") {
         p.projects.extend(m.project_id.clone());
         if m.hash_format == "sha512" {
@@ -116,11 +125,25 @@ pub fn pack_info(dirs: &Dirs) -> PackInfo {
         p.names.insert(m.name.to_lowercase());
         p.jars.push((m.name.clone(), dirs.instance().join("mods").join(&m.file)));
     }
-    p
+    Some(p)
 }
 
 /// Identifiant de mod lu dans le jar (fabric.mod.json, quilt.mod.json, neoforge.mods.toml / mods.toml).
 pub fn jar_mod_id(path: &Path) -> Option<String> {
+    type Cache = HashMap<(PathBuf, u64, u64), Option<String>>;
+    static CACHE: std::sync::Mutex<Option<Cache>> = std::sync::Mutex::new(None);
+    let m = fs::metadata(path).ok()?;
+    let mtime = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+    let key = (path.to_path_buf(), m.len(), mtime);
+    if let Some(v) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).get(&key) {
+        return v.clone();
+    }
+    let id = read_jar_mod_id(path);
+    CACHE.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(key, id.clone());
+    id
+}
+
+fn read_jar_mod_id(path: &Path) -> Option<String> {
     let mut z = zip::ZipArchive::new(fs::File::open(path).ok()?).ok()?;
     let mut read = |name: &str| -> Option<String> {
         let mut s = String::new();
@@ -224,8 +247,12 @@ pub fn sync(instance: &Path, reserved: &HashSet<String>) -> Result<()> {
 }
 
 /// `sync` avec les noms de fichiers du pack installé (instantané).
+/// Sans instantané lisible, rien n'est copié (on risquerait d'écraser un jar du pack).
 pub fn sync_for_launch(dirs: &Dirs) -> Result<()> {
-    sync(&dirs.instance(), &pack_info(dirs).files)
+    match pack_info_opt(dirs) {
+        Some(p) => sync(&dirs.instance(), &p.files),
+        None => Ok(()),
+    }
 }
 
 /// Retire un jar perso (et ses dépendances automatiques devenues inutiles) d'`opaline-extra-mods/` et de `mods/`.
@@ -236,15 +263,22 @@ pub fn remove(dirs: &Dirs, file: &str) -> Result<Vec<String>> {
         bail!("ce mod n'est pas dans Mes mods");
     }
     let mut idx = Index::load(&inst);
+    if let Some(e) = idx.mods.iter().find(|e| e.file == file) {
+        let by: Vec<&str> = e.required_by.iter().filter_map(|p| idx.by_project(p)).map(|p| p.title.as_str()).collect();
+        if !by.is_empty() {
+            bail!("« {} » est requis par {} : retire d'abord ce(s) mod(s)", e.title, by.join(", "));
+        }
+    }
     let removed = idx.remove(file);
-    let pack = pack_info(dirs);
+    idx.save(&inst)?; // l'index d'abord : en cas d'échec ensuite, il reste au pire des jars sans entrée (traités comme des jars perso)
+    // Sans instantané lisible, `mods/` n'est jamais touché (on ne sait pas quels jars sont ceux du pack).
+    let pack = pack_info_opt(dirs);
     for f in &removed {
         fs::remove_file(extra_dir(&inst).join(f)).or_else(|e| if e.kind() == std::io::ErrorKind::NotFound { Ok(()) } else { Err(e) })?;
-        if !pack.files.contains(f) {
+        if pack.as_ref().is_some_and(|p| !p.files.contains(f)) {
             let _ = fs::remove_file(inst.join("mods").join(f));
         }
     }
-    idx.save(&inst)?;
     Ok(removed)
 }
 
@@ -273,8 +307,9 @@ fn place(dirs: &Dirs, name: &str, write: impl FnOnce(&Path) -> Result<u64>) -> R
 /// Ajoute un jar choisi par l'utilisateur (glisser-déposer : chemin). Le nom du fichier est validé.
 pub fn add_path(dirs: &Dirs, src: &Path) -> Result<String> {
     let name = src.file_name().and_then(|n| n.to_str()).context("nom de fichier illisible")?;
-    if !fs::metadata(src).is_ok_and(|m| m.is_file()) {
-        bail!("ce n'est pas un fichier");
+    let meta = fs::metadata(src).ok().filter(|m| m.is_file()).context("ce n'est pas un fichier")?;
+    if meta.len() > MAX_JAR_BYTES {
+        bail!("fichier trop lourd (200 Mo maximum)");
     }
     place(dirs, name, |tmp| Ok(fs::copy(src, tmp)?))
 }
@@ -361,6 +396,10 @@ impl Planner<'_> {
         if !file.url.starts_with(modrinth::CDN) {
             bail!("téléchargement refusé : seul cdn.modrinth.com est autorisé");
         }
+        let size = file.size.context("taille du fichier inconnue : téléchargement refusé")?;
+        if size > MAX_JAR_BYTES {
+            bail!("« {} » dépasse 200 Mo : téléchargement refusé", file.filename);
+        }
         let sha512 = file.hashes.get("sha512").context("hash manquant")?.to_ascii_lowercase();
         let title = self.title(project);
         validate_name(&file.filename)?;
@@ -373,7 +412,7 @@ impl Planner<'_> {
                 bail!("« {title} » est incompatible avec « {} », déjà présent : ajout refusé", self.title(other));
             }
         }
-        let r = Resolved { project_id: project.to_string(), title, version: v.version_number.clone(), file: file.filename.clone(), url: file.url.clone(), sha512, size: file.size };
+        let r = Resolved { project_id: project.to_string(), title, version: v.version_number.clone(), file: file.filename.clone(), url: file.url.clone(), sha512, size: Some(size) };
         if parent.is_none() {
             self.plan.root = Some(r);
         } else {
@@ -425,7 +464,7 @@ pub fn install_plan(dirs: &Dirs, plan: Plan, fetch: &dyn Fn(&Resolved, &Path) ->
     });
     if let Err(e) = result.and_then(|()| {
         for (dep, parent) in &plan.links {
-            if let Some(e) = idx.mods.iter_mut().find(|e| e.project_id == *dep && e.auto)
+            if let Some(e) = idx.mods.iter_mut().find(|e| e.project_id == *dep)
                 && !e.required_by.contains(parent)
             {
                 e.required_by.push(parent.clone());
@@ -497,7 +536,7 @@ mod tests {
                     id: format!("v-{p}"),
                     version_number: "1.0".into(),
                     version_type: "release".into(),
-                    files: vec![VersionFile { url: format!("{}data/{p}/{p}.jar", modrinth::CDN), filename: format!("{p}.jar"), primary: true, size: None, hashes: [("sha512".to_string(), format!("hash-{p}"))].into() }],
+                    files: vec![VersionFile { url: format!("{}data/{p}/{p}.jar", modrinth::CDN), filename: format!("{p}.jar"), primary: true, size: Some(10), hashes: [("sha512".to_string(), format!("hash-{p}"))].into() }],
                     dependencies: deps.iter().map(|(d, ty)| Dependency { project_id: Some(d.to_string()), dependency_type: ty.to_string() }).collect(),
                 }],
             );
@@ -523,6 +562,68 @@ mod tests {
     }
 
     #[test]
+    fn index_entries_without_a_file_are_ignored() {
+        let d = dirs("orphan");
+        let api = fake(&[("iris", "Iris", &[])]);
+        add_modrinth(&d, &api, "iris", "1.21.1", "fabric", &fake_fetch).unwrap();
+        assert_eq!(Index::load(&d.instance()).mods.len(), 1);
+        fs::remove_file(extra_dir(&d.instance()).join("iris.jar")).unwrap();
+        assert!(Index::load(&d.instance()).mods.is_empty());
+        assert!(list(&d).is_empty());
+        // on peut le rajouter : l'entrée fantôme ne bloque rien
+        add_modrinth(&d, &api, "iris", "1.21.1", "fabric", &fake_fetch).unwrap();
+        let _ = fs::remove_dir_all(&d.root);
+    }
+
+    #[test]
+    fn a_mod_needed_by_another_cannot_be_removed_first() {
+        let d = dirs("needed");
+        changelog::save_snapshot(&d, &changelog::Snapshot::default()).unwrap();
+        let api = fake(&[("iris", "Iris", &[("sodium", "required")]), ("sodium", "Sodium", &[])]);
+        add_modrinth(&d, &api, "sodium", "1.21.1", "fabric", &fake_fetch).unwrap(); // ajouté à la main (pas auto)
+        add_modrinth(&d, &api, "iris", "1.21.1", "fabric", &fake_fetch).unwrap();
+        let e = remove(&d, "sodium.jar").unwrap_err().to_string();
+        assert!(e.contains("« Sodium » est requis par Iris"), "{e}");
+        assert!(names(&d.instance()).contains("sodium.jar"));
+        assert_eq!(remove(&d, "iris.jar").unwrap(), ["iris.jar"]);
+        assert_eq!(remove(&d, "sodium.jar").unwrap(), ["sodium.jar"]);
+        let _ = fs::remove_dir_all(&d.root);
+    }
+
+    #[test]
+    fn remove_never_touches_mods_without_a_readable_snapshot() {
+        let d = dirs("nosnap");
+        add_bytes(&d, "a.jar", b"PKa").unwrap();
+        jar(&d, "mods/a.jar", "a");
+        assert_eq!(remove(&d, "a.jar").unwrap(), ["a.jar"]);
+        assert!(d.instance().join("mods/a.jar").is_file(), "mods/ intact : on ne sait pas ce qui vient du pack");
+        assert!(!extra_dir(&d.instance()).join("a.jar").exists());
+        add_bytes(&d, "b.jar", b"PKb").unwrap();
+        sync_for_launch(&d).unwrap();
+        assert!(!d.instance().join("mods/b.jar").exists(), "pas de copie sans instantané");
+        let _ = fs::remove_dir_all(&d.root);
+    }
+
+    #[test]
+    fn oversized_jars_are_refused_before_copy_and_before_download() {
+        let d = dirs("big");
+        let big = d.root.join("gros.jar");
+        fs::create_dir_all(&d.root).unwrap();
+        let f = fs::File::create(&big).unwrap();
+        f.set_len(MAX_JAR_BYTES + 1).unwrap(); // fichier creux : aucune écriture réelle
+        drop(f);
+        let e = add_path(&d, &big).unwrap_err().to_string();
+        assert!(e.contains("trop lourd"), "{e}");
+        assert!(!extra_dir(&d.instance()).exists() || names(&d.instance()).is_empty());
+        let mut api = fake(&[("x", "X", &[])]);
+        api.versions.get_mut("x").unwrap()[0].files[0].size = Some(MAX_JAR_BYTES + 1);
+        assert!(plan(&api, &PackInfo::default(), &Index::default(), "x", "1.21.1", "fabric").unwrap_err().to_string().contains("200 Mo"));
+        api.versions.get_mut("x").unwrap()[0].files[0].size = None;
+        assert!(plan(&api, &PackInfo::default(), &Index::default(), "x", "1.21.1", "fabric").is_err());
+        let _ = fs::remove_dir_all(&d.root);
+    }
+
+    #[test]
     fn names_are_validated() {
         for ok in ["iris-1.8.jar", "A B.JAR"] {
             assert!(validate_name(ok).is_ok(), "{ok}");
@@ -535,6 +636,7 @@ mod tests {
     #[test]
     fn dependencies_are_installed_and_orphans_removed_with_their_parent() {
         let d = dirs("dep");
+        changelog::save_snapshot(&d, &changelog::Snapshot::default()).unwrap(); // pack installé, sans mod
         let api = fake(&[("iris", "Iris", &[("sodium", "required"), ("opt", "optional")]), ("sodium", "Sodium", &[]), ("opt", "Opt", &[])]);
         let plan1 = plan(&api, &PackInfo::default(), &Index::default(), "iris", "1.21.1", "fabric").unwrap();
         assert_eq!(plan1.deps.iter().map(|r| r.title.as_str()).collect::<Vec<_>>(), ["Sodium"]);

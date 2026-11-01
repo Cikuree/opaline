@@ -73,6 +73,8 @@ struct Inner {
     /// État du bureau pendant les parties (fenêtre cachée, statut Discord) et fil Discord (absent sans identifiant d'application).
     shell: Mutex<Shell>,
     presence: Option<std::sync::mpsc::Sender<presence::Message>>,
+    /// Chemins déposés sur la fenêtre (événement natif) : seuls ceux-là peuvent être ajoutés à Mes mods par chemin.
+    dropped: Mutex<HashSet<std::path::PathBuf>>,
 }
 
 #[derive(Clone)]
@@ -547,6 +549,10 @@ async fn extra_mods_list(state: State<'_, S>, id: String) -> CmdResult<Vec<opali
 /// Glisser-déposer : chemin d'un `.jar` (copié dans `opaline-extra-mods/`, nom validé).
 #[tauri::command]
 async fn extra_mod_add(state: State<'_, S>, id: String, path: String) -> CmdResult<String> {
+    // Un chemin que le webview n'a pas reçu par un vrai glisser-déposer est refusé (l'interface ne peut pas lire n'importe quel fichier).
+    if !state.0.dropped.lock().unwrap().remove(std::path::Path::new(&path)) {
+        return Err("Fichier non reconnu : dépose-le sur la fenêtre d'Opaline".into());
+    }
     exclusive(&state, id.clone(), move |r| opaline_core::extramods::add_path(&r.for_pack(&id)?, std::path::Path::new(&path))).await
 }
 
@@ -870,6 +876,7 @@ pub fn run_with(svc: Services) {
         mojang_pending: AtomicBool::new(false),
         shell: Mutex::default(),
         presence: presence::start(),
+        dropped: Mutex::default(),
     }));
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -882,6 +889,16 @@ pub fn run_with(svc: Services) {
             app.asset_protocol_scope().allow_directory(&tex, true)?;
             // Textures du client.jar : tâche de fond, sous le verrou d'installation (pas de doublon avec une installation en cours).
             watch_servers(state.clone(), app.handle().clone());
+            if let Some(w) = app.get_webview_window("main") {
+                let s = state.clone();
+                w.on_window_event(move |e| {
+                    if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = e {
+                        let mut d = s.0.dropped.lock().unwrap();
+                        d.clear(); // seul le dernier dépôt compte
+                        d.extend(paths.iter().cloned());
+                    }
+                });
+            }
             let (s, app) = (state.clone(), app.handle().clone());
             tauri::async_runtime::spawn(async move {
                 let _guard = s.0.install_lock.lock().await;
