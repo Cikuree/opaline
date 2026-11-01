@@ -166,7 +166,7 @@ fn locked(p: &Path) -> bool {
         let mut l: libc::flock = std::mem::zeroed();
         l.l_type = libc::F_WRLCK as _;
         l.l_whence = libc::SEEK_SET as _;
-        libc::fcntl(f.as_raw_fd(), libc::F_GETLK, &mut l) == 0 && l.l_type != libc::F_UNLCK as _
+        libc::fcntl(f.as_raw_fd(), libc::F_GETLK, &mut l) == 0 && l.l_type != libc::F_UNLCK as libc::c_short
     }
 }
 
