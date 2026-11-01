@@ -1,5 +1,10 @@
 # Changelog
 
+## Opaline 0.6.2 : finitions visuelles
+- **Mes resource packs et shaders** : glisser-déposer de .zip dans « Fichiers & mods », type reconnu automatiquement, conservés aux mises à jour.
+- **Apparence** : cartes, barre de navigation et colonne d'amis plus sombres (#361617) et légèrement translucides sur le fond animé, sans contour ; fond animé plus doux et plus rose, halo de la souris plus clair ; fondu progressif en haut et en bas des pages ; barre de défilement fine et discrète ; cases à cocher aux couleurs d'Opaline ; texte discret plus lisible sur le fond.
+- Champ de recherche de mods sans double bordure, « Les deux » sur une ligne.
+
 ## Opaline 0.6.1 : la grosse mise à jour
 (La 0.6.0 n'a jamais été publiée : build Linux corrigé.)
 - **Jouer** : rejoindre le serveur du pack en un clic (Quick Play), fermeture du Launcher Minecraft proposée en mode officiel, plein écran fenêtré en option (Cubes Without Borders géré par Opaline).
