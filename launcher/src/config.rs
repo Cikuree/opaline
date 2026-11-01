@@ -214,6 +214,10 @@ impl Dirs {
     pub fn skins(&self) -> PathBuf {
         self.root.join("skins")
     }
+    /// Sauvegardes des mondes : `backups/<pack>/<horodatage>/`.
+    pub fn backups(&self) -> PathBuf {
+        self.root.join("backups").join(&self.pack)
+    }
     /// Caches (catalogue, têtes, amis).
     pub fn cache(&self) -> PathBuf {
         self.root.join("cache")

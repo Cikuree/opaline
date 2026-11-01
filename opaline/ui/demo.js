@@ -65,6 +65,7 @@ const detail = (n) => {
   })) };
 };
 
+let backups = [[60 * 20, 412e6], [60 * 24 * 3, 398e6], [60 * 24 * 9, 377e6]].map(([m, size], i) => ({ id: '2026110' + (3 - i) + '-1803' + i + '0', createdAt: iso(m), sizeBytes: size }));
 let started = null, attemptN = 0, cancelled = false;
 const stats = () => ({ runNumber: 20, totalTimeMs: 12 * 3600e3 + 34 * 60e3 + 56e3 + (started ? Date.now() - started : 0), running: true, deaths: 19, currentSplit: 6, currentSplitName: 'ENDER_EYE', reachedSplits: SPL.slice(0, 6), bestSplit: 'ENDER_EYE', players: ['LunaFox', 'Creeper_Kid', 'Maelle'] });
 started = Date.now();
@@ -114,6 +115,8 @@ export async function invoke(cmd, a = {}) {
     case 'settings_get': return settings;
     case 'settings_set': settings = { ...settings, ...a }; return settings;
     case 'open_folder': return null;
+    case 'backups_list': return a.id === 'classroom-run' ? structuredClone(backups) : [];
+    case 'backup_restore': if (!backups.some((b) => b.id === a.backupId)) throw 'Sauvegarde introuvable'; backups.unshift({ id: '20261104-120000', createdAt: iso(0), sizeBytes: 415e6 }); backups = backups.slice(0, 3); return null;
     case 'textures_dir': return { dir: q.has('notex') ? null : 'demo' };
     case 'skins_list': return structuredClone(skins);
     case 'skin_import': { const s = { id: 's' + Date.now(), name: a.name, model: a.model, active: false, dataUrl: 'data:image/png;base64,' + a.pngBase64 }; skins.push(s); return s; }

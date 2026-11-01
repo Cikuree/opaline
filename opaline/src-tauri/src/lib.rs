@@ -426,10 +426,36 @@ async fn pack_mods(state: State<'_, S>, id: String) -> CmdResult<Vec<opaline_cor
 }
 
 #[tauri::command]
+async fn backups_list(state: State<'_, S>, id: String) -> CmdResult<Vec<opaline_core::backup::BackupView>> {
+    state.blocking(move |r| Ok(opaline_core::backup::list(&r.for_pack(&id)?))).await
+}
+
+/// Restaure une sauvegarde de mondes (le `saves/` actuel est d'abord sauvegardé). Refusé pendant le jeu ou une installation du pack.
+#[tauri::command]
+async fn backup_restore(state: State<'_, S>, id: String, backup_id: String) -> CmdResult<()> {
+    {
+        let mut a = state.0.activity.lock().unwrap();
+        if a.running.contains(&id) || a.installing.contains(&id) || a.installing.contains(UPDATING) {
+            return Err("Ferme le jeu et attends la fin des installations avant de restaurer".into());
+        }
+        a.installing.insert(id.clone()); // réserve le pack : JOUER est refusé pendant la restauration
+    }
+    let id2 = id.clone();
+    let r = state.blocking(move |r| opaline_core::backup::restore(&r.for_pack(&id2)?, &backup_id, friends::now_secs())).await;
+    state.0.activity.lock().unwrap().installing.remove(&id);
+    r
+}
+
+#[tauri::command]
 async fn open_folder(app: AppHandle, state: State<'_, S>, id: String, kind: String) -> CmdResult<()> {
     let path = state
         .blocking(move |r| {
             let inst = r.for_pack(&id)?.instance();
+            if kind == "backups" {
+                let dir = r.for_pack(&id)?.backups();
+                std::fs::create_dir_all(&dir)?;
+                return Ok(dir);
+            }
             if !inst.is_dir() {
                 bail!("ce pack n'est pas installé");
             }
@@ -683,6 +709,8 @@ pub fn run_with(svc: Services) {
             settings_get,
             settings_set,
             open_folder,
+            backups_list,
+            backup_restore,
             textures_dir,
             skins_list,
             skin_import,

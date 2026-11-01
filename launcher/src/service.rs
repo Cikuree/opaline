@@ -5,7 +5,7 @@ use crate::catalog::{self, PackEntry, PackView};
 use crate::changelog::{self, Changelog, ModView};
 use crate::config::{self, Config, Dirs};
 use crate::download::{self, Progress};
-use crate::{friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update};
+use crate::{backup, friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update};
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -69,6 +69,8 @@ fn install_inner(root: &Dirs, id: &str, progress: &Arc<Progress>, local_pack: Op
         endpoints: endpoints.clone(),
         overrides: e.overrides.clone(),
     };
+    // Avant toute écriture dans l'instance : copie des mondes (l'appelant a déjà refusé si le jeu de ce pack tourne).
+    backup::backup_saves(&dirs, friends::now_secs())?;
     let installed = install::install(&client, &params, progress)?;
     progress.set_stage("textures");
     // Cosmétique : un échec ici n'invalide pas l'installation.

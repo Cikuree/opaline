@@ -314,3 +314,6 @@ img.px{image-rendering:pixelated;display:block}
 /* fenêtre native Tauri : le cadre rose de la maquette n'a pas de sens, la fenêtre remplit l'écran */
 body.tauri{padding:0;background:var(--win)}
 body.tauri .window{max-width:none;max-height:none;border-radius:0;box-shadow:none}
+
+.bk{list-style:none;margin-top:10px;display:grid;gap:8px}.bk li{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--win-deep);border-radius:14px;padding:10px 14px}
+.bkc{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

@@ -1,13 +1,28 @@
 import * as api from '../api.js';
 import { state, current, emit } from '../state.js';
-import { $, esc, toast, tex } from '../util.js';
+import { $, $$, esc, toast, tex } from '../util.js';
 import { MODTEX, loaderName } from '../data.js';
 import { statusOf, startInstall, changelogHtml } from './home.js';
+
+const fmtSize = (b) => (b >= 1e9 ? (b / 1e9).toFixed(1) + ' Go' : b >= 1e6 ? Math.round(b / 1e6) + ' Mo' : Math.max(1, Math.round(b / 1e3)) + ' Ko');
+const fmtDate = (iso) => new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' });
+let confirming = null; // id de la sauvegarde dont la restauration attend une confirmation
+
+async function renderBackups() {
+  const p = current(); if (!p) return;
+  let list = []; try { list = await api.backupsList(p.id); } catch (e) { toast(api.errMsg(e)); }
+  if (current()?.id !== p.id) return;
+  const row = (b) => `<li><span><b>${esc(fmtDate(b.createdAt))}</b> <span class="mute small">· ${esc(fmtSize(b.sizeBytes))}</span></span>${confirming === b.id
+    ? `<span class="bkc"><span class="small">Remplacer tes mondes actuels par cette sauvegarde ? Les mondes actuels seront d’abord sauvegardés.</span><button class="btn sm primary" data-ok="${esc(b.id)}">Oui, restaurer</button><button class="btn sm" data-no="1">Annuler</button></span>`
+    : `<button class="btn sm" data-bk="${esc(b.id)}" ${busy() ? 'disabled' : ''}>Restaurer</button>`}</li>`;
+  $('#backupsBox').innerHTML = list.length ? `<ul class="bk">${list.map(row).join('')}</ul>` : '<p class="mute small" style="margin-top:10px">Aucune sauvegarde pour l’instant.</p>';
+}
 
 const busy = () => !!state.install || state.inGame; // pas d'installation/réparation pendant une partie ou une autre installation
 export function syncBusy() {
   const p = current(); if (!p) return;
   $('#btnRepair').disabled = !p.installed || !p.supported || busy();
+  $$('#backupsBox [data-bk]').forEach((b) => (b.disabled = busy()));
   const a = $('#packCard [data-act]'); if (a) a.disabled = busy();
 }
 
@@ -29,10 +44,21 @@ export async function renderFiles() {
   const pill = st === 'upd' ? 'Mise à jour disponible' : st === 'ok' ? 'À jour' : st === 'unsupported' ? 'Non pris en charge' : 'Non installé';
   $('#packCard').innerHTML = `<h2>Pack ${esc(p.name)}</h2><p style="font-size:30px;font-weight:800;margin:10px 0 6px">${esc(p.mc)} · ${esc(loaderName(p.loader))}</p><span class="pill ${st === 'upd' ? 's-upd' : st === 'ok' ? '' : 's-no'}">${pill}</span><p class="small mute" style="margin:12px 0">${esc(p.description)}</p>${chg}`
     + (st === 'upd' ? '<button class="btn primary" style="margin-top:14px" data-act="1">Mettre à jour</button>' : st === 'no' ? '<button class="btn primary" style="margin-top:14px" data-act="1">Installer</button>' : '');
-  syncBusy();
+  syncBusy(); renderBackups();
 }
 
 export function initFiles() {
+  $('#backupsOpen').addEventListener('click', async () => { try { await api.openFolder(current().id, 'backups'); } catch (er) { toast(api.errMsg(er)); } });
+  $('#backupsBox').addEventListener('click', async (e) => {
+    const t = e.target.closest('button'); if (!t) return;
+    if (t.dataset.bk) { confirming = t.dataset.bk; return renderBackups(); }
+    if (t.dataset.no) { confirming = null; return renderBackups(); }
+    if (t.dataset.ok) {
+      const id = current().id; confirming = null; t.disabled = true;
+      try { await api.backupRestore(id, t.dataset.ok); toast('Mondes restaurés'); } catch (er) { toast(api.errMsg(er)); }
+      renderBackups();
+    }
+  });
   $('#folders').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-f]'); if (!b) return;
     try { await api.openFolder(current().id, b.dataset.f); } catch (er) { toast(api.errMsg(er)); }

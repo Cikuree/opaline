@@ -33,6 +33,8 @@ export const runHistory = (id, run = null) => call('run_history', { id, run });
 export const settingsGet = () => call('settings_get');
 export const settingsSet = (patch) => call('settings_set', patch);
 export const openFolder = (id, kind) => call('open_folder', { id, kind });
+export const backupsList = (id) => call('backups_list', { id });
+export const backupRestore = (id, backupId) => call('backup_restore', { id, backupId });
 export const skinsList = () => call('skins_list');
 export const skinImport = (name, model, pngBase64) => call('skin_import', { name, model, pngBase64 });
 export const skinApply = (id) => call('skin_apply', { id });
