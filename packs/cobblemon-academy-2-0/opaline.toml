@@ -6,7 +6,7 @@ widgets = ["server", "news"]
 [server]
 host = "91.197.6.154"
 port = 25565
-motd = "cobblemon 2"
+motd = "cobblemon"
 statsPort = 0
 
 [overrides]
