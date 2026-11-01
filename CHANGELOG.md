@@ -1,5 +1,9 @@
 # Changelog
 
+## Opaline 0.5.0 : packs importés de CurseForge
+- **Archive d'overrides** : un pack peut fournir ses gros dossiers (resource packs, datapacks, configs) dans une archive publiée sur la release `packs`. Opaline la télécharge (sha256 vérifié), l'extrait de façon sûre dans l'instance et retire à la mise à jour les fichiers qu'elle ne contient plus, sans toucher aux mondes ni aux captures.
+- **Mod publié avec les packs** : le mod Classroom Run a sa propre version et part avec le pack, sans nouvelle version d'Opaline.
+
 ## Classroom Run 0.4.3 : la mort se voit
 - **Mort collective visible** : l'équipe passe en spectateur avec le titre « Vous êtes morts » (cause et compte à rebours) avant la nouvelle run, puis revient en survie ; reconnexion pendant ce temps gérée.
 - Délai avant la nouvelle run porté à 6 s (`deathResetDelayTicks` = 120 ; un `config.json` existant garde sa valeur).
