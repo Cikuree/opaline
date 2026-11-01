@@ -76,6 +76,12 @@ function wireEvents() {
   setInterval(() => { if (document.visibilityState === 'visible' && signed()) { refreshServers(); refreshStats(); refreshFriends(); } }, 15000);
 }
 
+// Clic droit : menu du navigateur seulement dans les champs de texte (copier/coller) ; ailleurs, uniquement les menus
+// d'Opaline déclarés par un `data-ctx` sur l'élément (ex. cartes de pack installées).
+document.addEventListener('contextmenu', (e) => {
+  if (!e.target.closest('input, textarea, [contenteditable="true"], [data-ctx]')) e.preventDefault();
+});
+
 async function boot() {
   initChrome(signed); initHome(); initAccount(); initSettings(); initFiles(); initHistory(); initNews(); initFriends();
   wireEvents();
