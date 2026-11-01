@@ -293,7 +293,7 @@ body:has(.window.max){padding:0}
   .window.colmini .col .pl[data-tip]:hover::after,.window.colmini .col .pl[data-tip]:focus-visible::after{content:attr(data-tip);position:absolute;right:calc(100% + 14px);top:50%;transform:translateY(-50%);background:var(--cream);color:var(--on-coral);font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px;white-space:nowrap;z-index:9;pointer-events:none}
 }
 .hero>*{min-width:0}
-.hero .stats>div{min-width:0;max-width:100%}
+.hero .stats>div{min-width:0;max-width:100%;display:flex;flex-direction:column;justify-content:flex-end} /* libellés alignés même si la valeur est plus petite */
 .hero .stats span{overflow-wrap:anywhere}
 .hero .acts{align-items:center}
 .hero .acts .play,.hero .acts .btn{height:52px;padding:0 24px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:10px;font-size:15px;line-height:1}
