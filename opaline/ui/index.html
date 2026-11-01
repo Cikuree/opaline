@@ -267,6 +267,11 @@
       <article class="card"><h2>Mods installés</h2><div id="modsBox"></div></article>
       <article class="card" id="packCard"></article>
     </div>
+    <article class="card" id="shaderCard" hidden>
+      <div class="row"><h2 id="shT"><label for="shSel">Shaders</label></h2><select id="shSel"></select></div>
+      <p class="small mute" style="margin-top:6px">Shader Iris utilisé par ce pack. Pour en ajouter, glisse le fichier .zip dans le dossier shaderpacks.</p>
+      <p class="small" id="shMsg" role="status" style="margin-top:6px"></p>
+    </article>
     <article class="card" id="extraCard" hidden>
       <div class="row"><h2>Mes mods</h2><button class="btn sm" id="extraAdd">Ajouter un .jar</button><input type="file" id="extraFile" accept=".jar" multiple hidden></div>
       <p class="small mute" style="margin-top:6px">Tes mods perso restent sur cet ordinateur, à part du pack partagé : la mise à jour du pack ne les supprime jamais. Ajoute un .jar (CurseForge, etc.) ou cherche sur Modrinth ; les dépendances requises sont ajoutées avec.</p>

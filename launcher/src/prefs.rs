@@ -61,6 +61,70 @@ pub fn copy_options(from: &Dirs, to: &Dirs, cats: &[String]) -> Result<usize> {
     Ok(pairs.len())
 }
 
+// ---------- Shaders (Iris) ----------
+
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ShaderView {
+    /// Le pack contient Iris : sans lui, la section est masquée.
+    pub available: bool,
+    /// Contenu de `shaderpacks/` (zips et dossiers), trié.
+    pub files: Vec<String>,
+    /// Shader actif d'après `config/iris.properties` (`shaderPack=` et `enableShaders=`), `None` : aucun.
+    pub active: Option<String>,
+}
+
+fn iris_file(dirs: &Dirs) -> std::path::PathBuf {
+    dirs.instance().join("config").join("iris.properties")
+}
+
+fn shader_files(dirs: &Dirs) -> Vec<String> {
+    let mut v: Vec<String> = std::fs::read_dir(dirs.instance().join("shaderpacks"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()) || e.file_name().to_string_lossy().to_ascii_lowercase().ends_with(".zip"))
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    v.sort_by_key(|n| n.to_lowercase());
+    v
+}
+
+/// Iris est présent si un jar `iris*` figure dans `mods/` (pack ou Mes mods).
+fn has_iris(dirs: &Dirs) -> bool {
+    std::fs::read_dir(dirs.instance().join("mods")).into_iter().flatten().flatten().any(|e| {
+        let n = e.file_name().to_string_lossy().to_ascii_lowercase();
+        n.starts_with("iris") && n.ends_with(".jar")
+    })
+}
+
+pub fn shaders_get(dirs: &Dirs) -> ShaderView {
+    let text = perf::read_text(&iris_file(dirs)).unwrap_or_default();
+    let files = shader_files(dirs);
+    let on = perf::prop(&text, "enableShaders").is_none_or(|v| v != "false");
+    let active = perf::prop(&text, "shaderPack").filter(|p| on && !p.is_empty() && p != "(internal)" && files.contains(p));
+    ShaderView { available: has_iris(dirs), files, active }
+}
+
+/// Choisit le shader (`None` : aucun) dans `iris.properties` par la fusion habituelle. L'appelant refuse si le jeu tourne
+/// (Iris réécrit ce fichier en quittant).
+pub fn shader_set(dirs: &Dirs, name: Option<&str>) -> Result<()> {
+    if !dirs.instance().is_dir() {
+        bail!("ce pack n'est pas installé");
+    }
+    let kv = match name {
+        Some(n) => {
+            let n = crate::safe::safe_file_name(n)?;
+            if !shader_files(dirs).iter().any(|f| f == n) {
+                bail!("shader introuvable dans shaderpacks/");
+            }
+            [("enableShaders", "true".to_string()), ("shaderPack", n.to_string())]
+        }
+        None => [("enableShaders", "false".to_string()), ("shaderPack", String::new())],
+    };
+    perf::merge_file(&iris_file(dirs), '=', &kv)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,6 +165,38 @@ mod tests {
         copy_options(&a, &b, &CATEGORIES.map(String::from)).unwrap();
         let out = fs::read_to_string(b.instance().join("options.txt")).unwrap();
         assert!(out.contains("renderDistance:6") && out.contains("particles:2") && !out.contains("graphicsPreset") && out.contains("narrator:1"));
+        fs::remove_dir_all(&a.root).unwrap();
+    }
+
+    #[test]
+    fn shaders_list_read_and_write_iris_properties() {
+        let (a, _) = dirs("shaders");
+        let sp = a.instance().join("shaderpacks");
+        fs::create_dir_all(&sp).unwrap();
+        fs::write(sp.join("Zeta.zip"), "z").unwrap();
+        fs::write(sp.join("alpha.ZIP"), "z").unwrap();
+        fs::write(sp.join("Zeta.zip.txt"), "réglages").unwrap();
+        fs::create_dir_all(sp.join("Dossier")).unwrap();
+        let v = shaders_get(&a);
+        assert_eq!((v.available, v.files.as_slice(), v.active.as_deref()), (false, ["alpha.ZIP".to_string(), "Dossier".into(), "Zeta.zip".into()].as_slice(), None));
+        fs::create_dir_all(a.instance().join("mods")).unwrap();
+        fs::write(a.instance().join("mods/iris-fabric-1.9.3.jar"), "j").unwrap();
+        assert!(shaders_get(&a).available);
+        fs::create_dir_all(a.instance().join("config")).unwrap();
+        fs::write(iris_file(&a), "# Iris\nmaxShadowRenderDistance=32\nshaderPack=Zeta.zip\nenableShaders=true\n").unwrap();
+        assert_eq!(shaders_get(&a).active.as_deref(), Some("Zeta.zip"));
+        shader_set(&a, Some("alpha.ZIP")).unwrap();
+        let t = fs::read_to_string(iris_file(&a)).unwrap();
+        assert!(t.contains("shaderPack=alpha.ZIP") && t.contains("maxShadowRenderDistance=32") && t.contains("# Iris"), "{t}");
+        assert_eq!(shaders_get(&a).active.as_deref(), Some("alpha.ZIP"));
+        shader_set(&a, None).unwrap();
+        assert_eq!(shaders_get(&a).active, None);
+        assert!(fs::read_to_string(iris_file(&a)).unwrap().contains("enableShaders=false"));
+        fs::write(iris_file(&a), "shaderPack=Zeta.zip\nenableShaders=false\n").unwrap();
+        assert_eq!(shaders_get(&a).active, None, "enableShaders=false : aucun");
+        for bad in ["../x", "Inconnu.zip", "a/b", ""] {
+            assert!(shader_set(&a, Some(bad)).is_err(), "{bad}");
+        }
         fs::remove_dir_all(&a.root).unwrap();
     }
 

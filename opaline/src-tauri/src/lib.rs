@@ -646,6 +646,17 @@ async fn settings_copy(state: State<'_, S>, from: String, to: String, categories
 }
 
 #[tauri::command]
+async fn shaders_get(state: State<'_, S>, id: String) -> CmdResult<opaline_core::prefs::ShaderView> {
+    state.blocking(move |r| Ok(opaline_core::prefs::shaders_get(&r.for_pack(&id)?))).await
+}
+
+/// Choisit le shader du pack (`name` absent : aucun) ; refusé pendant le jeu (Iris réécrit son fichier en quittant).
+#[tauri::command]
+async fn shader_set(state: State<'_, S>, id: String, name: Option<String>) -> CmdResult<()> {
+    exclusive(&state, id.clone(), move |r| opaline_core::prefs::shader_set(&r.for_pack(&id)?, name.as_deref())).await
+}
+
+#[tauri::command]
 async fn textures_dir(state: State<'_, S>) -> CmdResult<Value> {
     state.blocking(|r| Ok(json!({ "dir": service::textures_dir(r).map(|d| d.to_string_lossy().into_owned()) }))).await
 }
@@ -946,6 +957,8 @@ pub fn run_with(svc: Services) {
             open_folder,
             open_map,
             settings_copy,
+            shaders_get,
+            shader_set,
             map_info,
             backups_list,
             extra_mods_list,

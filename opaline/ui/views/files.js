@@ -27,6 +27,7 @@ export function syncBusy() {
   const p = current(); if (!p) return;
   $('#btnRepair').disabled = !p.installed || !p.supported || busy();
   $$('#backupsBox [data-bk]').forEach((b) => (b.disabled = busy()));
+  $('#shSel').disabled = busy();
   syncExtrasBusy();
   const a = $('#packCard [data-act]'); if (a) a.disabled = busy();
 }
@@ -53,10 +54,23 @@ export async function renderFiles() {
   const pill = st === 'upd' ? 'Mise à jour disponible' : st === 'ok' ? 'À jour' : st === 'unsupported' ? 'Non pris en charge' : 'Non installé';
   $('#packCard').innerHTML = `<h2>Pack ${esc(p.name)}</h2><p style="font-size:30px;font-weight:800;margin:10px 0 6px">${esc(p.mc)} · ${esc(loaderName(p.loader))}</p><span class="pill ${st === 'upd' ? 's-upd' : st === 'ok' ? '' : 's-no'}">${pill}</span><p class="small mute" style="margin:12px 0">${esc(p.description)}</p>${chg}`
     + (st === 'upd' ? '<button class="btn primary" style="margin-top:14px" data-act="1">Mettre à jour</button>' : st === 'no' ? '<button class="btn primary" style="margin-top:14px" data-act="1">Installer</button>' : '');
-  syncBusy(); renderBackups(); renderExtras();
+  syncBusy(); renderBackups(); renderExtras(); renderShaders();
+}
+
+async function renderShaders() {
+  const p = current(); if (!p) return;
+  let v = null; if (p.installed && p.supported) { try { v = await api.shadersGet(p.id); } catch { /* section masquée */ } }
+  if (current()?.id !== p.id) return;
+  $('#shaderCard').hidden = !v?.available; if (!v?.available) return;
+  $('#shSel').innerHTML = '<option value="">Aucun</option>' + v.files.map((f) => `<option value="${esc(f)}">${esc(f.replace(/\.zip$/i, ''))}</option>`).join('');
+  $('#shSel').value = v.active || ''; $('#shSel').disabled = busy(); $('#shMsg').textContent = '';
 }
 
 export function initFiles() {
+  $('#shSel').addEventListener('change', async (e) => {
+    const p = current(); if (!p) return;
+    try { await api.shaderSet(p.id, e.target.value || null); $('#shMsg').textContent = e.target.value ? 'Shader appliqué au prochain lancement.' : 'Shaders désactivés au prochain lancement.'; } catch (er) { toast(api.errMsg(er)); renderShaders(); }
+  });
   initExtras();
   $('#modsBox').addEventListener('click', (e) => { if (e.target.closest('#modsMore')) { showAll = !showAll; renderFiles(); } });
   $('#backupsOpen').addEventListener('click', async () => { try { await api.openFolder(current().id, 'backups'); } catch (er) { toast(api.errMsg(er)); } });

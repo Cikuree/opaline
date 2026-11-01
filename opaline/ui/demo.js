@@ -70,6 +70,7 @@ let backups = [[60 * 20, 412e6], [60 * 24 * 3, 398e6], [60 * 24 * 9, 377e6]].map
 let extras = [{ file: 'zoomify-2.14.jar', title: null, auto: false, requiredBy: [], sizeBytes: 812000, warning: null }];
 const MR = [['YL57xq9U', 'Iris Shaders', 'Shaders modernes pour Minecraft, compatibles avec Sodium.', 18400000, ['AANobbMI']], ['AANobbMI', 'Sodium', 'Moteur de rendu moderne qui accélère le jeu.', 52100000, []], ['gvQqBUqZ', 'Lithium', 'Optimisations du serveur de jeu intégré.', 41000000, []]];
 const MRT = Object.fromEntries(MR.map((m) => [m[0], m[1]]));
+const shaderOf = { 'classroom-run': 'ComplementaryReimagined_r5.5.1.zip' };
 let started = null, attemptN = 0, cancelled = false;
 const stats = () => ({ runNumber: 20, totalTimeMs: 12 * 3600e3 + 34 * 60e3 + 56e3 + (started ? Date.now() - started : 0), running: true, deaths: 19, currentSplit: 6, currentSplitName: 'ENDER_EYE', reachedSplits: SPL.slice(0, 6), bestSplit: 'ENDER_EYE', players: ['LunaFox', 'Creeper_Kid', 'Maelle'] });
 started = Date.now();
@@ -123,6 +124,8 @@ export async function invoke(cmd, a = {}) {
     case 'settings_set': settings = { ...settings, ...a.patch, ...(a.patch.perfMode || a.patch.memoryMb ? { autoTuned: false } : {}) }; return settings;
     case 'playtime': return { 'classroom-run': { totalSecs: 41 * 3600 + 25 * 60, lastPlayed: Math.floor(Date.now() / 1000) - 2 * 3600 }, survie: { totalSecs: 1500, lastPlayed: Math.floor(Date.now() / 1000) - 86400 * 4 } };
     case 'settings_copy': { if (a.from === a.to) throw 'choisis deux packs différents'; if (!a.categories.length) throw 'catégorie de réglages inconnue'; const ok = (id) => packs.find((p) => p.id === id)?.installed; if (!ok(a.from) || !ok(a.to)) throw 'le pack de destination n’est pas installé'; return 3 * a.categories.length; }
+    case 'shaders_get': { const p = packs.find((x) => x.id === a.id); if (!p?.installed) throw 'ce pack n’est pas installé'; return { available: a.id !== 'solo', files: ['ComplementaryReimagined_r5.5.1.zip', 'BSL_v10.zip', 'Dossier perso'], active: shaderOf[a.id] ?? null }; }
+    case 'shader_set': if (!['ComplementaryReimagined_r5.5.1.zip', 'BSL_v10.zip', 'Dossier perso', null].includes(a.name)) throw 'shader introuvable dans shaderpacks/'; shaderOf[a.id] = a.name; return null;
     case 'open_folder': return null;
     case 'map_info': { const p = packs.find((x) => x.id === a.id); if (!p?.hasMap) throw 'ce serveur n’a pas de carte'; await wait(300); return { name: p.name, url: 'https://bluecolored.de/bluemap/', reachable: !q.has('mapdown'), embeddable: !q.has('mapblock') }; }
     case 'open_map': { const p = packs.find((x) => x.id === a.id); if (!p?.hasMap) throw 'ce serveur n’a pas de carte'; console.info('[démo] fenêtre « Carte – ' + p.name + ' » (WebviewWindow externe, sans capability)'); return null; }

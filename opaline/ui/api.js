@@ -37,6 +37,8 @@ export const settingsSet = (patch) => call('settings_set', { patch });
 export const mapInfo = (id) => call('map_info', { id });
 export const openMap = (id) => call('open_map', { id });
 export const settingsCopy = (from, to, categories) => call('settings_copy', { from, to, categories });
+export const shadersGet = (id) => call('shaders_get', { id });
+export const shaderSet = (id, name = null) => call('shader_set', { id, name });
 export const openFolder = (id, kind) => call('open_folder', { id, kind });
 export const backupsList = (id) => call('backups_list', { id });
 export const backupRestore = (id, backupId) => call('backup_restore', { id, backupId });
