@@ -29,16 +29,12 @@ pub struct Versions {
 impl Versions {
     /// Loader du pack : clés `fabric`, `quilt`, `forge`, `neoforge` de `[versions]` (core/pack.go de packwiz). Une seule attendue.
     pub fn loader(&self) -> Result<(LoaderKind, String)> {
-        let found: Vec<(LoaderKind, String)> = [
-            (LoaderKind::Fabric, &self.fabric),
-            (LoaderKind::Quilt, &self.quilt),
-            (LoaderKind::NeoForge, &self.neoforge),
-            (LoaderKind::Forge, &self.forge),
-        ]
-        .into_iter()
-        .filter_map(|(k, v)| Some((k, v.as_ref()?.trim().to_string())))
-        .filter(|(_, v)| !v.is_empty())
-        .collect();
+        let found: Vec<(LoaderKind, String)> =
+            [(LoaderKind::Fabric, &self.fabric), (LoaderKind::Quilt, &self.quilt), (LoaderKind::NeoForge, &self.neoforge), (LoaderKind::Forge, &self.forge)]
+                .into_iter()
+                .filter_map(|(k, v)| Some((k, v.as_ref()?.trim().to_string())))
+                .filter(|(_, v)| !v.is_empty())
+                .collect();
         match found.as_slice() {
             [one] => Ok(one.clone()),
             [] => bail!("pack.toml : aucun loader dans [versions] (fabric, quilt, neoforge ou forge)"),

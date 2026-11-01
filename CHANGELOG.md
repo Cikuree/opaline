@@ -1,5 +1,11 @@
 # Changelog
 
+## Opaline 0.6.5 : shaders et Fichiers & mods
+- Shaders : installer Iris en un clic, chercher un shader sur Modrinth (téléchargé et activé), ou ajouter un .zip.
+- Fichiers & mods en onglets : Mods, Shaders & resource packs, Captures, Journal, Instance. Clic droit sur un onglet : ouvrir le dossier ou ajouter un fichier.
+- Galerie des captures d'écran (agrandir, naviguer, copier l'image) et lecture du journal du jeu.
+- Packs à installer en pointillés ; onglets en pointillés roses pendant le glisser d'un fichier.
+
 ## Opaline 0.6.4 : carte plein écran
 - La vue Carte (BlueMap) occupe toute la hauteur disponible.
 - Pack Classroom Run : carte BlueMap du serveur.

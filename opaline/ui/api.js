@@ -40,7 +40,12 @@ export const mapInfo = (id) => call('map_info', { id });
 export const openMap = (id) => call('open_map', { id });
 export const settingsCopy = (from, to, categories) => call('settings_copy', { from, to, categories });
 export const shadersGet = (id) => call('shaders_get', { id });
+/** Captures du pack, plus récentes d'abord ; `url` affichable (protocole asset de Tauri). */
+export const screenshotsList = async (id) => (await call('screenshots_list', { id })).map((f) => ({ ...f, url: isTauri ? T.core.convertFileSrc(f.path) : f.path }));
+export const logTail = (id) => call('log_tail', { id });
 export const shaderSet = (id, name = null) => call('shader_set', { id, name });
+export const shaderSearch = (id, query) => call('shader_search', { id, query });
+export const shaderAdd = (id, projectId) => call('shader_add', { id, projectId });
 export const openFolder = (id, kind) => call('open_folder', { id, kind });
 export const backupsList = (id) => call('backups_list', { id });
 export const backupRestore = (id, backupId) => call('backup_restore', { id, backupId });

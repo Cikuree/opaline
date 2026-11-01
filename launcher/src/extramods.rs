@@ -419,7 +419,15 @@ impl Planner<'_> {
                 bail!("« {title} » est incompatible avec « {} », déjà présent : ajout refusé", self.title(other));
             }
         }
-        let r = Resolved { project_id: project.to_string(), title, version: v.version_number.clone(), file: file.filename.clone(), url: file.url.clone(), sha512, size: Some(size) };
+        let r = Resolved {
+            project_id: project.to_string(),
+            title,
+            version: v.version_number.clone(),
+            file: file.filename.clone(),
+            url: file.url.clone(),
+            sha512,
+            size: Some(size),
+        };
         if parent.is_none() {
             self.plan.root = Some(r);
         } else {
@@ -466,7 +474,16 @@ pub fn install_plan(dirs: &Dirs, plan: Plan, fetch: &dyn Fn(&Resolved, &Path) ->
         }
         created.push(dest.clone());
         fetch(r, &dest)?;
-        idx.mods.push(Entry { file: r.file.clone(), project_id: r.project_id.clone(), title: r.title.clone(), version: r.version.clone(), sha512: r.sha512.clone(), auto: r.project_id != root.project_id, required_by: vec![], managed: None });
+        idx.mods.push(Entry {
+            file: r.file.clone(),
+            project_id: r.project_id.clone(),
+            title: r.title.clone(),
+            version: r.version.clone(),
+            sha512: r.sha512.clone(),
+            auto: r.project_id != root.project_id,
+            required_by: vec![],
+            managed: None,
+        });
         Ok(())
     });
     if let Err(e) = result.and_then(|()| {
@@ -491,7 +508,15 @@ pub fn add_modrinth(dirs: &Dirs, api: &dyn Api, project: &str, mc: &str, loader:
     let mut idx = Index::load(&inst);
     if let Some(e) = idx.mods.iter_mut().find(|e| e.project_id == project && e.auto) {
         e.auto = false;
-        let added = Resolved { project_id: e.project_id.clone(), title: e.title.clone(), version: e.version.clone(), file: e.file.clone(), url: String::new(), sha512: e.sha512.clone(), size: None };
+        let added = Resolved {
+            project_id: e.project_id.clone(),
+            title: e.title.clone(),
+            version: e.version.clone(),
+            file: e.file.clone(),
+            url: String::new(),
+            sha512: e.sha512.clone(),
+            size: None,
+        };
         idx.save(&inst)?;
         return Ok(AddResult { added, deps: vec![], provided: vec![] });
     }
@@ -543,7 +568,13 @@ mod tests {
                     id: format!("v-{p}"),
                     version_number: "1.0".into(),
                     version_type: "release".into(),
-                    files: vec![VersionFile { url: format!("{}data/{p}/{p}.jar", modrinth::CDN), filename: format!("{p}.jar"), primary: true, size: Some(10), hashes: [("sha512".to_string(), format!("hash-{p}"))].into() }],
+                    files: vec![VersionFile {
+                        url: format!("{}data/{p}/{p}.jar", modrinth::CDN),
+                        filename: format!("{p}.jar"),
+                        primary: true,
+                        size: Some(10),
+                        hashes: [("sha512".to_string(), format!("hash-{p}"))].into(),
+                    }],
                     dependencies: deps.iter().map(|(d, ty)| Dependency { project_id: Some(d.to_string()), dependency_type: ty.to_string() }).collect(),
                 }],
             );
@@ -705,7 +736,8 @@ mod tests {
 
     #[test]
     fn dependency_already_in_the_pack_is_not_installed() {
-        let api = fake(&[("iris", "Iris", &[("sodium", "required"), ("fabric-api", "required")]), ("sodium", "Sodium", &[]), ("fabric-api", "Fabric API", &[])]);
+        let api =
+            fake(&[("iris", "Iris", &[("sodium", "required"), ("fabric-api", "required")]), ("sodium", "Sodium", &[]), ("fabric-api", "Fabric API", &[])]);
         let mut pack = PackInfo::default();
         pack.projects.insert("sodium".into()); // connu par project_id
         pack.sha512.insert("hash-fabric-api".into()); // sinon, reconnu par hash
@@ -735,7 +767,8 @@ mod tests {
     #[test]
     fn deep_or_huge_chains_are_bounded() {
         let names: Vec<String> = (0..30).map(|i| format!("m{i}")).collect();
-        let defs: Vec<(String, String, Vec<(String, &str)>)> = (0..30).map(|i| (names[i].clone(), names[i].to_uppercase(), if i < 29 { vec![(names[i + 1].clone(), "required")] } else { vec![] })).collect();
+        let defs: Vec<(String, String, Vec<(String, &str)>)> =
+            (0..30).map(|i| (names[i].clone(), names[i].to_uppercase(), if i < 29 { vec![(names[i + 1].clone(), "required")] } else { vec![] })).collect();
         let owned: Vec<Vec<(&str, &str)>> = defs.iter().map(|d| d.2.iter().map(|(a, b)| (a.as_str(), *b)).collect()).collect();
         let list: Vec<(&str, &str, &[(&str, &str)])> = defs.iter().zip(&owned).map(|(d, o)| (d.0.as_str(), d.1.as_str(), o.as_slice())).collect();
         let api = fake(&list);
@@ -786,7 +819,22 @@ mod tests {
         assert!(!extra_dir(&d.instance()).join("mon-mod.jar.part").exists());
         // copie dans mods/ ; un jar du pack de même nom n'est pas écrasé
         jar(&d, "mods/pack.jar", "pack");
-        changelog::save_snapshot(&d, &changelog::Snapshot { mods: vec![changelog::SnapMod { name: "Pack".into(), version: "1".into(), side: "both".into(), dir: "mods".into(), file: "pack.jar".into(), hash_format: "sha1".into(), hash: "ab".into(), project_id: None }] }).unwrap();
+        changelog::save_snapshot(
+            &d,
+            &changelog::Snapshot {
+                mods: vec![changelog::SnapMod {
+                    name: "Pack".into(),
+                    version: "1".into(),
+                    side: "both".into(),
+                    dir: "mods".into(),
+                    file: "pack.jar".into(),
+                    hash_format: "sha1".into(),
+                    hash: "ab".into(),
+                    project_id: None,
+                }],
+            },
+        )
+        .unwrap();
         add_bytes(&d, "pack.jar", b"PKperso").unwrap();
         sync(&d.instance(), &HashSet::from(["pack.jar".to_string()])).unwrap();
         assert_eq!(fs::read(d.instance().join("mods/pack.jar")).unwrap(), b"PKpack");
@@ -817,7 +865,22 @@ mod tests {
         }
         fs::create_dir_all(d.instance().join("mods")).unwrap();
         fs::write(d.instance().join("mods/sodium-pack.jar"), &zip_bytes).unwrap();
-        changelog::save_snapshot(&d, &changelog::Snapshot { mods: vec![changelog::SnapMod { name: "Sodium".into(), version: "1".into(), side: "both".into(), dir: "mods".into(), file: "sodium-pack.jar".into(), hash_format: "sha512".into(), hash: "AB".into(), project_id: Some("AANobbMI".into()) }] }).unwrap();
+        changelog::save_snapshot(
+            &d,
+            &changelog::Snapshot {
+                mods: vec![changelog::SnapMod {
+                    name: "Sodium".into(),
+                    version: "1".into(),
+                    side: "both".into(),
+                    dir: "mods".into(),
+                    file: "sodium-pack.jar".into(),
+                    hash_format: "sha512".into(),
+                    hash: "AB".into(),
+                    project_id: Some("AANobbMI".into()),
+                }],
+            },
+        )
+        .unwrap();
         add_bytes(&d, "sodium-perso.jar", &zip_bytes).unwrap();
         add_bytes(&d, "sodium-pack.jar", b"PKx").unwrap();
         add_bytes(&d, "autre.jar", b"PKx").unwrap();

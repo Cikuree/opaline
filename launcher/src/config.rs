@@ -57,7 +57,21 @@ pub enum LaunchVia {
 
 impl Default for Config {
     fn default() -> Self {
-        Config { nickname: "Player".into(), memory_mb: 4096, perf_mode: PerfMode::Balanced, no_remember: false, mc_name: String::new(), mc_uuid: String::new(), launch_via: LaunchVia::Opaline, join_server: true, notify_server: true, discord_presence: true, tray_on_game: !cfg!(target_os = "linux"), auto_tuned: false, borderless: false }
+        Config {
+            nickname: "Player".into(),
+            memory_mb: 4096,
+            perf_mode: PerfMode::Balanced,
+            no_remember: false,
+            mc_name: String::new(),
+            mc_uuid: String::new(),
+            launch_via: LaunchVia::Opaline,
+            join_server: true,
+            notify_server: true,
+            discord_presence: true,
+            tray_on_game: !cfg!(target_os = "linux"),
+            auto_tuned: false,
+            borderless: false,
+        }
     }
 }
 

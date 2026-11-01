@@ -45,7 +45,9 @@ pub fn parse_peers(json: &str) -> Vec<(String, String)> {
         }
         let first = dns.split('.').next().unwrap_or_default().to_string();
         out.push((first, dns.clone()));
-        if let Some(h) = p.get("HostName").and_then(Value::as_str).map(str::to_ascii_lowercase).filter(|h| ok(h) && !h.contains('.') && *h != out.last().unwrap().0) {
+        if let Some(h) =
+            p.get("HostName").and_then(Value::as_str).map(str::to_ascii_lowercase).filter(|h| ok(h) && !h.contains('.') && *h != out.last().unwrap().0)
+        {
             out.push((h, dns));
         }
     }

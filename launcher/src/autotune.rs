@@ -8,7 +8,10 @@ use anyhow::Result;
 pub fn is_integrated(gpu: &str) -> bool {
     let g = gpu.to_ascii_lowercase();
     let intel = g.contains("intel") && !g.contains("arc");
-    intel || ["vega", "radeon(tm) graphics", "radeon graphics", "basic render", "llvmpipe", "swrast", "svga", "virtualbox", "vmware"].iter().any(|k| g.contains(k))
+    intel
+        || ["vega", "radeon(tm) graphics", "radeon graphics", "basic render", "llvmpipe", "swrast", "svga", "virtualbox", "vmware"]
+            .iter()
+            .any(|k| g.contains(k))
 }
 
 /// Table : RAM < 6 Go -> Faible ; < 12 Go -> Équilibré ; sinon Qualité. GPU intégré : jamais plus que Équilibré, et Faible sous 8 Go.
@@ -133,7 +136,9 @@ mod tests {
         let w = parse_wmi("Name\r\nIntel(R) UHD Graphics 630\r\nNVIDIA GeForce GTX 1650\r\n\r\n");
         assert_eq!(w, ["Intel(R) UHD Graphics 630", "NVIDIA GeForce GTX 1650"]);
         assert_eq!(pick_gpu(&w).as_deref(), Some("NVIDIA GeForce GTX 1650"));
-        let l = parse_lspci("00:02.0 VGA compatible controller: Intel Corporation HD Graphics 620 (rev 02)\n01:00.0 3D controller: NVIDIA Corporation GP107M [GeForce GTX 1050 Mobile]\n00:1f.3 Audio device: Intel Corporation x\n");
+        let l = parse_lspci(
+            "00:02.0 VGA compatible controller: Intel Corporation HD Graphics 620 (rev 02)\n01:00.0 3D controller: NVIDIA Corporation GP107M [GeForce GTX 1050 Mobile]\n00:1f.3 Audio device: Intel Corporation x\n",
+        );
         assert_eq!(l.len(), 2);
         assert_eq!(pick_gpu(&l).unwrap(), "NVIDIA Corporation GP107M [GeForce GTX 1050 Mobile]");
         assert_eq!(pick_gpu(&[]), None);

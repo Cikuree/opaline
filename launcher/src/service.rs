@@ -5,7 +5,9 @@ use crate::catalog::{self, PackEntry, PackView};
 use crate::changelog::{self, Changelog, ModView};
 use crate::config::{self, Config, Dirs};
 use crate::download::{self, Progress};
-use crate::{backup, extramods, extrapacks, friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update};
+use crate::{
+    backup, extramods, extrapacks, friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update,
+};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -99,7 +101,9 @@ fn install_inner(root: &Dirs, id: &str, progress: &Arc<Progress>, local_pack: Op
         Some(p) => p.to_path_buf(),
         None => packwiz::fetch_remote_pack(&client, &dirs, &e.pack)?,
     };
-    if local_pack.is_none() && !catalog::pack_version_hash(&packwiz::load_pack(&pack_dir)?.index_hash, e.overrides.as_ref()).eq_ignore_ascii_case(e.pack_hash.trim()) {
+    if local_pack.is_none()
+        && !catalog::pack_version_hash(&packwiz::load_pack(&pack_dir)?.index_hash, e.overrides.as_ref()).eq_ignore_ascii_case(e.pack_hash.trim())
+    {
         bail!("le pack téléchargé ne correspond pas au catalogue (packHash) : réessayez plus tard");
     }
     let params = install::InstallParams {
@@ -142,6 +146,22 @@ pub fn extra_mod_search(root: &Dirs, id: &str, query: &str, api: &dyn crate::mod
     let e = entry(root, id)?;
     anyhow::ensure!(!query.trim().is_empty() && query.len() <= 100, "saisis un nom de mod");
     api.search(query.trim(), &e.mc, &e.loader)
+}
+
+/// Recherche de shaders Modrinth compatibles avec le pack.
+pub fn shader_search(root: &Dirs, id: &str, query: &str, api: &dyn crate::modrinth::Api) -> Result<Vec<crate::modrinth::Hit>> {
+    let e = entry(root, id)?;
+    anyhow::ensure!(!query.trim().is_empty() && query.len() <= 100, "saisis un nom de shader");
+    api.search(query.trim(), &e.mc, crate::modrinth::SHADERS)
+}
+
+/// Télécharge un shader Modrinth dans `shaderpacks/` et l'active. Renvoie le nom du fichier.
+pub fn shader_add(root: &Dirs, id: &str, project: &str, api: &dyn crate::modrinth::Api) -> Result<String> {
+    let e = entry(root, id)?;
+    let dirs = root.for_pack(id)?;
+    anyhow::ensure!(dirs.install_marker().is_file(), "installe le pack avant d'ajouter des shaders");
+    let client = download::http_client()?;
+    crate::extrapacks::add_modrinth_shader(&dirs, api, project, &e.mc, &|r, dest| extramods::download_job(&client, r, dest))
 }
 
 /// Ajoute un projet Modrinth (et ses dépendances requises) à Mes mods.
@@ -241,7 +261,11 @@ pub fn frame_allowed(xfo: Option<&str>, csp: &[String]) -> bool {
 pub fn map_info(root: &Dirs, id: &str) -> Result<MapInfo> {
     let (name, url) = map_target(root, id)?;
     // Sans redirection : on ne suit jamais un site vers un autre hôte (la redirection compte comme « répond »).
-    let client = reqwest::blocking::Client::builder().user_agent(concat!("Opaline/", env!("CARGO_PKG_VERSION"))).timeout(Duration::from_secs(10)).redirect(reqwest::redirect::Policy::none()).build()?;
+    let client = reqwest::blocking::Client::builder()
+        .user_agent(concat!("Opaline/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?;
     Ok(match client.get(&url).send() {
         Ok(r) if !r.status().is_server_error() => {
             let csp: Vec<String> = r.headers().get_all("content-security-policy").iter().filter_map(|v| v.to_str().ok()).map(str::to_string).collect();
@@ -385,15 +409,10 @@ pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) 
     let _ = extramods::sync_for_launch(&dirs); // Mes mods : recopiés dans mods/ ; un échec ne bloque pas le lancement
     let _ = extrapacks::sync_for_launch(&dirs);
     let quick_play = cfg.join_server.then(|| e.server.as_ref().and_then(quick_play_target)).flatten();
-    let cmd = launch::build_command_with(&launch::LaunchInput {
-        java: &inst.java,
-        version: &inst.version,
-        fabric: &inst.fabric,
-        dirs: &dirs,
-        session,
-        memory_mb,
-        env: &env,
-    }, quick_play.as_deref())?;
+    let cmd = launch::build_command_with(
+        &launch::LaunchInput { java: &inst.java, version: &inst.version, fabric: &inst.fabric, dirs: &dirs, session, memory_mb, env: &env },
+        quick_play.as_deref(),
+    )?;
     let child = launch::spawn(&cmd, &dirs)?;
     Ok(Launched { child, server, server_listed, joining: quick_play.is_some(), log: dirs.instance().join("logs").join("launcher-game.log") })
 }
@@ -528,6 +547,31 @@ pub fn log_tail(log: &Path, token: &str, server: &str, root: &Dirs, max_lines: u
     Some(sanitize_error(&launch::redact_text(&tail, token, Some(server)), root))
 }
 
+/// Capture d'écran du pack : nom et chemin complet (affiché par le protocole asset de Tauri).
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Shot {
+    pub name: String,
+    pub path: PathBuf,
+}
+
+/// Captures `.png` du pack, plus récentes d'abord, au plus `max`.
+pub fn screenshots(dirs: &Dirs, max: usize) -> Vec<Shot> {
+    let mut v: Vec<(std::time::SystemTime, Shot)> = std::fs::read_dir(dirs.instance().join("screenshots"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x.eq_ignore_ascii_case("png")))
+        .map(|e| (e.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH), Shot { name: e.file_name().to_string_lossy().into_owned(), path: e.path() }))
+        .collect();
+    v.sort_by_key(|a| std::cmp::Reverse(a.0));
+    v.into_iter().take(max).map(|(_, s)| s).collect()
+}
+
+/// Fin de `logs/latest.log` du pack pour l'onglet Journal, sans chemin personnel. Vide s'il n'existe pas.
+pub fn game_log(root: &Dirs, dirs: &Dirs) -> String {
+    log_tail(&dirs.instance().join("logs/latest.log"), "", "", root, 300).unwrap_or_default()
+}
+
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CrashView {
@@ -564,7 +608,15 @@ fn latest_crash_report(instance: &Path, since: std::time::SystemTime) -> Option<
 }
 
 /// Résumé lisible d'un plantage (code de sortie non nul) : `latest.log`, fin du journal déjà transmise et rapport de crash de cette session.
-pub fn crash_view(root: &Dirs, pack_id: &str, code: Option<i32>, log_tail: Option<&str>, since: std::time::SystemTime, token: &str, server: &str) -> Result<CrashView> {
+pub fn crash_view(
+    root: &Dirs,
+    pack_id: &str,
+    code: Option<i32>,
+    log_tail: Option<&str>,
+    since: std::time::SystemTime,
+    token: &str,
+    server: &str,
+) -> Result<CrashView> {
     let inst = root.for_pack(pack_id)?.instance();
     let latest = read_tail(&inst.join("logs").join("latest.log"), 256 * 1024).unwrap_or_default();
     let report = latest_crash_report(&inst, since);
@@ -841,11 +893,19 @@ mod tests {
         let inst = root.for_pack("p").unwrap().instance();
         std::fs::create_dir_all(inst.join("logs")).unwrap();
         std::fs::create_dir_all(inst.join("crash-reports")).unwrap();
-        std::fs::write(inst.join("logs/latest.log"), "	 - Mod 'Legendary Monuments' (legendarymonuments) 8.1 requires any version of lithostitched, which is missing!
-joined secret.host token SECRETTOKEN").unwrap();
+        std::fs::write(
+            inst.join("logs/latest.log"),
+            "	 - Mod 'Legendary Monuments' (legendarymonuments) 8.1 requires any version of lithostitched, which is missing!
+joined secret.host token SECRETTOKEN",
+        )
+        .unwrap();
         let before = std::time::SystemTime::now() - Duration::from_secs(3600);
-        std::fs::write(inst.join("crash-reports/crash-1.txt"), "Description: x
-	Suspected Mods: Sodium (sodium)").unwrap();
+        std::fs::write(
+            inst.join("crash-reports/crash-1.txt"),
+            "Description: x
+	Suspected Mods: Sodium (sodium)",
+        )
+        .unwrap();
         let v = crash_view(&root, "p", Some(1), Some("fin SECRETTOKEN"), before, "SECRETTOKEN", "secret.host:25565").unwrap();
         assert_eq!(v.crash_file.as_deref(), Some("crash-1.txt"));
         assert!(v.findings.iter().any(|f| f.kind == "missingMod") && v.findings.iter().any(|f| f.kind == "suspect"));
@@ -869,6 +929,24 @@ joined secret.host token SECRETTOKEN").unwrap();
         let mut w = ServerWatch::new();
         watch_step(&mut w, &obs(false));
         assert_eq!(watch_step(&mut w, &obs(true)), ["Pack A"], "hors ligne au démarrage puis en ligne : notifié");
+    }
+
+    #[test]
+    fn screenshots_are_png_newest_first_and_capped() {
+        let base = std::env::temp_dir().join(format!("opaline-shots-{}", std::process::id()));
+        let root = Dirs::new(&base);
+        let d = root.for_pack("p").unwrap();
+        let sh = d.instance().join("screenshots");
+        std::fs::create_dir_all(&sh).unwrap();
+        for n in ["a.png", "b.PNG", "notes.txt"] {
+            std::fs::write(sh.join(n), "x").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let names: Vec<String> = screenshots(&d, 10).into_iter().map(|s| s.name).collect();
+        assert_eq!(names, ["b.PNG", "a.png"]);
+        assert_eq!(screenshots(&d, 1).len(), 1);
+        assert!(game_log(&root, &d).is_empty());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

@@ -36,7 +36,9 @@ fn fabric_line(l: &str) -> Option<Finding> {
         }
         return Some(f("modVersion", format!("Le mod « {name} » requiert {} de « {dep} », mais la version présente ne convient pas.", french_range(range))));
     }
-    for (kw, what) in [(" conflicts with mod ", "est en conflit avec"), (" is incompatible with mod ", "est incompatible avec"), (" breaks mod ", "est incompatible avec")] {
+    for (kw, what) in
+        [(" conflicts with mod ", "est en conflit avec"), (" is incompatible with mod ", "est incompatible avec"), (" breaks mod ", "est incompatible avec")]
+    {
         if let Some(i) = after.find(kw) {
             let other = quoted(&after[i + kw.len() - 1..]).unwrap_or("un autre mod");
             return Some(f("incompatible", format!("Le mod « {name} » {what} « {other} ».")));
@@ -81,7 +83,11 @@ fn java_line(l: &str) -> Option<Finding> {
     Some(f(
         "java",
         match have {
-            Some(h) => format!("Version de Java trop ancienne : Java {} requis, Java {} utilisé. Vérifie et répare le pack pour réinstaller Java.", need.saturating_sub(44), h.saturating_sub(44)),
+            Some(h) => format!(
+                "Version de Java trop ancienne : Java {} requis, Java {} utilisé. Vérifie et répare le pack pour réinstaller Java.",
+                need.saturating_sub(44),
+                h.saturating_sub(44)
+            ),
             None => format!("Version de Java trop ancienne : Java {} requis.", need.saturating_sub(44)),
         },
     ))
@@ -108,7 +114,8 @@ fn mixin_line(l: &str) -> Option<Finding> {
         return None;
     };
     let culprit = culprit.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-').to_string();
-    (!culprit.is_empty()).then(|| f("mixin", format!("Erreur de mixin causée par le mod « {culprit} » (incompatibilité avec une autre version du jeu ou d'un autre mod).")))
+    (!culprit.is_empty())
+        .then(|| f("mixin", format!("Erreur de mixin causée par le mod « {culprit} » (incompatibilité avec une autre version du jeu ou d'un autre mod).")))
 }
 
 fn suspects(text: &str) -> Vec<Finding> {
@@ -116,7 +123,8 @@ fn suspects(text: &str) -> Vec<Finding> {
         .filter_map(|l| {
             let l = l.trim();
             let v = l.strip_prefix("Suspected Mods:").or_else(|| l.strip_prefix("Suspected Mod(s):"))?.trim();
-            (!v.is_empty() && !v.eq_ignore_ascii_case("none") && !v.eq_ignore_ascii_case("unknown")).then(|| f("suspect", format!("Mod(s) suspecté(s) par le rapport de crash : {v}.")))
+            (!v.is_empty() && !v.eq_ignore_ascii_case("none") && !v.eq_ignore_ascii_case("unknown"))
+                .then(|| f("suspect", format!("Mod(s) suspecté(s) par le rapport de crash : {v}.")))
         })
         .collect()
 }
@@ -125,7 +133,15 @@ fn suspects(text: &str) -> Vec<Finding> {
 fn crash_report_error(text: &str) -> Option<String> {
     let mut it = text.lines();
     let desc = it.by_ref().find_map(|l| l.strip_prefix("Description:"))?.trim().to_string();
-    let exc = it.map(str::trim).find(|l| !l.is_empty() && (l.starts_with("java.") || l.starts_with("net.") || l.starts_with("org.") || l.starts_with("com.") || l.contains("Exception") || l.contains("Error")))?;
+    let exc = it.map(str::trim).find(|l| {
+        !l.is_empty()
+            && (l.starts_with("java.")
+                || l.starts_with("net.")
+                || l.starts_with("org.")
+                || l.starts_with("com.")
+                || l.contains("Exception")
+                || l.contains("Error"))
+    })?;
     Some(format!("{desc} : {exc}"))
 }
 
@@ -189,7 +205,10 @@ More details:
     #[test]
     fn java_version_and_memory() {
         let log = "Exception in thread \"main\" java.lang.UnsupportedClassVersionError: net/minecraft/client/main/Main has been compiled by a more recent version of the Java Runtime (class file version 65.0), this version of the Java Runtime only recognizes class file versions up to 61.0";
-        assert_eq!(analyze(&[log], None)[0], f("java", "Version de Java trop ancienne : Java 21 requis, Java 17 utilisé. Vérifie et répare le pack pour réinstaller Java.".into()));
+        assert_eq!(
+            analyze(&[log], None)[0],
+            f("java", "Version de Java trop ancienne : Java 21 requis, Java 17 utilisé. Vérifie et répare le pack pour réinstaller Java.".into())
+        );
         let m = analyze(&["Caused by: java.lang.OutOfMemoryError: Java heap space"], None);
         assert_eq!(m[0].kind, "memory");
         assert_eq!(analyze(&["Error occurred during initialization of VM\nCould not reserve enough space for 8388608KB object heap"], None)[0].kind, "memory");

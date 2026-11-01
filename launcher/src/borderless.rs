@@ -187,8 +187,18 @@ mod tests {
                 id: "v".into(),
                 version_number: "5.0.0".into(),
                 version_type: "release".into(),
-                files: vec![VersionFile { url: format!("{}data/x/cwb.jar", crate::modrinth::CDN), filename: "cwb-5.0.0.jar".into(), primary: true, size: Some(10), hashes: [("sha512".to_string(), "h".to_string())].into() }],
-                dependencies: self.incompatible.map(|p| Dependency { project_id: Some(p.into()), dependency_type: "incompatible".into() }).into_iter().collect(),
+                files: vec![VersionFile {
+                    url: format!("{}data/x/cwb.jar", crate::modrinth::CDN),
+                    filename: "cwb-5.0.0.jar".into(),
+                    primary: true,
+                    size: Some(10),
+                    hashes: [("sha512".to_string(), "h".to_string())].into(),
+                }],
+                dependencies: self
+                    .incompatible
+                    .map(|p| Dependency { project_id: Some(p.into()), dependency_type: "incompatible".into() })
+                    .into_iter()
+                    .collect(),
             }])
         }
         fn title(&self, p: &str) -> Option<String> {
@@ -228,7 +238,10 @@ mod tests {
         assert!(extramods::list(&d).is_empty(), "invisible dans Mes mods");
         assert!(extramods::remove(&d, "cwb-5.0.0.jar").is_err(), "jamais retiré à la main");
         let cfg: serde_json::Value = serde_json::from_str(&fs::read_to_string(d.instance().join("config/cwb.json")).unwrap()).unwrap();
-        assert_eq!((cfg["fullscreenMode"].as_str(), cfg["preferredFullscreenMode"].as_str(), cfg["autoHideDock"].as_bool()), (Some("BORDERLESS"), Some("BORDERLESS"), Some(false)));
+        assert_eq!(
+            (cfg["fullscreenMode"].as_str(), cfg["preferredFullscreenMode"].as_str(), cfg["autoHideDock"].as_bool()),
+            (Some("BORDERLESS"), Some("BORDERLESS"), Some(false))
+        );
         assert_eq!(fs::read_to_string(d.instance().join("options.txt")).unwrap(), "version:4000\nfullscreen:true\nlang:fr_fr\n");
         // il est recopié dans mods/ au lancement, comme Mes mods
         extramods::sync(&d.instance(), &Default::default()).unwrap();
@@ -238,7 +251,11 @@ mod tests {
         assert_eq!(enable(&d, &api, "1.21.1", "fabric", &put).unwrap(), INSTALLED);
         assert_eq!(api.calls.get(), calls);
         disable(&d).unwrap();
-        assert!(Index::load(&d.instance()).mods.is_empty() && !d.instance().join("mods/cwb-5.0.0.jar").exists() && !extramods::extra_dir(&d.instance()).join("cwb-5.0.0.jar").exists());
+        assert!(
+            Index::load(&d.instance()).mods.is_empty()
+                && !d.instance().join("mods/cwb-5.0.0.jar").exists()
+                && !extramods::extra_dir(&d.instance()).join("cwb-5.0.0.jar").exists()
+        );
         assert_eq!(fs::read_to_string(d.instance().join("options.txt")).unwrap(), "version:4000\nfullscreen:false\nlang:fr_fr\n");
         assert!(state(&d).is_none());
         fs::remove_dir_all(&d.root).unwrap();
@@ -266,7 +283,16 @@ mod tests {
         crate::changelog::save_snapshot(
             &d,
             &crate::changelog::Snapshot {
-                mods: vec![crate::changelog::SnapMod { name: "Cubes Without Borders".into(), version: "5".into(), side: "client".into(), dir: "mods".into(), file: "cubeswithoutborders-5.jar".into(), hash_format: "sha1".into(), hash: "0".into(), project_id: None }],
+                mods: vec![crate::changelog::SnapMod {
+                    name: "Cubes Without Borders".into(),
+                    version: "5".into(),
+                    side: "client".into(),
+                    dir: "mods".into(),
+                    file: "cubeswithoutborders-5.jar".into(),
+                    hash_format: "sha1".into(),
+                    hash: "0".into(),
+                    project_id: None,
+                }],
             },
         )
         .unwrap();
@@ -289,7 +315,18 @@ mod tests {
         let d2 = pack("inc");
         crate::changelog::save_snapshot(
             &d2,
-            &crate::changelog::Snapshot { mods: vec![crate::changelog::SnapMod { name: "Autre".into(), version: "1".into(), side: "client".into(), dir: "mods".into(), file: "autre.jar".into(), hash_format: "sha1".into(), hash: "0".into(), project_id: Some("XtOSFWzb".into()) }] },
+            &crate::changelog::Snapshot {
+                mods: vec![crate::changelog::SnapMod {
+                    name: "Autre".into(),
+                    version: "1".into(),
+                    side: "client".into(),
+                    dir: "mods".into(),
+                    file: "autre.jar".into(),
+                    hash_format: "sha1".into(),
+                    hash: "0".into(),
+                    project_id: Some("XtOSFWzb".into()),
+                }],
+            },
         )
         .unwrap();
         let api2 = Fake { has_version: true, incompatible: Some("XtOSFWzb"), calls: Cell::new(0) };

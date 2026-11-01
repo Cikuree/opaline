@@ -1,11 +1,11 @@
 //! Orchestration de l'installation : Java, Minecraft, loader (Fabric, Quilt, NeoForge, Forge), mods. Les URL de base sont injectables.
 use crate::config::{Dirs, fabric_profile_id};
-use crate::loader::{self, Ctx, InstallProfile, LoaderKind, LoaderVersion, check_host, forge_version};
 use crate::download::{self, Job, Progress};
 use crate::fabric::{FabricProfile, maven_path};
 use crate::java;
-use crate::overrides;
+use crate::loader::{self, Ctx, InstallProfile, LoaderKind, LoaderVersion, check_host, forge_version};
 use crate::mojang::{AssetIndex, Env, VersionJson, VersionManifest, applicable_libraries};
+use crate::overrides;
 use crate::packwiz::{self, Pack};
 use crate::safe::{Hash, safe_file_name, safe_join};
 use anyhow::{Context, Result, bail};
@@ -290,7 +290,16 @@ fn sha1_or_maven(client: &Client, url: &str, given: Option<&str>) -> Result<Stri
 }
 
 #[allow(clippy::too_many_arguments)]
-fn install_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &str, loader: &str, java: &Path, progress: &Arc<Progress>) -> Result<(FabricProfile, String)> {
+fn install_loader(
+    client: &Client,
+    dirs: &Dirs,
+    ep: &Endpoints,
+    kind: LoaderKind,
+    mc: &str,
+    loader: &str,
+    java: &Path,
+    progress: &Arc<Progress>,
+) -> Result<(FabricProfile, String)> {
     match kind {
         LoaderKind::Fabric | LoaderKind::Quilt => install_meta_loader(client, dirs, ep, kind, mc, loader, progress),
         LoaderKind::NeoForge | LoaderKind::Forge => install_installer_loader(dirs, ep, kind, mc, loader, java, progress),
@@ -298,7 +307,15 @@ fn install_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: LoaderKind
 }
 
 /// Fabric (meta v2) et Quilt (meta v3) : profil JSON, libraries vérifiées par leur sha1 (profil ou `.sha1` du Maven).
-fn install_meta_loader(client: &Client, dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &str, loader: &str, progress: &Arc<Progress>) -> Result<(FabricProfile, String)> {
+fn install_meta_loader(
+    client: &Client,
+    dirs: &Dirs,
+    ep: &Endpoints,
+    kind: LoaderKind,
+    mc: &str,
+    loader: &str,
+    progress: &Arc<Progress>,
+) -> Result<(FabricProfile, String)> {
     let (meta, ver) = if kind == LoaderKind::Quilt { (&ep.quilt_meta, "v3") } else { (&ep.fabric_meta, "v2") };
     let url = format!("{}/{ver}/versions/loader/{mc}/{loader}/profile/json", meta.trim_end_matches('/'));
     let text = download::get_text(client, &url)?;
@@ -374,7 +391,15 @@ fn parse_entry<T: serde::de::DeserializeOwned>(installer: &Path, name: &str) -> 
 
 /// NeoForge et Forge : exécute l'`install_profile.json` de l'installeur officiel (processors client) dans l'instance isolée.
 #[allow(clippy::too_many_arguments)]
-fn install_installer_loader(dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &str, loader: &str, java: &Path, progress: &Arc<Progress>) -> Result<(FabricProfile, String)> {
+fn install_installer_loader(
+    dirs: &Dirs,
+    ep: &Endpoints,
+    kind: LoaderKind,
+    mc: &str,
+    loader: &str,
+    java: &Path,
+    progress: &Arc<Progress>,
+) -> Result<(FabricProfile, String)> {
     let client = &loader::loader_client()?;
     let url = installer_url(ep, kind, mc, loader)?;
     check_host(&url)?;
@@ -425,7 +450,9 @@ fn install_installer_loader(dirs: &Dirs, ep: &Endpoints, kind: LoaderKind, mc: &
     let sha_text = installer_sha.to_ascii_lowercase();
     // Tout est vérifié : sorties (sha1), fichiers de libraries des arguments, libraries locales (sha1 quand connu).
     let outputs_ok = || {
-        loader::client_processors(&profile).iter().all(|p| ctx.outputs_valid(p).ok().flatten() != Some(false) && ctx.processor_files(p).iter().all(|f| f.is_file()))
+        loader::client_processors(&profile)
+            .iter()
+            .all(|p| ctx.outputs_valid(p).ok().flatten() != Some(false) && ctx.processor_files(p).iter().all(|f| f.is_file()))
             && local.iter().all(|(_, d, sha)| loader::file_ok(d, sha.as_deref()))
     };
     if !(outputs_ok() && fs::read_to_string(&marker).is_ok_and(|m| m.trim() == sha_text)) {
@@ -490,7 +517,15 @@ pub fn load_installed(dirs: &Dirs) -> Result<Installed> {
     Ok(Installed { java, version, fabric, profile_id: id, shader_pack: have.shader_pack, index_hash: have.index_hash })
 }
 
-fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_jar: Option<&Path>, keep_paths: &HashSet<String>, progress: &Arc<Progress>) -> Result<()> {
+fn install_mods(
+    client: &Client,
+    dirs: &Dirs,
+    pack: &Pack,
+    pack_dir: &Path,
+    mod_jar: Option<&Path>,
+    keep_paths: &HashSet<String>,
+    progress: &Arc<Progress>,
+) -> Result<()> {
     let mods_dir = dirs.instance().join("mods");
     fs::create_dir_all(&mods_dir)?;
     let jar_name = mod_jar.map(|j| crate::safe::safe_file_name(j.file_name().and_then(|n| n.to_str()).unwrap_or("")).map(str::to_string)).transpose()?;

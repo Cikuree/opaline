@@ -195,13 +195,18 @@ pub fn split_host(addr: &str) -> (String, u16) {
 /// Plus petite priorité d'une réponse SRV au format DNS JSON (`"priorité poids port cible."`) : `(cible, port)`.
 pub fn parse_srv(json: &str) -> Option<(String, u16)> {
     let v: Value = serde_json::from_str(json).ok()?;
-    v["Answer"].as_array()?.iter()
+    v["Answer"]
+        .as_array()?
+        .iter()
         .filter(|a| a["type"] == 33)
         .filter_map(|a| {
             let mut it = a["data"].as_str()?.split_whitespace();
             let (prio, _weight, port, target) = (it.next()?.parse::<u32>().ok()?, it.next()?, it.next()?.parse::<u16>().ok()?, it.next()?);
             let target = target.trim_end_matches('.').to_ascii_lowercase();
-            let ok = port != 0 && !target.is_empty() && target.len() <= 253 && target.contains('.')
+            let ok = port != 0
+                && !target.is_empty()
+                && target.len() <= 253
+                && target.contains('.')
                 && target.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.');
             ok.then_some((prio, target, port))
         })
@@ -229,8 +234,8 @@ pub fn resolve_srv(host: &str) -> Option<(String, u16)> {
     let r = (|| {
         let c = reqwest::blocking::Client::builder().timeout(Duration::from_secs(3)).build().ok()?;
         // `host` déjà validé (lettres, chiffres, `-`, `.`) : aucun échappement nécessaire dans l'URL
-        let res = c.get(format!("https://cloudflare-dns.com/dns-query?name=_minecraft._tcp.{host}&type=SRV"))
-            .header("accept", "application/dns-json").send().ok()?;
+        let res =
+            c.get(format!("https://cloudflare-dns.com/dns-query?name=_minecraft._tcp.{host}&type=SRV")).header("accept", "application/dns-json").send().ok()?;
         parse_srv(&res.text().ok()?)
     })();
     cache.lock().unwrap().insert(host, (Instant::now(), r.clone()));
@@ -253,7 +258,10 @@ mod tests {
     fn srv_lowest_priority_and_validated() {
         let j = |d: &str| format!(r#"{{"Status":0,"Answer":[{d}]}}"#);
         let a = |p: u32, port: u16, t: &str| format!(r#"{{"name":"_minecraft._tcp.x.com.","type":33,"data":"{p} 5 {port} {t}"}}"#);
-        assert_eq!(parse_srv(&j(&format!("{},{}", a(10, 1, "b.example.com."), a(0, 26678, "8034.Mystrator.com.")))), Some(("8034.mystrator.com".into(), 26678)));
+        assert_eq!(
+            parse_srv(&j(&format!("{},{}", a(10, 1, "b.example.com."), a(0, 26678, "8034.Mystrator.com.")))),
+            Some(("8034.mystrator.com".into(), 26678))
+        );
         assert_eq!(parse_srv(&j(&a(0, 0, "x.com."))), None);
         assert_eq!(parse_srv(&j(&a(0, 25565, "bad host!."))), None);
         assert_eq!(parse_srv(r#"{"Status":3}"#), None);

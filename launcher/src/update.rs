@@ -184,7 +184,14 @@ mod tests {
 
     #[test]
     fn detects_changed_pack() {
-        let i = |p: Option<&str>| LauncherInfo { version: "1.0.0".into(), windows: None, linux: None, windows_sha256: None, linux_sha256: None, pack: p.map(str::to_string) };
+        let i = |p: Option<&str>| LauncherInfo {
+            version: "1.0.0".into(),
+            windows: None,
+            linux: None,
+            windows_sha256: None,
+            linux_sha256: None,
+            pack: p.map(str::to_string),
+        };
         assert!(!pack_changed(&i(Some("ABC")), Some("abc")));
         assert!(pack_changed(&i(Some("abd")), Some("abc")));
         assert!(pack_changed(&i(Some("abd")), None));
@@ -210,9 +217,14 @@ mod tests {
         assert!(check_download(&upd(OK, Some(H))).is_ok());
         assert!(check_download(&upd(OK, None)).is_err(), "sans hash : refus");
         assert!(check_download(&upd(OK, Some("zz"))).is_err());
-        for bad in ["https://evil.example/Cikuree/opaline/releases/download/x.exe", "http://github.com/Cikuree/opaline/releases/download/x.exe",
-            "https://github.com/Cikuree/opaline-evil/releases/download/x.exe", "https://github.com/Cikuree/opaline/releases/download/../../x.exe",
-            "https://github.com/Cikuree/opaline/releases/download/v1/x.exe?a=b", "https://github.com/Cikuree/opaline/releases/download/"] {
+        for bad in [
+            "https://evil.example/Cikuree/opaline/releases/download/x.exe",
+            "http://github.com/Cikuree/opaline/releases/download/x.exe",
+            "https://github.com/Cikuree/opaline-evil/releases/download/x.exe",
+            "https://github.com/Cikuree/opaline/releases/download/../../x.exe",
+            "https://github.com/Cikuree/opaline/releases/download/v1/x.exe?a=b",
+            "https://github.com/Cikuree/opaline/releases/download/",
+        ] {
             assert!(check_download(&upd(bad, Some(H))).is_err(), "{bad}");
         }
     }

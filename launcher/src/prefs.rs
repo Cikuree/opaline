@@ -16,9 +16,29 @@ fn in_category(cat: &str, key: &str) -> bool {
         "language" => key == "lang",
         "accessibility" => matches!(
             key,
-            "narrator" | "highContrast" | "highContrastBlockOutline" | "showSubtitles" | "directionalAudio" | "textBackgroundOpacity" | "backgroundForChatOnly" | "chatOpacity" | "chatLineSpacing" | "chatScale"
-                | "chatWidth" | "chatHeightFocused" | "chatHeightUnfocused" | "chatDelay" | "notificationDisplayTime" | "toggleCrouch" | "toggleSprint" | "hideLightningFlashes" | "damageTiltStrength"
-                | "distortionEffectScale" | "menuBackgroundBlurriness" | "panoramaScrollSpeed" | "monochromeLogo"
+            "narrator"
+                | "highContrast"
+                | "highContrastBlockOutline"
+                | "showSubtitles"
+                | "directionalAudio"
+                | "textBackgroundOpacity"
+                | "backgroundForChatOnly"
+                | "chatOpacity"
+                | "chatLineSpacing"
+                | "chatScale"
+                | "chatWidth"
+                | "chatHeightFocused"
+                | "chatHeightUnfocused"
+                | "chatDelay"
+                | "notificationDisplayTime"
+                | "toggleCrouch"
+                | "toggleSprint"
+                | "hideLightningFlashes"
+                | "damageTiltStrength"
+                | "distortionEffectScale"
+                | "menuBackgroundBlurriness"
+                | "panoramaScrollSpeed"
+                | "monochromeLogo"
         ),
         _ => false,
     }
@@ -70,7 +90,8 @@ pub fn copy_options(from: &Dirs, to: &Dirs, cats: &[String], now_secs: u64) -> R
     }
     let dest = to.instance().join("options.txt");
     if dest.is_file() {
-        std::fs::copy(&dest, to.instance().join(format!("options.txt.{}.bak", crate::backup::stamp(now_secs)))).context("sauvegarde d'options.txt impossible : rien n'a été modifié")?;
+        std::fs::copy(&dest, to.instance().join(format!("options.txt.{}.bak", crate::backup::stamp(now_secs))))
+            .context("sauvegarde d'options.txt impossible : rien n'a été modifié")?;
         prune_bak(&to.instance());
     }
     let kv: Vec<(&str, String)> = pairs.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
@@ -202,7 +223,10 @@ mod tests {
         fs::write(sp.join("Zeta.zip.txt"), "réglages").unwrap();
         fs::create_dir_all(sp.join("Dossier")).unwrap();
         let v = shaders_get(&a);
-        assert_eq!((v.available, v.files.as_slice(), v.active.as_deref()), (false, ["alpha.ZIP".to_string(), "Dossier".into(), "Zeta.zip".into()].as_slice(), None));
+        assert_eq!(
+            (v.available, v.files.as_slice(), v.active.as_deref()),
+            (false, ["alpha.ZIP".to_string(), "Dossier".into(), "Zeta.zip".into()].as_slice(), None)
+        );
         fs::create_dir_all(a.instance().join("mods")).unwrap();
         fs::write(a.instance().join("mods/iris-fabric-1.9.3.jar"), "j").unwrap();
         assert!(shaders_get(&a).available);

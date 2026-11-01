@@ -243,20 +243,32 @@ mod tests {
         std::fs::write(d.join("shaderpacks/Mien.zip"), "z").unwrap();
         let iris = d.join("config/iris.properties");
         let get = |k| prop(&std::fs::read_to_string(&iris).unwrap(), k);
-        std::fs::write(&iris, "shaderPack=Mien.zip
+        std::fs::write(
+            &iris,
+            "shaderPack=Mien.zip
 enableShaders=false
-").unwrap();
+",
+        )
+        .unwrap();
         apply(&d, PerfMode::Balanced, Some("C.zip"), None).unwrap();
         assert_eq!((get("shaderPack").as_deref(), get("enableShaders").as_deref()), (Some("Mien.zip"), Some("true")));
         apply(&d, PerfMode::Low, Some("C.zip"), None).unwrap();
         assert_eq!((get("shaderPack").as_deref(), get("enableShaders").as_deref()), (Some("Mien.zip"), Some("false")));
-        std::fs::write(&iris, "shaderPack=
+        std::fs::write(
+            &iris,
+            "shaderPack=
 enableShaders=false
-").unwrap(); // « Aucun »
+",
+        )
+        .unwrap(); // « Aucun »
         apply(&d, PerfMode::Quality, Some("C.zip"), None).unwrap();
         assert_eq!((get("shaderPack").as_deref(), get("enableShaders").as_deref()), (Some(""), Some("false")));
-        std::fs::write(&iris, "shaderPack=Disparu.zip
-").unwrap(); // zip supprimé : retour au shader du pack
+        std::fs::write(
+            &iris,
+            "shaderPack=Disparu.zip
+",
+        )
+        .unwrap(); // zip supprimé : retour au shader du pack
         apply(&d, PerfMode::Balanced, Some("C.zip"), None).unwrap();
         assert_eq!(get("shaderPack").as_deref(), Some("C.zip"));
         std::fs::remove_dir_all(&d).unwrap();

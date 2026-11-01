@@ -54,12 +54,15 @@ async function addPaths(paths) {
   renderExtras(); onShadersChanged();
 }
 
+/** Liste de résultats Modrinth (mods ou shaders) : bouton « Ajouter » avec `data-add` / `data-t`. */
+export const hitsHtml = (hits) => `<ul class="bk">${hits.map((h) => `<li><span class="mrh">${h.iconUrl && /^https:\/\/cdn\.modrinth\.com\//.test(h.iconUrl) ? `<img class="px" src="${esc(h.iconUrl)}" alt="" width="40" height="40" referrerpolicy="no-referrer">` : tex('diamond', 40)}<span class="xt"><b>${esc(h.title)}</b><span class="small mute">${esc(h.description)}</span><span class="xs mute">${esc(fmtDl(h.downloads))} téléchargements</span></span></span><button class="btn sm primary" data-add="${esc(h.projectId)}" data-t="${esc(h.title)}" ${busy() ? 'disabled' : ''}>Ajouter</button></li>`).join('')}</ul>`;
+
 async function search() {
   const p = current(), q = $('#mrQ').value.trim(); if (!p || !q) return;
   $('#mrBox').innerHTML = '<p class="mute small" style="margin-top:10px">Recherche…</p>';
   try {
     const hits = await api.modrinthSearch(p.id, q);
-    $('#mrBox').innerHTML = hits.length ? `<ul class="bk">${hits.map((h) => `<li><span class="mrh">${h.iconUrl && /^https:\/\/cdn\.modrinth\.com\//.test(h.iconUrl) ? `<img class="px" src="${esc(h.iconUrl)}" alt="" width="40" height="40" referrerpolicy="no-referrer">` : tex('diamond', 40)}<span class="xt"><b>${esc(h.title)}</b><span class="small mute">${esc(h.description)}</span><span class="xs mute">${esc(fmtDl(h.downloads))} téléchargements</span></span></span><button class="btn sm primary" data-add="${esc(h.projectId)}" data-t="${esc(h.title)}" ${busy() ? 'disabled' : ''}>Ajouter</button></li>`).join('')}</ul>` : '<p class="mute small" style="margin-top:10px">Aucun résultat compatible avec ce pack.</p>';
+    $('#mrBox').innerHTML = hits.length ? hitsHtml(hits) : '<p class="mute small" style="margin-top:10px">Aucun résultat compatible avec ce pack.</p>';
   } catch (e) { $('#mrBox').innerHTML = ''; toast(api.errMsg(e)); }
 }
 

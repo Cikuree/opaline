@@ -31,8 +31,16 @@ fn tmp(tag: &str) -> PathBuf {
 
 fn ctx(kind: &str) -> Ctx {
     let p = profile(kind);
-    Ctx::new(Path::new("/shared"), Path::new("/shared/libraries"), Path::new("/shared/versions/26.3/26.3.jar"), Path::new("/dl/installer.jar"), Path::new("/work/installer"), "26.3", &p)
-        .unwrap()
+    Ctx::new(
+        Path::new("/shared"),
+        Path::new("/shared/libraries"),
+        Path::new("/shared/versions/26.3/26.3.jar"),
+        Path::new("/dl/installer.jar"),
+        Path::new("/work/installer"),
+        "26.3",
+        &p,
+    )
+    .unwrap()
 }
 
 fn norm(s: &str) -> String {
@@ -164,17 +172,18 @@ fn vanilla() -> VersionJson {
 
 #[test]
 fn inherited_version_is_merged_with_vanilla_for_launch() {
-    for (kind, main, version_name) in [
-        ("neoforge", "net.neoforged.fml.startup.Client", "neoforge-26.3.0.100"),
-        ("forge", "net.minecraftforge.bootstrap.ForgeBootstrap", "26.3-forge-66.1.0"),
-    ] {
+    for (kind, main, version_name) in
+        [("neoforge", "net.neoforged.fml.startup.Client", "neoforge-26.3.0.100"), ("forge", "net.minecraftforge.bootstrap.ForgeBootstrap", "26.3-forge-66.1.0")]
+    {
         let lv: LoaderVersion = serde_json::from_str(&fixture(&format!("{kind}_version.json"))).unwrap();
         assert_eq!(lv.inherits_from.as_deref(), Some("26.3"));
         let prof: FabricProfile = lv.clone().into_profile("26.3").unwrap();
         assert!(lv.clone().into_profile("26.4").is_err(), "inheritsFrom doit correspondre à la version du jeu");
         let (v, dirs, session) = (vanilla(), Dirs::new("/root"), Session::offline("Bob"));
         let env = Env { os: "windows", arch: "x86_64", features: HashMap::new() };
-        let cmd = build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &prof, dirs: &dirs, session: &session, memory_mb: 2048, env: &env }).unwrap();
+        let cmd =
+            build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &prof, dirs: &dirs, session: &session, memory_mb: 2048, env: &env })
+                .unwrap();
         let main_at = cmd.iter().position(|a| a == main).unwrap();
         // jvm vanilla puis jvm du loader, avant la classe principale ; game vanilla puis game du loader, après
         let cp_at = cmd.iter().position(|a| a == "-cp").unwrap();

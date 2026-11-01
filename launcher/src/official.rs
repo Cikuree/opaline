@@ -76,7 +76,12 @@ fn java_cmdlines() -> Vec<String> {
     {
         use std::os::windows::process::CommandExt;
         let out = std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='javaw.exe' OR Name='java.exe'\" | ForEach-Object { $_.CommandLine }"])
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Get-CimInstance Win32_Process -Filter \"Name='javaw.exe' OR Name='java.exe'\" | ForEach-Object { $_.CommandLine }",
+            ])
             .creation_flags(0x0800_0000)
             .output();
         return out.map(|o| String::from_utf8_lossy(&o.stdout).lines().map(str::to_string).collect()).unwrap_or_default();
@@ -103,7 +108,8 @@ pub fn game_running(root: &crate::config::Dirs, mc: &Path) -> bool {
     if java_cmdlines().iter().any(|c| is_launcher_game(c, &markers)) {
         return true;
     }
-    crate::backup::world_open_in(&mc.join("saves")) || fs::read_dir(&instances).into_iter().flatten().flatten().any(|i| crate::backup::world_open_in(&i.path().join("saves")))
+    crate::backup::world_open_in(&mc.join("saves"))
+        || fs::read_dir(&instances).into_iter().flatten().flatten().any(|i| crate::backup::world_open_in(&i.path().join("saves")))
 }
 
 /// Message quand le Launcher ne se ferme pas de lui-même : Opaline ne force jamais sa fermeture.
@@ -391,7 +397,10 @@ mod tests {
     fn game_detection_and_close_policy() {
         let m = vec![".minecraft".to_string(), r"C:\Users\u\AppData\Roaming\Opaline\instances".to_string()];
         assert!(is_launcher_game(r"javaw.exe -Xmx4G net.minecraft.client.main.Main --gameDir C:\Users\u\AppData\Roaming\.minecraft", &m));
-        assert!(is_launcher_game(r"javaw.exe -cp x cpw.mods.bootstraplauncher.BootstrapLauncher --gameDir C:\Users\u\AppData\Roaming\Opaline\instances\classroom-run", &m));
+        assert!(is_launcher_game(
+            r"javaw.exe -cp x cpw.mods.bootstraplauncher.BootstrapLauncher --gameDir C:\Users\u\AppData\Roaming\Opaline\instances\classroom-run",
+            &m
+        ));
         assert!(!is_launcher_game("java -jar server.jar nogui", &m));
         assert!(!is_launcher_game(r"javaw.exe net.minecraft.client.main.Main --gameDir D:\autre\dossier", &m));
     }

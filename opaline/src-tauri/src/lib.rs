@@ -4,8 +4,8 @@
 use anyhow::{Context, anyhow, bail};
 use base64::Engine;
 use opaline_core::config::{Config, Dirs, LaunchVia};
-use opaline_core::shell::{Action, Prefs, Shell};
 use opaline_core::download::Progress;
+use opaline_core::shell::{Action, Prefs, Shell};
 use opaline_core::{auth, auth_browser, friends, head, identity, official, service, skins};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -148,7 +148,10 @@ fn hide_to_tray(app: &AppHandle, s: S) {
     let _ = app.run_on_main_thread(move || {
         let app = &handle;
         let built = (|| -> tauri::Result<()> {
-            let menu = Menu::with_items(app, &[&MenuItem::with_id(app, "show", "Afficher Opaline", true, None::<&str>)?, &MenuItem::with_id(app, "quit", "Quitter", true, None::<&str>)?])?;
+            let menu = Menu::with_items(
+                app,
+                &[&MenuItem::with_id(app, "show", "Afficher Opaline", true, None::<&str>)?, &MenuItem::with_id(app, "quit", "Quitter", true, None::<&str>)?],
+            )?;
             let (s1, s2) = (s.clone(), s.clone());
             let mut b = TrayIconBuilder::with_id("main")
                 .tooltip("Opaline")
@@ -650,6 +653,26 @@ async fn extra_pack_remove(state: State<'_, S>, id: String, kind: opaline_core::
     exclusive(&state, id.clone(), move |r| opaline_core::extrapacks::remove(&r.for_pack(&id)?, kind, &file)).await
 }
 
+/// Captures du pack ; leur dossier est autorisé au protocole asset pour l'affichage.
+#[tauri::command]
+async fn screenshots_list(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Vec<service::Shot>> {
+    state
+        .blocking(move |r| {
+            let dirs = r.for_pack(&id)?;
+            let dir = dirs.instance().join("screenshots");
+            if dir.is_dir() {
+                app.asset_protocol_scope().allow_directory(&dir, false)?;
+            }
+            Ok(service::screenshots(&dirs, 120))
+        })
+        .await
+}
+
+#[tauri::command]
+async fn log_tail(state: State<'_, S>, id: String) -> CmdResult<String> {
+    state.blocking(move |r| Ok(service::game_log(r, &r.for_pack(&id)?))).await
+}
+
 #[tauri::command]
 async fn modrinth_search(state: State<'_, S>, id: String, query: String) -> CmdResult<Vec<opaline_core::modrinth::Hit>> {
     state.blocking(move |r| service::extra_mod_search(r, &id, &query, &opaline_core::modrinth::Http::default_api()?)).await
@@ -658,6 +681,17 @@ async fn modrinth_search(state: State<'_, S>, id: String, query: String) -> CmdR
 #[tauri::command]
 async fn modrinth_add(state: State<'_, S>, id: String, project_id: String) -> CmdResult<opaline_core::extramods::AddResult> {
     exclusive(&state, id.clone(), move |r| service::extra_mod_add_modrinth(r, &id, &project_id, &opaline_core::modrinth::Http::default_api()?)).await
+}
+
+#[tauri::command]
+async fn shader_search(state: State<'_, S>, id: String, query: String) -> CmdResult<Vec<opaline_core::modrinth::Hit>> {
+    state.blocking(move |r| service::shader_search(r, &id, &query, &opaline_core::modrinth::Http::default_api()?)).await
+}
+
+/// Télécharge un shader Modrinth, le range dans `shaderpacks/` et l'active ; renvoie le nom du fichier.
+#[tauri::command]
+async fn shader_add(state: State<'_, S>, id: String, project_id: String) -> CmdResult<String> {
+    exclusive(&state, id.clone(), move |r| service::shader_add(r, &id, &project_id, &opaline_core::modrinth::Http::default_api()?)).await
 }
 
 #[tauri::command]
@@ -705,7 +739,12 @@ async fn open_map(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<
         }
     }
     let label = format!("map-{}", N.fetch_add(1, Ordering::Relaxed));
-    WebviewWindowBuilder::new(&app, label, WebviewUrl::External(url)).title(format!("Carte – {name}")).inner_size(1100.0, 720.0).build().map(|_| ()).map_err(|_| "Impossible d'ouvrir la carte".to_string())
+    WebviewWindowBuilder::new(&app, label, WebviewUrl::External(url))
+        .title(format!("Carte – {name}"))
+        .inner_size(1100.0, 720.0)
+        .build()
+        .map(|_| ())
+        .map_err(|_| "Impossible d'ouvrir la carte".to_string())
 }
 
 /// Copie des réglages (touches, souris, FOV, son...) d'un pack vers un autre ; refusée pendant le jeu ou une installation du pack de destination.
@@ -1046,7 +1085,11 @@ pub fn run_with(svc: Services) {
             open_map,
             settings_copy,
             shaders_get,
+            screenshots_list,
+            log_tail,
             shader_set,
+            shader_search,
+            shader_add,
             map_info,
             backups_list,
             extra_mods_list,

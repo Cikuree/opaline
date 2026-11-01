@@ -129,7 +129,24 @@ fn successful_login_then_config_json_has_no_secret() {
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
     let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     keys.sort();
-    assert_eq!(keys, ["auto_tuned", "borderless", "discord_presence", "join_server", "launch_via", "mc_name", "mc_uuid", "memory_mb", "nickname", "no_remember", "notify_server", "perf_mode", "tray_on_game"]);
+    assert_eq!(
+        keys,
+        [
+            "auto_tuned",
+            "borderless",
+            "discord_presence",
+            "join_server",
+            "launch_via",
+            "mc_name",
+            "mc_uuid",
+            "memory_mb",
+            "nickname",
+            "no_remember",
+            "notify_server",
+            "perf_mode",
+            "tray_on_game"
+        ]
+    );
     let _ = std::fs::remove_dir_all(&dirs.root);
 }
 
@@ -191,15 +208,8 @@ fn bug_leftover_variable_error_echoes_token() {
     let f = fabric_profile();
     let dirs = Dirs::new(tmp("leftover"));
     let env = mojang::Env::current(&[]);
-    let e = launch::build_command(&launch::LaunchInput {
-        java: Path::new("java"),
-        version: &v,
-        fabric: &f,
-        dirs: &dirs,
-        session: &s,
-        memory_mb: 2048,
-        env: &env,
-    })
-    .expect_err("variable non substituée doit échouer");
+    let e =
+        launch::build_command(&launch::LaunchInput { java: Path::new("java"), version: &v, fabric: &f, dirs: &dirs, session: &s, memory_mb: 2048, env: &env })
+            .expect_err("variable non substituée doit échouer");
     assert_no_secret("erreur build_command", &format!("{e:#}"));
 }

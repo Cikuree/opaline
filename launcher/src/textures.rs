@@ -73,7 +73,13 @@ pub fn pick_mc(packs: &[crate::catalog::PackEntry]) -> &str {
 
 /// Télécharge (reprise + sha1 ; aucun téléchargement si le jar vérifié est déjà là, ex. après une installation)
 /// le client.jar dans `shared/versions/<id>/`, puis extrait les textures. Renvoie le nombre de PNG écrits.
-pub fn ensure_from_jar(client: &reqwest::blocking::Client, dirs: &crate::config::Dirs, id: &str, jar: &crate::mojang::FileRef, extra: &[String]) -> Result<usize> {
+pub fn ensure_from_jar(
+    client: &reqwest::blocking::Client,
+    dirs: &crate::config::Dirs,
+    id: &str,
+    jar: &crate::mojang::FileRef,
+    extra: &[String],
+) -> Result<usize> {
     let job = crate::download::Job { url: jar.url.clone(), dest: dirs.client_jar(id), hash: crate::safe::Hash::new("sha1", &jar.sha1)?, size: jar.size };
     crate::download::fetch(client, &job)?;
     extract(&job.dest, &dirs.textures(), extra)
@@ -183,10 +189,12 @@ mod tests {
 
     #[test]
     fn mc_version_comes_from_first_pack_else_default() {
-        let mk = |mc: &str| crate::catalog::parse_catalog(&format!(
+        let mk = |mc: &str| {
+            crate::catalog::parse_catalog(&format!(
             r#"{{"packs":[{{"id":"a","name":"A","mc":"{mc}","loader":"fabric","pack":"https://x/p.zip","packHash":"{}","server":{{"host":"h","port":25565,"motd":"m","statsPort":25580}}}}]}}"#,
             "0".repeat(64)
-        )).unwrap();
+        )).unwrap()
+        };
         assert_eq!(pick_mc(&mk("1.21.5")), "1.21.5");
         assert_eq!(pick_mc(&[]), DEFAULT_MC);
     }

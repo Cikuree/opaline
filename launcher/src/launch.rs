@@ -183,8 +183,7 @@ mod tests {
         let dirs = Dirs::new("/root");
         let session = Session::offline("Bob");
         let env = Env { os, arch: "x86_64", features: HashMap::new() };
-        build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &f, dirs: &dirs, session: &session, memory_mb: 2048, env: &env })
-            .unwrap()
+        build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &f, dirs: &dirs, session: &session, memory_mb: 2048, env: &env }).unwrap()
     }
 
     #[test]
@@ -262,15 +261,7 @@ mod tests {
         let dirs = Dirs::new("/root");
         let session = Session::offline("Bob");
         let env = Env { os: "linux", arch: "x86_64", features: HashMap::new() };
-        let r = build_command(&LaunchInput {
-            java: Path::new("/j/java"),
-            version: &v,
-            fabric: &f,
-            dirs: &dirs,
-            session: &session,
-            memory_mb: 1,
-            env: &env,
-        });
+        let r = build_command(&LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &f, dirs: &dirs, session: &session, memory_mb: 1, env: &env });
         assert!(r.is_err());
     }
 }

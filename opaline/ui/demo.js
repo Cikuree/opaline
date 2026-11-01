@@ -71,6 +71,8 @@ let xpacks = [{ file: 'Faithful-64x.zip', kind: 'resourcepack', sizeBytes: 38e6 
 let extras = [{ file: 'zoomify-2.14.jar', title: null, auto: false, requiredBy: [], sizeBytes: 812000, warning: null }];
 const MR = [['YL57xq9U', 'Iris Shaders', 'Shaders modernes pour Minecraft, compatibles avec Sodium.', 18400000, ['AANobbMI']], ['AANobbMI', 'Sodium', 'Moteur de rendu moderne qui accélère le jeu.', 52100000, []], ['gvQqBUqZ', 'Lithium', 'Optimisations du serveur de jeu intégré.', 41000000, []]];
 const MRT = Object.fromEntries(MR.map((m) => [m[0], m[1]]));
+const SH = ['Complementary_Reimagined', 'BSL_Shaders', 'Photon', 'Solas'];
+const irisOn = new Set(); // packs où « Activer les shaders » a installé Iris
 const shaderOf = { 'classroom-run': 'ComplementaryReimagined_r5.5.1.zip' };
 let launcherClosed = false;
 let started = null, attemptN = 0, cancelled = false;
@@ -85,6 +87,17 @@ const runInstall = async (id) => {
   const p = packs.find((x) => x.id === id); p.installed = true; p.updateAvailable = false;
   emit('install://done', { packId: id, ok: true, error: null });
 };
+
+// Captures de démo : paysages en dégradé (SVG), journal factice.
+const SHOTS = [['#f6a38a', '#7b2d4a', '#2b5d4f'], ['#9ad0ec', '#e9d8a6', '#3a6b35'], ['#2c1e4a', '#e05d7b', '#1b263b'], ['#ffd6a5', '#c08497', '#355070'], ['#a3cef1', '#6096ba', '#274c77']];
+const shot = ([sky, sun, hill]) => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90"><defs><linearGradient id="g" x2="0" y2="1"><stop offset="0" stop-color="${sky}"/><stop offset="1" stop-color="${sun}"/></linearGradient></defs><rect width="160" height="90" fill="url(#g)"/><circle cx="118" cy="40" r="12" fill="#fff8" /><path d="M0 70 L30 52 L58 64 L92 46 L126 62 L160 50 V90 H0Z" fill="${hill}"/></svg>`);
+const LOG = `[21:40:02] [main/INFO]: Loading Minecraft 26.3 with Fabric Loader 0.17.3
+[21:40:05] [main/INFO]: Loaded 10 mods
+[21:40:09] [Render thread/INFO]: Iris: shaderpack ComplementaryReimagined_r5.5.1.zip
+[21:40:12] [Render thread/INFO]: Connecting to home-server, 25565
+[21:41:30] [Server thread/INFO]: [classroomrun] Run #20 : split « Nether » 12:04
+[21:52:44] [Render thread/WARN]: Missing sound for event: classroomrun:split
+[22:10:03] [Render thread/INFO]: Stopping!`;
 
 export async function invoke(cmd, a = {}) {
   await wait(60);
@@ -127,9 +140,11 @@ export async function invoke(cmd, a = {}) {
     case 'settings_set': settings = { ...settings, ...a.patch, ...(a.patch.perfMode || a.patch.memoryMb ? { autoTuned: false } : {}) }; return settings;
     case 'playtime': return { 'classroom-run': { totalSecs: 41 * 3600 + 25 * 60, lastPlayed: Math.floor(Date.now() / 1000) - 2 * 3600 }, survie: { totalSecs: 1500, lastPlayed: Math.floor(Date.now() / 1000) - 86400 * 4 } };
     case 'settings_copy': { if (a.from === a.to) throw 'choisis deux packs différents'; if (!a.categories.length) throw 'catégorie de réglages inconnue'; const ok = (id) => packs.find((p) => p.id === id)?.installed; if (!ok(a.from) || !ok(a.to)) throw 'le pack de destination n’est pas installé'; return 3 * a.categories.length; }
-    case 'shaders_get': { const p = packs.find((x) => x.id === a.id); if (!p?.installed) throw 'ce pack n’est pas installé'; return { available: a.id !== 'solo', files: ['ComplementaryReimagined_r5.5.1.zip', 'BSL_v10.zip', 'Dossier perso', ...xpacks.filter((x) => x.kind === 'shader').map((x) => x.file)], active: shaderOf[a.id] ?? null }; }
+    case 'shaders_get': { const p = packs.find((x) => x.id === a.id); if (!p?.installed) throw 'ce pack n’est pas installé'; return { available: a.id !== 'solo' || irisOn.has(a.id), files: ['ComplementaryReimagined_r5.5.1.zip', 'BSL_v10.zip', 'Dossier perso', ...xpacks.filter((x) => x.kind === 'shader').map((x) => x.file)], active: shaderOf[a.id] ?? null }; }
     case 'shader_set': if (![ 'ComplementaryReimagined_r5.5.1.zip', 'BSL_v10.zip', 'Dossier perso', null, ...xpacks.filter((x) => x.kind === 'shader').map((x) => x.file)].includes(a.name)) throw 'shader introuvable dans shaderpacks/'; shaderOf[a.id] = a.name; return null;
     case 'borderless_status': return { 'classroom-run': 'installed', survie: 'noVersion', solo: 'incompatible' };
+    case 'screenshots_list': return SHOTS.map((c, i) => ({ name: `2026-10-${30 - i}_21.4${i}.12.png`, path: shot(c) }));
+    case 'log_tail': return LOG;
     case 'open_folder': return null;
     case 'map_info': { const p = packs.find((x) => x.id === a.id); if (!p?.hasMap) throw 'ce serveur n’a pas de carte'; await wait(300); return { name: p.name, url: 'https://bluecolored.de/bluemap/', reachable: !q.has('mapdown'), embeddable: !q.has('mapblock') }; }
     case 'open_map': { const p = packs.find((x) => x.id === a.id); if (!p?.hasMap) throw 'ce serveur n’a pas de carte'; console.info('[démo] fenêtre « Carte – ' + p.name + ' » (WebviewWindow externe, sans capability)'); return null; }
@@ -152,7 +167,10 @@ export async function invoke(cmd, a = {}) {
     }
     case 'extra_mod_remove': { const e = extras.find((x) => x.file === a.file); if (!e) throw 'ce mod n’est pas dans Mes mods'; extras = extras.filter((x) => x.file !== a.file); const gone = [a.file]; extras.filter((x) => x.auto && x.requiredBy.includes(e.title)).forEach((x) => { x.requiredBy = x.requiredBy.filter((r) => r !== e.title); if (!x.requiredBy.length) { extras = extras.filter((y) => y !== x); gone.push(x.file); } }); return gone; }
     case 'modrinth_search': return MR.filter((m) => m[1].toLowerCase().includes(String(a.query).toLowerCase())).map(([projectId, title, description, downloads]) => ({ projectId, title, description, downloads, iconUrl: null }));
+    case 'shader_search': return SH.filter((n) => n.toLowerCase().includes(String(a.query).toLowerCase())).map((n, i) => ({ projectId: n, title: n.replace(/_/g, ' '), description: 'Shader pour Iris', downloads: 900000 - i * 1e5, iconUrl: null }));
+    case 'shader_add': { const f = a.projectId + '.zip'; if (!xpacks.some((x) => x.file === f)) xpacks.push({ file: f, kind: 'shader', sizeBytes: 2e6 }); shaderOf[a.id] = f; return f; }
     case 'modrinth_add': {
+      if (a.projectId === 'iris') { irisOn.add(a.id); return { added: { title: 'Iris Shaders', file: 'iris.jar', version: '1.0' }, deps: [{ title: 'Sodium', file: 'sodium.jar', version: '1.0' }], provided: [] }; }
       const m = MR.find((x) => x[0] === a.projectId); if (!m) throw 'Projet introuvable';
       if (extras.some((x) => x.title === m[1])) throw '« ' + m[1] + ' » est déjà dans Mes mods';
       const deps = [], provided = [];

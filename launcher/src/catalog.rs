@@ -47,7 +47,8 @@ pub fn valid_map(u: &str) -> bool {
         let h = h.to_ascii_lowercase();
         h == "localhost" || h.ends_with(".localhost") || h.starts_with("127.") || h == "[::1]"
     };
-    reqwest::Url::parse(u).is_ok_and(|p| p.host_str().is_some_and(|h| !h.is_empty() && !local(h)) && p.username().is_empty() && p.password().is_none() && p.port() != Some(0))
+    reqwest::Url::parse(u)
+        .is_ok_and(|p| p.host_str().is_some_and(|h| !h.is_empty() && !local(h)) && p.username().is_empty() && p.password().is_none() && p.port() != Some(0))
 }
 
 /// Archive des fichiers « overrides » d'un pack (resourcepacks, datapacks, shaderpacks...) publiée à côté du zip du pack.
@@ -175,7 +176,12 @@ fn validate(e: &PackEntry) -> Result<()> {
     }
     if let Some(o) = &e.overrides {
         let local = o.url.starts_with("http://127.0.0.1") || o.url.starts_with("http://localhost");
-        if !(o.url.starts_with("https://") || local) || o.sha256.len() != 64 || !o.sha256.chars().all(|c| c.is_ascii_hexdigit()) || o.size == 0 || o.size > OVERRIDES_MAX_BYTES {
+        if !(o.url.starts_with("https://") || local)
+            || o.sha256.len() != 64
+            || !o.sha256.chars().all(|c| c.is_ascii_hexdigit())
+            || o.size == 0
+            || o.size > OVERRIDES_MAX_BYTES
+        {
             bail!("overrides invalides dans le catalogue");
         }
     }
@@ -281,7 +287,29 @@ mod tests {
             assert!(valid_map(ok), "{ok}");
         }
         let long = format!("https://x.fr/{}", "a".repeat(300));
-        for bad in ["ftp://x.fr/", "javascript:alert(1)", "map.example.fr", "https://u:p@x.fr/", "https://u@x.fr/", "https://x.fr@evil.fr/", "https://x.fr/a b", "", &long, "https://x.fr/é", "https:///x", "file:///c:/x", "https://x.fr:0/", "http://localhost:8100/", "http://a.localhost/", "http://127.0.0.1:8100/", "http://127.1.2.3/", "http://[::1]:8100/", "https://x.fr\\@evil.fr/", "https:/x.fr/", "https://"] {
+        for bad in [
+            "ftp://x.fr/",
+            "javascript:alert(1)",
+            "map.example.fr",
+            "https://u:p@x.fr/",
+            "https://u@x.fr/",
+            "https://x.fr@evil.fr/",
+            "https://x.fr/a b",
+            "",
+            &long,
+            "https://x.fr/é",
+            "https:///x",
+            "file:///c:/x",
+            "https://x.fr:0/",
+            "http://localhost:8100/",
+            "http://a.localhost/",
+            "http://127.0.0.1:8100/",
+            "http://127.1.2.3/",
+            "http://[::1]:8100/",
+            "https://x.fr\\@evil.fr/",
+            "https:/x.fr/",
+            "https://",
+        ] {
             assert!(!valid_map(bad), "{bad}");
         }
     }
@@ -298,7 +326,11 @@ mod tests {
 
     #[test]
     fn map_is_exposed_and_an_invalid_map_is_dropped_without_dropping_the_pack() {
-        let e = |m: &str| format!(r#"{{"packs":[{{"id":"a","name":"A","mc":"1","loader":"fabric","pack":"https://x/a.zip","packHash":"abcdef0123","server":{{"host":"h","port":1,"motd":"m"{m}}}}}]}}"#);
+        let e = |m: &str| {
+            format!(
+                r#"{{"packs":[{{"id":"a","name":"A","mc":"1","loader":"fabric","pack":"https://x/a.zip","packHash":"abcdef0123","server":{{"host":"h","port":1,"motd":"m"{m}}}}}]}}"#
+            )
+        };
         let p = parse_catalog(&e(r#","map":"https://map.example.fr/""#)).unwrap();
         assert_eq!(p[0].server.as_ref().unwrap().map.as_deref(), Some("https://map.example.fr/"));
         assert!(p[0].view(None, false).has_map);

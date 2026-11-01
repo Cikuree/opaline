@@ -180,6 +180,42 @@ pub fn add_bytes(dirs: &Dirs, name: &str, bytes: &[u8]) -> Result<ExtraPack> {
     place(dirs, name, |tmp| fs::write(tmp, bytes).map(|()| bytes.len() as u64).map_err(Into::into))
 }
 
+/// Télécharge un shader Modrinth (cdn seulement, sha512 vérifié par `fetch`), le range comme un zip perso puis l'active. Renvoie son nom.
+pub fn add_modrinth_shader(
+    dirs: &Dirs,
+    api: &dyn crate::modrinth::Api,
+    project: &str,
+    mc: &str,
+    fetch: &dyn Fn(&crate::extramods::Resolved, &Path) -> Result<()>,
+) -> Result<String> {
+    let versions = api.versions(project, mc, crate::modrinth::SHADERS)?;
+    let v = crate::modrinth::choose_version(&versions).with_context(|| format!("aucune version de ce shader pour Minecraft {mc}"))?;
+    let f = v.primary_file().context("aucun fichier")?;
+    if !f.url.starts_with(crate::modrinth::CDN) {
+        bail!("téléchargement refusé : seul cdn.modrinth.com est autorisé");
+    }
+    let size = f.size.context("taille du fichier inconnue : téléchargement refusé")?;
+    if size > MAX_BYTES {
+        bail!("fichier trop lourd (500 Mo maximum)");
+    }
+    let sha512 = f.hashes.get("sha512").context("hash manquant")?.to_ascii_lowercase();
+    let r = crate::extramods::Resolved {
+        project_id: project.to_string(),
+        title: String::new(),
+        version: v.version_number.clone(),
+        file: f.filename.clone(),
+        url: f.url.clone(),
+        sha512,
+        size: Some(size),
+    };
+    let p = place(dirs, &f.filename, |tmp| {
+        fetch(&r, tmp)?;
+        Ok(fs::metadata(tmp)?.len())
+    })?;
+    crate::prefs::shader_set(dirs, Some(&p.file))?;
+    Ok(p.file)
+}
+
 /// Retire un zip perso d'`opaline-extra-packs/` et de l'instance (ce fichier seulement, sauf si le pack fournit le même nom).
 /// Un shader actif retiré est remplacé par le shader du pack, ou « Aucun ». Renvoie le nom retiré.
 pub fn remove(dirs: &Dirs, kind: Kind, file: &str) -> Result<String> {
@@ -233,7 +269,11 @@ mod tests {
     fn detection() {
         let d = dirs("detect");
         let p = d.instance().join("t.zip");
-        for (names, want) in [(&["pack.mcmeta", "assets/a.png"][..], Some(Kind::ResourcePack)), (&["shaders/final.fsh"], Some(Kind::Shader)), (&["readme.txt", "sub/pack.mcmeta"], None)] {
+        for (names, want) in [
+            (&["pack.mcmeta", "assets/a.png"][..], Some(Kind::ResourcePack)),
+            (&["shaders/final.fsh"], Some(Kind::Shader)),
+            (&["readme.txt", "sub/pack.mcmeta"], None),
+        ] {
             fs::write(&p, zip_bytes(names)).unwrap();
             assert_eq!(detect(&p).ok(), want, "{names:?}");
         }
@@ -287,5 +327,38 @@ mod tests {
         assert!(!inst.join("shaderpacks/sh.zip").exists() && !stored(&inst, Kind::Shader, "sh.zip").exists());
         assert_eq!(fs::read(inst.join("shaderpacks/du-pack.zip")).unwrap(), b"pack");
         assert_eq!(list(&d).len(), 1);
+    }
+
+    #[test]
+    fn modrinth_shader_is_stored_and_activated() {
+        use crate::modrinth::{Hit, Version, VersionFile};
+        struct F(Version);
+        impl crate::modrinth::Api for F {
+            fn search(&self, _: &str, _: &str, _: &str) -> Result<Vec<Hit>> {
+                Ok(vec![])
+            }
+            fn versions(&self, _: &str, _: &str, loader: &str) -> Result<Vec<Version>> {
+                assert_eq!(loader, crate::modrinth::SHADERS);
+                Ok(vec![self.0.clone()])
+            }
+            fn title(&self, _: &str) -> Option<String> {
+                None
+            }
+        }
+        let d = dirs("mrshader");
+        let file = |url: &str| VersionFile {
+            url: url.into(),
+            filename: "BSL.zip".into(),
+            primary: true,
+            size: Some(10),
+            hashes: [("sha512".to_string(), "AB".to_string())].into(),
+        };
+        let ver =
+            |url: &str| Version { id: "v".into(), version_number: "1".into(), version_type: "release".into(), files: vec![file(url)], dependencies: vec![] };
+        let fetch = |_: &crate::extramods::Resolved, dest: &Path| Ok(fs::write(dest, zip_bytes(&["shaders/final.fsh"]))?);
+        assert!(add_modrinth_shader(&d, &F(ver("https://evil.example/BSL.zip")), "bsl", "1.21.1", &fetch).is_err());
+        let name = add_modrinth_shader(&d, &F(ver("https://cdn.modrinth.com/data/x/BSL.zip")), "bsl", "1.21.1", &fetch).unwrap();
+        assert_eq!(name, "BSL.zip");
+        assert!(d.instance().join("shaderpacks").join("BSL.zip").is_file());
     }
 }

@@ -94,7 +94,8 @@ impl InstallLock {
                     return Ok(InstallLock(path));
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    let stale = fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_none_or(|a| a > Duration::from_secs(1800));
+                    let stale =
+                        fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_none_or(|a| a > Duration::from_secs(1800));
                     if !stale {
                         bail!("une installation de ce loader est déjà en cours (verrou {})", path.display());
                     }

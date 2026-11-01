@@ -49,9 +49,9 @@ pub struct Version {
 }
 
 impl Version {
-    /// Fichier principal (marqué `primary`, sinon le premier `.jar`).
+    /// Fichier principal (marqué `primary`, sinon le premier `.jar` ou `.zip` pour un shader).
     pub fn primary_file(&self) -> Option<&VersionFile> {
-        self.files.iter().find(|f| f.primary).or_else(|| self.files.iter().find(|f| f.filename.ends_with(".jar")))
+        self.files.iter().find(|f| f.primary).or_else(|| self.files.iter().find(|f| f.filename.ends_with(".jar") || f.filename.ends_with(".zip")))
     }
 }
 
@@ -87,7 +87,13 @@ pub fn parse_search(json: &str) -> Result<Vec<Hit>> {
     Ok(r.hits
         .into_iter()
         .filter(|h| h.client_side != "unsupported")
-        .map(|h| Hit { project_id: h.project_id, title: h.title, description: h.description, downloads: h.downloads, icon_url: h.icon_url.as_deref().and_then(cdn_icon) })
+        .map(|h| Hit {
+            project_id: h.project_id,
+            title: h.title,
+            description: h.description,
+            downloads: h.downloads,
+            icon_url: h.icon_url.as_deref().and_then(cdn_icon),
+        })
         .collect())
 }
 
@@ -95,14 +101,22 @@ pub fn parse_versions(json: &str) -> Result<Vec<Version>> {
     serde_json::from_str(json).context("réponse Modrinth illisible")
 }
 
+/// « Loader » pseudo pour chercher des shaders (type de projet `shader`, loaders Iris et OptiFine) au lieu de mods.
+pub const SHADERS: &str = "shaders";
+
 /// Loaders Modrinth acceptés pour un loader de pack (Quilt exécute aussi les mods Fabric).
 pub fn loaders_for(loader: &str) -> Vec<&str> {
-    if loader == "quilt" { vec!["quilt", "fabric"] } else { vec![loader] }
+    match loader {
+        "quilt" => vec!["quilt", "fabric"],
+        SHADERS => vec!["iris", "optifine"],
+        _ => vec![loader],
+    }
 }
 
 pub fn search_url(base: &str, query: &str, mc: &str, loader: &str) -> Result<String> {
     let cats = loaders_for(loader).iter().map(|l| format!("\"categories:{l}\"")).collect::<Vec<_>>().join(",");
-    let facets = format!("[[\"project_type:mod\"],[\"versions:{mc}\"],[{cats}],[\"client_side:required\",\"client_side:optional\"]]");
+    let kind = if loader == SHADERS { "shader" } else { "mod" };
+    let facets = format!("[[\"project_type:{kind}\"],[\"versions:{mc}\"],[{cats}],[\"client_side:required\",\"client_side:optional\"]]");
     Ok(reqwest::Url::parse_with_params(&format!("{base}/search"), [("query", query), ("facets", facets.as_str()), ("limit", "20")])?.to_string())
 }
 
@@ -117,7 +131,8 @@ pub fn versions_url(base: &str, project: &str, mc: &str, loader: &str) -> Result
     check_project(project)?;
     let loaders = format!("[{}]", loaders_for(loader).iter().map(|l| format!("\"{l}\"")).collect::<Vec<_>>().join(","));
     let games = format!("[\"{mc}\"]");
-    Ok(reqwest::Url::parse_with_params(&format!("{base}/project/{project}/version"), [("loaders", loaders.as_str()), ("game_versions", games.as_str())])?.to_string())
+    Ok(reqwest::Url::parse_with_params(&format!("{base}/project/{project}/version"), [("loaders", loaders.as_str()), ("game_versions", games.as_str())])?
+        .to_string())
 }
 
 pub trait Api {
@@ -186,7 +201,13 @@ mod tests {
 
     fn v(id: &str, ty: &str, sha: Option<&str>) -> Version {
         let hashes = sha.map(|s| [("sha512".to_string(), s.to_string())].into()).unwrap_or_default();
-        Version { id: id.into(), version_number: id.into(), version_type: ty.into(), files: vec![VersionFile { url: format!("{CDN}data/x/{id}.jar"), filename: format!("{id}.jar"), primary: true, size: None, hashes }], dependencies: vec![] }
+        Version {
+            id: id.into(),
+            version_number: id.into(),
+            version_type: ty.into(),
+            files: vec![VersionFile { url: format!("{CDN}data/x/{id}.jar"), filename: format!("{id}.jar"), primary: true, size: None, hashes }],
+            dependencies: vec![],
+        }
     }
 
     #[test]
@@ -220,5 +241,24 @@ mod tests {
         assert_eq!(q["loaders"], r#"["quilt","fabric"]"#);
         assert_eq!(q["game_versions"], r#"["1.21.1"]"#);
         assert!(versions_url(API, "../x", "1", "fabric").is_err());
+        let dec = reqwest::Url::parse(&search_url(API, "bsl", "1.21.1", SHADERS).unwrap())
+            .unwrap()
+            .query_pairs()
+            .find(|(k, _)| k == "facets")
+            .unwrap()
+            .1
+            .into_owned();
+        assert!(dec.starts_with(r#"[["project_type:shader"],["versions:1.21.1"],["categories:iris","categories:optifine"]"#));
+        let q: std::collections::HashMap<_, _> =
+            reqwest::Url::parse(&versions_url(API, "bsl", "1.21.1", SHADERS).unwrap()).unwrap().query_pairs().into_owned().collect();
+        assert_eq!(q["loaders"], r#"["iris","optifine"]"#);
+    }
+
+    #[test]
+    fn shader_zip_is_a_primary_fallback() {
+        let mut ver = v("s1", "release", Some("a"));
+        ver.files =
+            vec![VersionFile { url: format!("{CDN}data/x/BSL.zip"), filename: "BSL.zip".into(), primary: false, size: None, hashes: Default::default() }];
+        assert_eq!(ver.primary_file().unwrap().filename, "BSL.zip");
     }
 }

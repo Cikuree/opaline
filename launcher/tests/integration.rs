@@ -206,9 +206,9 @@ impl Fx {
         let ep = Endpoints {
             mojang_manifest: format!("{b}/manifest.json"),
             fabric_meta: format!("{b}/fabric"),
-        quilt_meta: format!("{b}/quilt"),
-        neoforge_maven: format!("{b}/neoforge"),
-        forge_maven: format!("{b}/forge"),
+            quilt_meta: format!("{b}/quilt"),
+            neoforge_maven: format!("{b}/neoforge"),
+            forge_maven: format!("{b}/forge"),
             adoptium: format!("{b}/adoptium"),
             assets: format!("{b}/assets"),
         };
@@ -430,7 +430,15 @@ fn case4_mods_dir_is_a_file_gives_clean_error() {
 fn case5_no_network_install_and_download_fail_cleanly() {
     let mut fx = Fx::new("offline");
     let dead = dead_base();
-    fx.ep = Endpoints { mojang_manifest: format!("{dead}/m.json"), fabric_meta: dead.clone(), quilt_meta: dead.clone(), neoforge_maven: dead.clone(), forge_maven: dead.clone(), adoptium: dead.clone(), assets: dead.clone() };
+    fx.ep = Endpoints {
+        mojang_manifest: format!("{dead}/m.json"),
+        fabric_meta: dead.clone(),
+        quilt_meta: dead.clone(),
+        neoforge_maven: dead.clone(),
+        forge_maven: dead.clone(),
+        adoptium: dead.clone(),
+        assets: dead.clone(),
+    };
     let e = format!("{:#}", fx.install().unwrap_err());
     assert!(e.contains("requête"), "{e}");
     assert!(!fx.dirs.client_jar(MC).exists());

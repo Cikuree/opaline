@@ -38,6 +38,7 @@
 <div class="window" id="app">
   <span class="appver" id="appVer" aria-label="Version d’Opaline"></span>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="pkmenu" id="tabMenu" role="menu" aria-label="Options de l’onglet" hidden><button role="menuitem" data-m="open">Ouvrir le dossier</button><button role="menuitem" data-m="add">Ajouter un fichier…</button></div>
   <div class="pkmenu" id="pkMenu" role="menu" aria-label="Options du pack" hidden><button role="menuitem" data-a="open">Ouvrir le dossier</button><button role="menuitem" data-a="repair">Vérifier et réparer</button><hr role="separator"><button role="menuitem" data-a="del" class="danger">Désinstaller…</button></div>
   <div class="pkdlg" id="launcherDlg" hidden><div class="card" role="alertdialog" aria-modal="true" aria-labelledby="lcT">
     <h2 id="lcT">Le Launcher Minecraft est ouvert</h2>
@@ -259,25 +260,8 @@
       <div class="facts" id="fileActs"><button class="btn primary" id="btnRepair"><svg class="i" style="width:18px;height:18px"><use href="#i-wrench"/></svg>Vérifier et réparer</button><button class="btn danger" id="btnUninst">Désinstaller</button></div>
       <button class="btn burger" id="fileBurger" aria-label="Actions du pack" aria-haspopup="menu" aria-expanded="false"><svg class="i" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></div>
     <div class="seg" id="filePacks" role="radiogroup" aria-label="Pack concerné" style="align-self:flex-start;flex-wrap:wrap"></div>
-    <div class="files" id="folders"></div>
-    <div class="grid2 filesgrid">
-      <article class="card"><h2>Mods installés</h2><div id="modsBox"></div></article>
-      <article class="card" id="packCard"></article>
-    </div>
-    <article class="card" id="shaderCard" hidden>
-      <div class="row"><h2 id="shT"><label for="shSel">Shaders</label></h2><select id="shSel"></select></div>
-      <p class="small mute" style="margin-top:6px">Shader Iris utilisé par ce pack. Pour en ajouter, glisse le fichier .zip dans le dossier shaderpacks.</p>
-      <p class="small" id="shMsg" role="status" style="margin-top:6px"></p>
-    </article>
-      <article class="card field">
-        <h2 id="cpT">Copier mes réglages d’un pack vers un autre</h2>
-        <p class="small mute" style="margin-top:2px">Les réglages de la destination sont fusionnés (le reste est conservé) et son ancien fichier est gardé en <code>options.txt.bak</code>. Les réglages de performance ne sont jamais copiés.</p>
-        <div class="row" style="justify-content:flex-start;gap:12px;flex-wrap:wrap;margin-top:10px">
-          <label class="small">De <select id="cpFrom"></select></label><label class="small">Vers <select id="cpTo"></select></label>
-        </div>
-        <div class="row" id="cpCats" style="justify-content:flex-start;gap:6px 16px;flex-wrap:wrap;margin-top:10px" role="group" aria-labelledby="cpT"></div>
-        <div class="row" style="justify-content:flex-start;margin-top:12px"><button class="btn sm primary" id="cpGo">Copier</button><span class="small mute" id="cpMsg" role="status"></span></div>
-      </article>
+    <div class="files" id="folders" role="tablist" aria-label="Contenu du pack"></div>
+    <div class="ftab" data-tab="mods" role="tabpanel">
     <article class="card" id="extraCard" hidden>
       <div class="row"><h2>Mes mods</h2><button class="btn sm" id="extraAdd">Ajouter un .jar</button><input type="file" id="extraFile" accept=".jar" multiple hidden></div>
       <p class="small mute" style="margin-top:6px">Tes mods perso restent sur cet ordinateur, à part du pack partagé : la mise à jour du pack ne les supprime jamais. Ajoute un .jar (CurseForge, etc.) ou cherche sur Modrinth ; les dépendances requises sont ajoutées avec.</p>
@@ -286,13 +270,46 @@
       <p class="small" id="extraMsg" style="margin-top:8px" role="status"></p>
       <div id="mrBox"></div><div id="extraBox"></div>
     </article>
+    <article class="card"><div class="row"><h2>Mods installés</h2><button class="btn sm" data-open="mods">Ouvrir le dossier</button></div><div id="modsBox"></div></article>
+    </div>
+    <div class="ftab" data-tab="shaderpacks" role="tabpanel" hidden>
+    <article class="card" id="shaderCard" hidden>
+      <div class="row"><h2 id="shT"><label for="shSel">Shaders</label></h2><select id="shSel"></select></div>
+      <div id="shOn">
+        <p class="small mute" style="margin-top:6px">Shader utilisé par ce pack. Cherche-en un sur Modrinth (il est téléchargé puis activé) ou ajoute un .zip depuis ton ordinateur.</p>
+        <div class="row" style="justify-content:flex-start;margin-top:10px;gap:8px"><label class="search" style="flex:1;min-width:220px"><span class="sr">Rechercher un shader sur Modrinth</span><input type="search" id="shQ" placeholder="Rechercher un shader"></label><button class="btn sm primary" id="shGo">Rechercher</button><button class="btn sm" id="shZip">Ajouter un .zip…</button></div>
+        <div id="shBox"></div>
+      </div>
+      <div id="shOff"><p class="small mute" style="margin-top:6px">Ce pack n'a pas Iris, nécessaire aux shaders.</p><button class="btn primary" id="shIris" style="margin-top:10px">Activer les shaders</button></div>
+      <p class="small" id="shMsg" role="status" style="margin-top:6px"></p>
+    </article>
     <article class="card" id="packsCard" hidden>
-      <div class="row"><h2>Mes resource packs et shaders</h2><button class="btn sm" id="packsAdd">Ajouter…</button><input type="file" id="packsFile" accept=".zip" multiple hidden></div>
+      <div class="row"><h2>Mes resource packs et shaders</h2><span class="row" style="gap:8px"><button class="btn sm" id="packsAdd">Ajouter…</button><button class="btn sm" data-open="shaderpacks">Ouvrir le dossier</button></span><input type="file" id="packsFile" accept=".zip" multiple hidden></div>
       <p class="small mute" style="margin-top:6px">Ajoute un .zip de resource pack ou de shader (détecté d’après son contenu, 500 Mo au plus), ou glisse-le dans la zone ci-dessus. Il reste sur cet ordinateur : la mise à jour ou la réparation du pack ne le supprime jamais.</p>
       <div id="packsBox"></div>
     </article>
+    </div>
+    <div class="ftab" data-tab="screenshots" role="tabpanel" hidden>
+    <article class="card"><div class="row"><h2>Captures d’écran</h2><button class="btn sm" data-open="screenshots">Ouvrir le dossier</button></div><div id="shotsBox"></div></article>
+    </div>
+    <div class="ftab" data-tab="logs" role="tabpanel" hidden>
+    <article class="card"><div class="row"><h2>Dernier journal du jeu</h2><span class="row" style="gap:8px"><button class="btn sm" id="logCopy"><svg class="i" style="width:16px;height:16px"><use href="#i-copy"/></svg>Copier</button><button class="btn sm" data-open="logs">Ouvrir le dossier</button></span></div><pre class="logv" id="logBox"></pre></article>
+    </div>
+    <div class="ftab" data-tab="instance" role="tabpanel" hidden>
+    <div class="grid2 filesgrid"><article class="card" id="packCard"></article>
     <article class="card" id="backupsCard"><div class="row"><h2>Sauvegardes des mondes</h2><button class="btn sm" id="backupsOpen">Ouvrir le dossier</button></div>
-      <p class="small mute" style="margin-top:6px">Copie de tes mondes avant chaque installation, mise à jour ou réparation. Les 3 plus récentes sont gardées.</p><div id="backupsBox"></div></article>
+      <p class="small mute" style="margin-top:6px">Copie de tes mondes avant chaque installation, mise à jour ou réparation. Les 3 plus récentes sont gardées.</p><div id="backupsBox"></div></article></div>
+    <article class="card field">
+        <h2 id="cpT">Copier mes réglages d’un pack vers un autre</h2>
+        <p class="small mute" style="margin-top:2px">Les réglages de la destination sont fusionnés (le reste est conservé) et son ancien fichier est gardé en <code>options.txt.bak</code>. Les réglages de performance ne sont jamais copiés.</p>
+        <div class="row" style="justify-content:flex-start;gap:12px;flex-wrap:wrap;margin-top:10px">
+          <label class="small">De <select id="cpFrom"></select></label><label class="small">Vers <select id="cpTo"></select></label>
+        </div>
+        <div class="row" id="cpCats" style="justify-content:flex-start;gap:6px 16px;flex-wrap:wrap;margin-top:10px" role="group" aria-labelledby="cpT"></div>
+        <div class="row" style="justify-content:flex-start;margin-top:12px"><button class="btn sm primary" id="cpGo">Copier</button><span class="small mute" id="cpMsg" role="status"></span></div>
+      </article>
+    </div>
+    <div class="lightbox" id="shotLb" hidden><button class="lbx" id="lbClose" aria-label="Fermer">×</button><button class="lbn" data-d="-1" aria-label="Précédente">‹</button><img id="lbImg" alt=""><button class="lbn" data-d="1" aria-label="Suivante">›</button><div class="lbbar"><span class="small" id="lbName"></span><button class="btn sm" id="lbCopy"><svg class="i" style="width:16px;height:16px"><use href="#i-copy"/></svg>Copier l’image</button></div></div>
   </section>
 
   <section class="view" id="v-history" aria-labelledby="hT">
