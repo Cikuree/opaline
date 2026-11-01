@@ -1,5 +1,9 @@
 # Changelog
 
+## Opaline 0.6.4 : carte plein écran
+- La vue Carte (BlueMap) occupe toute la hauteur disponible.
+- Pack Classroom Run : carte BlueMap du serveur.
+
 ## Opaline 0.6.3 : serveurs Tailscale partagés
 - Un serveur Tailscale partagé depuis le réseau d'un ami (« Shared in ») est trouvé par son nom MagicDNS complet : statut du serveur et liste Multijoueur corrects.
 
