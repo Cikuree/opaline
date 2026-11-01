@@ -32,8 +32,41 @@ pub fn parse_magic_dns_suffix(json: &str) -> Option<String> {
     (!s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')).then(|| s.to_string())
 }
 
-/// `base.suffixe` si le suffixe est connu, sinon `base` seul.
+/// Machines du tailnet vues par `tailscale status --json` : nom court (minuscules) -> nom MagicDNS complet.
+/// Une machine partagée depuis un autre tailnet garde le suffixe de SON tailnet : le nom court seul + notre suffixe ne la trouve pas.
+pub fn parse_peers(json: &str) -> Vec<(String, String)> {
+    let Ok(v) = serde_json::from_str::<Value>(json) else { return vec![] };
+    let ok = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
+    let mut out = vec![];
+    for p in v.get("Peer").and_then(Value::as_object).into_iter().flat_map(|m| m.values()) {
+        let Some(dns) = p.get("DNSName").and_then(Value::as_str).map(|d| d.trim().trim_end_matches('.').to_ascii_lowercase()) else { continue };
+        if !ok(&dns) || !dns.contains('.') {
+            continue;
+        }
+        let first = dns.split('.').next().unwrap_or_default().to_string();
+        out.push((first, dns.clone()));
+        if let Some(h) = p.get("HostName").and_then(Value::as_str).map(str::to_ascii_lowercase).filter(|h| ok(h) && !h.contains('.') && *h != out.last().unwrap().0) {
+            out.push((h, dns));
+        }
+    }
+    out
+}
+
+static PEERS: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+/// Mémorise les machines du dernier relevé (en mémoire seulement, jamais loggé).
+pub fn remember_peers(peers: Vec<(String, String)>) {
+    if let Ok(mut p) = PEERS.lock() {
+        *p = peers;
+    }
+}
+
+/// Nom MagicDNS complet d'une machine du tailnet (y compris partagée), sinon `base.suffixe` si le suffixe est connu, sinon `base` seul.
 pub fn server_host(base: &str, suffix: Option<&str>) -> String {
+    let key = base.to_ascii_lowercase();
+    if let Some(full) = PEERS.lock().ok().and_then(|p| p.iter().find(|(k, _)| *k == key).map(|(_, d)| d.clone())) {
+        return full;
+    }
     match suffix {
         Some(s) => format!("{base}.{s}"),
         None => base.to_string(),
@@ -90,12 +123,31 @@ pub fn status() -> TailscaleInfo {
     };
     let state = parse_backend_state(&json).unwrap_or(TailscaleState::Disconnected);
     let magic_dns_suffix = (state == TailscaleState::Connected).then(|| parse_magic_dns_suffix(&json)).flatten();
+    if state == TailscaleState::Connected {
+        remember_peers(parse_peers(&json));
+    }
     TailscaleInfo { state, magic_dns_suffix }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_machine_keeps_its_own_tailnet_name() {
+        let json = r#"{"BackendState":"Running","MagicDNSSuffix":"ami.ts.net","Peer":{
+            "k1":{"HostName":"srv-partage-test","DNSName":"srv-partage-test.hote.ts.net."},
+            "k2":{"HostName":"PC Bureau","DNSName":"pc-bureau.ami.ts.net."},
+            "k3":{"HostName":"x","DNSName":"bad name!.ts.net."}}}"#;
+        let peers = parse_peers(json);
+        assert!(peers.contains(&("srv-partage-test".into(), "srv-partage-test.hote.ts.net".into())));
+        assert!(peers.contains(&("pc-bureau".into(), "pc-bureau.ami.ts.net".into())));
+        assert!(!peers.iter().any(|(_, d)| d.contains('!')));
+        remember_peers(peers);
+        assert_eq!(server_host("Srv-Partage-Test", Some("ami.ts.net")), "srv-partage-test.hote.ts.net");
+        assert_eq!(server_host("autre", Some("ami.ts.net")), "autre.ami.ts.net");
+        remember_peers(vec![]);
+    }
 
     #[test]
     fn parses_backend_state() {
