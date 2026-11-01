@@ -346,3 +346,6 @@ input[type=checkbox]:checked{background:var(--coral);border-color:var(--coral)}
 input[type=checkbox]:checked::after{transform:translateY(-1px) rotate(-45deg) scale(1)}
 input[type=checkbox]:focus-visible{outline:2px solid var(--cream);outline-offset:2px}
 input[type=checkbox]:disabled{opacity:.45;cursor:default}
+
+/* Fondu en haut et en bas de la zone qui défile, seulement quand il reste du contenu de ce côté (variables posées par app.js) */
+main{--ft:0px;--fb:0px;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 var(--ft),#000 calc(100% - var(--fb)),transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 var(--ft),#000 calc(100% - var(--fb)),transparent 100%)}
