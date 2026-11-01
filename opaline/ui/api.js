@@ -42,7 +42,6 @@ export const capeSet = (id) => call('cape_set', { id });
 export const friends = () => call('friends');
 export const friendAdd = (name) => call('friend_add', { name });
 export const friendRemove = (uuid) => call('friend_remove', { uuid });
-export const friendInvite = (uuid, packId) => call('friend_invite', { uuid, packId });
 export const playerHead = (uuid) => call('player_head', { uuid });
 
 let texDir = null;
