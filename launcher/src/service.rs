@@ -359,9 +359,15 @@ pub struct CrashView {
     pub report: String,
 }
 
+/// Fin du fichier (au plus `max` octets) : on se place avant la fin au lieu de tout lire.
 fn read_tail(p: &Path, max: usize) -> Option<String> {
-    let b = std::fs::read(p).ok()?;
-    Some(String::from_utf8_lossy(&b[b.len().saturating_sub(max)..]).into_owned())
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(p).ok()?;
+    let len = f.metadata().ok()?.len();
+    f.seek(SeekFrom::Start(len.saturating_sub(max as u64))).ok()?;
+    let mut b = Vec::new();
+    f.take(max as u64).read_to_end(&mut b).ok()?;
+    Some(String::from_utf8_lossy(&b).into_owned())
 }
 
 /// Dernier `crash-reports/*.txt` modifié depuis `since`.
@@ -577,6 +583,20 @@ joined secret.host token SECRETTOKEN").unwrap();
         let mut w = ServerWatch::new();
         watch_step(&mut w, &obs(false));
         assert_eq!(watch_step(&mut w, &obs(true)), ["Pack A"], "hors ligne au démarrage puis en ligne : notifié");
+    }
+
+    #[test]
+    fn read_tail_is_bounded() {
+        let d = std::env::temp_dir().join(format!("opaline-tail-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("x.log");
+        std::fs::write(&f, format!("{}FIN", "a".repeat(5000))).unwrap();
+        let t = read_tail(&f, 100).unwrap();
+        assert_eq!(t.len(), 100);
+        assert!(t.ends_with("aaFIN"));
+        assert_eq!(read_tail(&f, 1 << 20).unwrap().len(), 5003);
+        assert!(read_tail(&d.join("absent"), 10).is_none());
+        std::fs::remove_dir_all(&d).unwrap();
     }
 
     #[test]
