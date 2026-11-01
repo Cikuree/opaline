@@ -350,8 +350,6 @@ input[type=checkbox]:checked::after{transform:translateY(-1px) rotate(-45deg) sc
 input[type=checkbox]:focus-visible{outline:2px solid var(--cream);outline-offset:2px}
 input[type=checkbox]:disabled{opacity:.45;cursor:default}
 
-/* Fondu en haut et en bas de la zone qui défile, seulement quand il reste du contenu de ce côté (variables posées par app.js) */
-main{--ft:0px;--fb:0px;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 var(--ft),#000 calc(100% - var(--fb)),transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 var(--ft),#000 calc(100% - var(--fb)),transparent 100%)}
 
 /* Verre léger : cartes, barre de navigation et colonne d'amis laissent deviner le fond animé (flou discret, reflet fin en haut) */
 .card,.rail,.pk,.col{-webkit-backdrop-filter:blur(18px) saturate(1.25);backdrop-filter:blur(18px) saturate(1.25);box-shadow:none}
@@ -359,3 +357,7 @@ main{--ft:0px;--fb:0px;-webkit-mask-image:linear-gradient(to bottom,transparent 
 
 /* Texte discret posé sur le fond de la fenêtre (hors cartes) : plus clair, le fond animé peut s'éclaircir (contraste ≥ 4.5:1) */
 .view .mute:not(.card *, .pk *, .col *, .seg *, .rail *, .pkw *),.pkmoreall,.pksec .mute{color:#f5d6d9}
+
+/* La zone qui défile va jusqu'au bord bas de la fenêtre : les cartes disparaissent sous l'arrondi, sans ligne de coupe */
+main{margin-bottom:calc(-1 * var(--pad));padding-bottom:calc(var(--pad) + 6px)}
+.appver{z-index:3}
