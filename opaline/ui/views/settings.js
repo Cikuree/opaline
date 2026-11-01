@@ -27,7 +27,7 @@ async function renderBorderlessNote(on) {
   if (bad.length) { n.textContent = 'Ignoré pour : ' + bad.join(', ') + '.'; n.hidden = false; }
 }
 
-function renderCopy() {
+export function renderCopy() {
   const inst = state.packs.filter((p) => p.installed), keep = (id) => ($(id).value || '');
   const opts = (sel, other) => { const v = keep(sel); $(sel).innerHTML = inst.map((p, i) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join(''); $(sel).value = inst.some((p) => p.id === v) ? v : (inst[other]?.id || ''); };
   opts('#cpFrom', 0); opts('#cpTo', 1);
@@ -38,7 +38,6 @@ function renderCopy() {
 
 export function renderSettings() {
   const s = state.settings; if (!s) return;
-  renderCopy();
   setSw($('#bgAnim'), LS.get('opaline.bg') !== '0'); setSw($('#borderless'), !!s.borderless); renderBorderlessNote(s.borderless);
   $('#autoMsg').hidden = !s.autoTuned;
   $('#perf').innerHTML = PERF.map((p) => `<button role="radio" aria-checked="${p.id === s.perfMode}" data-p="${p.id}"><h3>${p.name}</h3><span class="xs" style="color:var(--coral2);font-weight:700">${p.sub}</span><ul><li>${p.gb ? 'Mémoire ' + clamp(p.gb) + ' Go' : 'Mémoire choisie à la main'}</li></ul></button>`).join('');

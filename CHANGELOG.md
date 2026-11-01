@@ -2,7 +2,9 @@
 
 ## Opaline 0.6.2 : finitions visuelles
 - **Mes resource packs et shaders** : glisser-déposer de .zip dans « Fichiers & mods », type reconnu automatiquement, conservés aux mises à jour.
-- **Apparence** : cartes, barre de navigation et colonne d'amis plus sombres (#361617) et légèrement translucides sur le fond animé, sans contour ; fond animé plus doux et plus rose, halo de la souris plus clair ; fondu progressif en haut et en bas des pages ; barre de défilement fine et discrète ; cases à cocher aux couleurs d'Opaline ; texte discret plus lisible sur le fond.
+- **Apparence** : cartes, barre de navigation et colonne d'amis plus sombres (#361617) et légèrement translucides sur le fond animé, sans contour ; fond animé plus doux et plus rose, halo de la souris plus clair ; barre de défilement fine et discrète ; cases à cocher aux couleurs d'Opaline ; texte discret plus lisible sur le fond.
+- **Réglages réorganisés** : sections Jeu, Lancement, Compte, Notifications et Discord, Apparence ; lignes compactes avec aide « ? » ; copie des réglages entre packs déplacée dans « Fichiers & mods ».
+- Les pages défilent jusqu'au bord bas de la fenêtre (plus de fondu).
 - Champ de recherche de mods sans double bordure, « Les deux » sur une ligne.
 
 ## Opaline 0.6.1 : la grosse mise à jour

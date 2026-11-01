@@ -1,4 +1,5 @@
 import * as api from '../api.js';
+import { renderCopy } from './settings.js';
 import { state, current, emit } from '../state.js';
 import { $, $$, esc, toast, tex } from '../util.js';
 import { MODTEX, loaderName } from '../data.js';
@@ -39,6 +40,7 @@ const FOLDERS = [['mods', 'Dossier mods', 'barrel_side'], ['shaderpacks', 'Dossi
 const SIDE = { client: 'Client', server: 'Serveur' };
 
 export async function renderFiles() {
+  renderCopy();
   const p = current(); if (!p) return;
   const inst = state.packs.find((q) => q.installed);
   if (!p.installed && inst && state.pack === p.id) return emit('selectPack', inst.id); // le sélecteur ne liste que les packs installés
