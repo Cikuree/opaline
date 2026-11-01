@@ -19,7 +19,7 @@ public final class ModConfig {
 	/** Address the endpoint binds to. */
 	public String httpBind = "0.0.0.0";
 	/** Delay between the collective death and the reset, so clients can show the death recap. 0 = same tick. */
-	public int deathResetDelayTicks = 60;
+	public int deathResetDelayTicks = 120;
 
 	public static ModConfig load(Path file, Logger log) {
 		ModConfig config = new ModConfig();

@@ -23,13 +23,19 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.advancements.AdvancementHolder;
 import net.minecraft.advancements.AdvancementProgress;
 import net.minecraft.core.BlockPos;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.dimension.end.EnderDragonFight;
 import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.level.storage.LevelData;
@@ -53,11 +59,14 @@ import java.util.concurrent.ThreadLocalRandom;
  *
  * <p>Collective death: {@code ALLOW_DEATH} returns false (vanilla death cancelled, justification: no death screen, no
  * dropped inventory, no respawn logic to bend) after the victim is restored to full health; the run enters the
- * "ending" state during which all damage is refused and the chrono is paused, then
- * {@code deathResetDelayTicks} later the reset happens at the end of a server tick.
+ * "ending" state during which all damage is refused and the chrono is paused. Members become spectators with a
+ * "Vous êtes morts" title so everybody sees the death, then {@code deathResetDelayTicks} later the reset happens at
+ * the end of a server tick and puts them back in survival.
  */
 public final class RunManager {
 	private static final String TOKEN_PREFIX = "classroomrun:run_";
+	/** Member turned spectator by a collective death; persisted in player data so a reconnect after the reset restores survival. */
+	private static final String GHOST_TAG = "classroomrun:ghost";
 	private static @Nullable RunManager instance;
 
 	private final MinecraftServer server;
@@ -240,10 +249,32 @@ public final class RunManager {
 				victim.level().dimension());
 		this.journal.onDeath(victim, source, payload);
 		sendAll(payload);
+		showDeath(payload.message());
 		refreshBoard();
 		broadcastState();
 		save();
 		ClassroomRun.LOGGER.info("Collective death of the team ({}), reset in {} ticks", payload.message(), this.resetCountdown);
+	}
+
+	/** Everybody sees the death: members become spectators until the reset, with a title over the death message. */
+	private void showDeath(String message) {
+		int seconds = Math.max(1, Math.round(this.resetCountdown / 20.0F));
+		for (ServerPlayer player : List.copyOf(this.server.getPlayerList().getPlayers())) {
+			if (TeamSync.isMember(player)) {
+				player.addTag(GHOST_TAG);
+				player.setGameMode(GameType.SPECTATOR);
+			}
+			player.connection.send(new ClientboundSetTitlesAnimationPacket(10, Math.max(20, this.resetCountdown - 10), 10));
+			player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(message + " · nouvelle run dans " + seconds + " s").withStyle(ChatFormatting.GRAY)));
+			player.connection.send(new ClientboundSetTitleTextPacket(Component.literal("Vous êtes morts").withStyle(ChatFormatting.RED)));
+		}
+	}
+
+	/** Back to survival for a member made spectator by a collective death (called before any reset of the player). */
+	private static void reviveGhost(ServerPlayer player) {
+		if (player.entityTags().remove(GHOST_TAG)) {
+			player.setGameMode(GameType.SURVIVAL);
+		}
 	}
 
 	/** Rebuilds the world trio and sends everybody back to the new classroom. Server thread only. */
@@ -268,6 +299,7 @@ public final class RunManager {
 		this.stats.newRun();
 		this.team.resetVitals();
 		for (ServerPlayer player : List.copyOf(this.server.getPlayerList().getPlayers())) {
+			reviveGhost(player);
 			resetPlayer(player);
 		}
 		this.journal.onRunPrepared(this.stats.runNumber, this.started);
@@ -393,6 +425,9 @@ public final class RunManager {
 	private void onJoin(ServerPlayer player) {
 		if (player.hasDisconnected()) {
 			return;
+		}
+		if (!isEnding()) {
+			reviveGhost(player); // offline during the end of a run: the reset already happened without them
 		}
 		if (TeamSync.isMember(player) && !player.entityTags().contains(token())) {
 			resetPlayer(player); // offline during a reset or /run start: same clean slate as the team
