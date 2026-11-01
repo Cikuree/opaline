@@ -179,7 +179,7 @@ pub fn install_endpoints(srv: &Server) -> Endpoints {
 
 /// Installe `pack_dir` dans `dirs` avec les fixtures `ep`.
 pub fn install_pack_dir(ep: &Endpoints, dirs: &Dirs, pack_dir: &Path) -> anyhow::Result<()> {
-    let p = InstallParams { dirs: dirs.clone(), pack_dir: pack_dir.to_path_buf(), mod_jar: None, endpoints: ep.clone() };
+    let p = InstallParams { dirs: dirs.clone(), pack_dir: pack_dir.to_path_buf(), mod_jar: None, endpoints: ep.clone(), overrides: None };
     install::install(&http(), &p, &Arc::new(Progress::default())).map(|_| ())
 }
 

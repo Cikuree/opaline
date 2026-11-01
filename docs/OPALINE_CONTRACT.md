@@ -27,6 +27,10 @@ host = "home-server"                 # nom court (sans point) = nom MagicDNS Tai
 port = 25565
 motd = "Classroom Run"             # le MOTD du serveur doit contenir ce texte
 statsPort = 25580                  # 0 si pas d'endpoint HTTP (packs non Classroom)
+[overrides]                        # section FACULTATIVE : archive des fichiers non commités (resourcepacks/, datapacks/, shaderpacks/...), publiée à part
+url = "https://github.com/Cikuree/opaline/releases/download/packs/overrides-<id>-<8hex>.zip"   # préfixe imposé + nom de fichier simple .zip
+sha256 = "<64 hex minuscules>"
+size = 123456789                   # octets, entier > 0 et <= 2 Go (2147483648)
 ```
 
 ## 2. Release (tag `vX.Y.Z`) : assets
@@ -58,9 +62,16 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
   "modsCount": 4, "thumbnail": "ender_eye", "widgets": ["classroomRun", "server"],
   "pack": "https://github.com/Cikuree/opaline/releases/download/vX.Y.Z/pack-classroom-run.zip",
   "packHash": "<sha256 de index.toml, = [index] hash de pack.toml>",
-  "server": {"host": "home-server", "port": 25565, "motd": "Classroom Run", "statsPort": 25580}
+  "server": {"host": "home-server", "port": 25565, "motd": "Classroom Run", "statsPort": 25580},
+  "overrides": {"url": "https://github.com/Cikuree/opaline/releases/download/packs/overrides-classroom-run-0123abcd.zip", "sha256": "<64 hex>", "size": 123456789}
 }]}
 ```
+
+- `overrides` : absent sans section `[overrides]` (le `server` suit la même règle côté Opaline : absent ou `null`). `catalog` le valide (URL, sha256, taille). Opaline ignore une entrée dont `overrides` est invalide.
+- `packHash` : sans `overrides`, hash d'index (`[index] hash` de `pack.toml`), inchangé (aucune mise à jour fantôme) ; avec `overrides`, `sha256_hex(utf8(<hash d'index en minuscules> + "
+" + <sha256 de l'archive en minuscules>))` (`"
+"` = un saut de ligne LF, pas de saut final). Une archive modifiée change donc `packHash` et déclenche la mise à jour. `pack-<id>.zip` ne contient jamais l'archive.
+- Installation des overrides (étape `overrides` de `install://progress`, entre `mods` et `textures`, émise seulement pour un pack qui en a) : téléchargement de l'archive (sha256 vérifié, au plus `size` octets, reprise), puis extraction dans l'instance du pack. Refusés (rien n'est écrit) : chemin absolu, `..`, lecteur Windows, lien symbolique, plus de 60 000 entrées, plus de 1 Go décompressé. Jamais extraits : `options.txt` (c'est le fichier géré par les modes de performance : l'archive ne l'écrase pas), `installed.ok`, `opaline-pack.json` et `mods/` (les mods viennent du manifeste). La liste des fichiers posés est mémorisée dans `installed.ok` ; à la mise à jour, seuls les fichiers de cette liste absents de la nouvelle archive sont supprimés (saves/, screenshots/ et tout autre fichier ne sont pas touchés). Même sha256 déjà installé : ni téléchargement ni extraction. L'archive téléchargée est supprimée après extraction.
 
 - `loader` vaut `fabric`, `quilt`, `neoforge` ou `forge` (tous pris en charge ; `loaderVersion` = version du loader). Installation : voir docs/api/loaders.md (Fabric/Quilt via leur meta ; NeoForge/Forge en exécutant les processors client de l'installeur officiel dans l'instance, sorties vérifiées par sha1 quand l'installeur les fournit). Un loader inconnu donne `supported: false`.
 - L'hôte du serveur n'est jamais affiché dans l'interface.
@@ -132,7 +143,7 @@ SkinView = {id, name, model, active, dataUrl}
 | Événement | Charge utile |
 |---|---|
 | `auth://done` | `{attempt: number, ok: bool, profile: null \| {name, uuid}, error: null \| string, mojangPending: bool}`, jamais émis pour une tentative annulée. `mojangPending` vrai : refus `NOT_APPROVED`, l'interface explique que Mojang n'a pas encore validé l'app et continue en mode officiel |
-| `install://progress` | `{packId, stage, done, total}`, avec les étapes toujours émises dans cet ordre : `java`, `minecraft`, `assets`, `loader`, `mods`, `textures` |
+| `install://progress` | `{packId, stage, done, total}`, avec les étapes toujours émises dans cet ordre : `java`, `minecraft`, `assets`, `loader`, `mods`, `overrides` (seulement si le pack a des overrides), `textures` |
 | `install://done` | `{packId, ok: bool, error: null \| string}` |
 | `update://progress` | `{done: octets reçus, total: octets \| null}` (téléchargement de l'installeur d'Opaline) |
 | `update://done` | `{ok: false, error: string}` : émis seulement en cas d'échec (sur succès Opaline quitte) |

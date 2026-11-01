@@ -59,6 +59,17 @@ motd = "Mon pack"             # le MOTD du serveur doit contenir ce texte
 statsPort = 0                 # 0 : pas d'endpoint HTTP (le widget classroomRun n'est utile que pour Classroom Run)
 ```
 
+Fichiers trop lourds pour git (resourcepacks, datapacks, shaderpacks importés, souvent des centaines de Mo) : section facultative `[overrides]`, l'archive étant publiée sur la release `packs` (Opaline Atelier le fait seul) :
+
+```toml
+[overrides]
+url = "https://github.com/Cikuree/opaline/releases/download/packs/overrides-<id>-<8hex>.zip"
+sha256 = "<64 hex minuscules>"
+size = 123456789              # octets, > 0 et <= 2 Go
+```
+
+`catalog` exige l'URL de cette release avec un nom de fichier simple en `.zip`, le sha256 en 64 hex minuscules et `size` entier de 1 à 2 147 483 648. Le contenu du zip est extrait à la racine de l'instance du pack (`resourcepacks/…`, `datapacks/…`) ; limites : 60 000 entrées, 1 Go décompressé, ni chemin absolu ni `..` ni lien. `options.txt` et `mods/` de l'archive sont ignorés (`options.txt` appartient aux modes de performance ; les mods viennent du manifeste). À la mise à jour, Opaline retire seulement les fichiers qu'une archive précédente avait posés et que la nouvelle n'a plus. Dans `packs.json`, `packHash` devient `sha256_hex(<hash d'index> + LF + <sha256 de l'archive>)` (minuscules, LF = un saut de ligne) : changer l'archive propose la mise à jour ; sans `[overrides]`, `packHash` reste le hash d'index. `pack-<id>.zip` n'inclut pas l'archive. Tests : `python3 -I scripts/test_pack_tools.py`.
+
 Valider : `python3 scripts/pack-tools.py catalog --base-url https://github.com/Cikuree/opaline/releases/download/packs/ --out /tmp/packs.json`. Une erreur nomme le fichier et le champ fautif. L'adresse du serveur n'est jamais affichée aux joueurs.
 
 ## 4. Serveur du pack (machine Linux + Tailscale)

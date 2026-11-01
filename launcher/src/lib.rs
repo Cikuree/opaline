@@ -16,6 +16,7 @@ pub mod launch;
 pub mod loader;
 pub mod loader_versions;
 pub mod mojang;
+pub mod overrides;
 pub mod official;
 pub mod packwiz;
 pub mod perf;

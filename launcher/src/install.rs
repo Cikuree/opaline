@@ -4,6 +4,7 @@ use crate::loader::{self, Ctx, InstallProfile, LoaderKind, LoaderVersion, check_
 use crate::download::{self, Job, Progress};
 use crate::fabric::{FabricProfile, maven_path};
 use crate::java;
+use crate::overrides;
 use crate::mojang::{AssetIndex, Env, VersionJson, VersionManifest, applicable_libraries};
 use crate::packwiz::{self, Pack};
 use crate::safe::{Hash, safe_file_name, safe_join};
@@ -63,6 +64,8 @@ pub struct InstallParams {
     /// Jar de dev (fichier ou dossier), pour un pack local sans `classroomrun` ; None = rien à ajouter.
     pub mod_jar: Option<PathBuf>,
     pub endpoints: Endpoints,
+    /// Archive d'overrides du pack (catalogue) ; None = pack sans overrides.
+    pub overrides: Option<crate::catalog::Overrides>,
 }
 
 /// Jar classroomrun (hors manifeste) : fichier explicite, ou le plus récent `*.jar` d'un dossier
@@ -109,6 +112,12 @@ struct Marker {
     /// Hash de l'index du pack installé (détection « le pack a changé »).
     #[serde(default)]
     index_hash: Option<String>,
+    /// sha256 de l'archive d'overrides extraite (même sha256 = rien à refaire).
+    #[serde(default)]
+    overrides_sha256: Option<String>,
+    /// Fichiers posés par l'archive d'overrides (chemins relatifs à l'instance) : seuls ceux-là sont retirés à la mise à jour.
+    #[serde(default)]
+    overrides_files: Vec<String>,
 }
 
 fn default_kind() -> String {
@@ -125,6 +134,8 @@ fn marker_for(pack: &Pack) -> Result<Marker> {
         profile_id: None,
         shader_pack: pack.shader_pack().map(str::to_string),
         index_hash: Some(pack.index_hash.clone()),
+        overrides_sha256: None,
+        overrides_files: vec![],
     })
 }
 
@@ -150,6 +161,8 @@ fn validate_version(v: &VersionJson, mc: &str) -> Result<()> {
 pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> Result<Installed> {
     let dirs = &p.dirs;
     let ep = &p.endpoints;
+    // Lu avant la suppression du marqueur : fichiers d'overrides déjà posés (protégés du ménage, retirés s'ils disparaissent).
+    let previous: Option<Marker> = fs::read(dirs.install_marker()).ok().and_then(|b| serde_json::from_slice(&b).ok());
     // Une installation interrompue ne doit jamais passer pour complète.
     match fs::remove_file(dirs.install_marker()) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => return Err(e.into()),
@@ -157,7 +170,8 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
     }
     progress.set_stage("java");
     let pack = packwiz::load_pack(&p.pack_dir)?;
-    let marker = marker_for(&pack)?;
+    let mut marker = marker_for(&pack)?;
+    marker.index_hash = Some(crate::catalog::pack_version_hash(&pack.index_hash, p.overrides.as_ref()));
     let (mc, loader) = (marker.minecraft.clone(), marker.loader_version.clone());
     let kind = LoaderKind::parse(&marker.loader).context("loader inconnu")?;
     validate_ids(&mc, &loader)?;
@@ -207,15 +221,40 @@ pub fn install(client: &Client, p: &InstallParams, progress: &Arc<Progress>) -> 
 
     progress.set_stage("loader");
     let (fabric, profile_id) = install_loader(client, dirs, ep, kind, &mc, &loader, &java_exe, progress)?;
-    let marker = Marker { profile_id: Some(profile_id.clone()), ..marker };
+    let mut marker = Marker { profile_id: Some(profile_id.clone()), ..marker };
 
     progress.set_stage("mods");
-    install_mods(client, dirs, &pack, &p.pack_dir, mod_jar.as_deref(), progress)?;
+    let old_files: Vec<String> = previous.as_ref().map(|m| m.overrides_files.clone()).unwrap_or_default();
+    install_mods(client, dirs, &pack, &p.pack_dir, mod_jar.as_deref(), &old_files.iter().cloned().collect(), progress)?;
+
+    match &p.overrides {
+        Some(o) => {
+            progress.set_stage("overrides");
+            marker.overrides_sha256 = Some(o.sha256.to_ascii_lowercase());
+            if previous.as_ref().and_then(|m| m.overrides_sha256.as_deref()) == marker.overrides_sha256.as_deref() {
+                marker.overrides_files = old_files; // archive inchangée : rien à télécharger ni à extraire
+            } else {
+                marker.overrides_files = install_overrides(client, dirs, o, &old_files, progress)?;
+            }
+        }
+        None => overrides::remove_stale(&dirs.instance(), &old_files, &HashSet::new()),
+    }
 
     crate::changelog::save_snapshot(dirs, &crate::changelog::snapshot_of(&pack))?;
     fs::create_dir_all(dirs.instance())?;
     fs::write(dirs.install_marker(), serde_json::to_vec_pretty(&marker)?)?;
     Ok(Installed { java: java_exe, version, fabric, profile_id, shader_pack: marker.shader_pack, index_hash: marker.index_hash })
+}
+
+/// Télécharge l'archive (sha256 vérifié, taille bornée par `size`, reprise), l'extrait dans l'instance et renvoie les fichiers posés.
+fn install_overrides(client: &Client, dirs: &Dirs, o: &crate::catalog::Overrides, previous: &[String], progress: &Arc<Progress>) -> Result<Vec<String>> {
+    let sha = o.sha256.to_ascii_lowercase();
+    let archive = safe_join(&dirs.downloads(), &format!("overrides-{}-{}.zip", dirs.pack, &sha[..16]))?;
+    let job = Job { url: o.url.clone(), dest: archive.clone(), hash: Hash::new("sha256", &sha)?, size: Some(o.size) };
+    download::fetch_all(client, vec![job], 1, progress)?;
+    let files = overrides::extract(&archive, &dirs.instance(), previous);
+    let _ = fs::remove_file(&archive); // jusqu'à 2 Go : inutile une fois extraite
+    files
 }
 
 pub fn fetch_version_json(client: &Client, dirs: &Dirs, ep: &Endpoints, mc: &str) -> Result<VersionJson> {
@@ -446,7 +485,7 @@ pub fn load_installed(dirs: &Dirs) -> Result<Installed> {
     Ok(Installed { java, version, fabric, profile_id: id, shader_pack: have.shader_pack, index_hash: have.index_hash })
 }
 
-fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_jar: Option<&Path>, progress: &Arc<Progress>) -> Result<()> {
+fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_jar: Option<&Path>, keep_paths: &HashSet<String>, progress: &Arc<Progress>) -> Result<()> {
     let mods_dir = dirs.instance().join("mods");
     fs::create_dir_all(&mods_dir)?;
     let jar_name = mod_jar.map(|j| crate::safe::safe_file_name(j.file_name().and_then(|n| n.to_str()).unwrap_or("")).map(str::to_string)).transpose()?;
@@ -492,7 +531,7 @@ fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_
             .collect();
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().into_owned();
-            let kept = wanted.contains(name.as_str()) || (dir == "mods" && keep.contains(&name));
+            let kept = wanted.contains(name.as_str()) || (dir == "mods" && keep.contains(&name)) || keep_paths.contains(&format!("{dir}/{name}"));
             // Fichiers seulement : un dossier nommé « x.jar » est ignoré.
             if name.ends_with(ext) && !kept && e.file_type().is_ok_and(|t| t.is_file()) {
                 fs::remove_file(e.path())?;
@@ -565,7 +604,7 @@ mod tests {
             files: vec![],
         };
         let client = crate::download::http_client().unwrap();
-        install_mods(&client, &dirs, &pack, &d, Some(&d.join("classroomrun-1.jar")), &Arc::default()).unwrap();
+        install_mods(&client, &dirs, &pack, &d, Some(&d.join("classroomrun-1.jar")), &HashSet::new(), &Arc::default()).unwrap();
         assert!(mods.join("dir.jar").is_dir() && !mods.join("old.jar").exists() && mods.join("classroomrun-1.jar").is_file());
         // sans installed.ok, load_installed refuse
         assert!(load_installed(&dirs).is_err());
