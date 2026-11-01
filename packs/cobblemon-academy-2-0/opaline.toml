@@ -1,7 +1,13 @@
 name = "Cobblemon Academy 2.0"
 description = "cobblemon de fou"
 thumbnail = "ender_pearl"
-widgets = []
+widgets = ["server", "news"]
+
+[server]
+host = "91.197.6.154"
+port = 25565
+motd = "cobblemon 2"
+statsPort = 0
 
 [overrides]
 url = "https://github.com/Cikuree/opaline/releases/download/packs/overrides-cobblemon-academy-2-0-981d90e4.zip"
