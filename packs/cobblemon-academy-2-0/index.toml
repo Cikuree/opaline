@@ -681,11 +681,6 @@ hash = "ee82c5b0e7de3374ba2d3761c6d0a565500305e5c584661540ed467d2debf074"
 metafile = true
 
 [[files]]
-file = "mods/lithostitched.pw.toml"
-hash = "9125501fc8cb9b72e3ef08310dc9e172031c0d37ca76e4c2fb948939d8a8c23b"
-metafile = true
-
-[[files]]
 file = "mods/loot-table-modifier.pw.toml"
 hash = "d0a290b69f54758245cfb7d133f26ad6b5745668966461dc49f270bf7a07760f"
 metafile = true
@@ -1254,6 +1249,10 @@ metafile = true
 file = "resourcepacks/solas-shader.pw.toml"
 hash = "ca905561def034cbfa51127dd55967fbb552a7eb2a7fc2481d16676c6aa59083"
 metafile = true
+
+[[files]]
+file = "mods/lithostitched-1.8.0-fabric-21.1.jar"
+hash = "1b146ac026379aab174a7bc95494ee05f8a62e192875231002eb71891239a93e"
 
 [[files]]
 file = "shaderpacks/ComplementaryReimagined_r5.5.1 + EuphoriaPatches_1.6.5.txt"
