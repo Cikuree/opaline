@@ -134,7 +134,12 @@ fn rotate(dirs: &Dirs, protect: &[&str]) {
 /// Un monde est ouvert si un `saves/*/session.lock` est verrouillé par un autre processus (Minecraft tient ce verrou).
 /// Windows : verrou exclusif de `std` (même mécanisme que Java). Unix : `fcntl(F_GETLK)` (les verrous de Java sont des verrous POSIX).
 pub fn world_open(dirs: &Dirs) -> bool {
-    fs::read_dir(saves(dirs)).into_iter().flatten().flatten().any(|w| locked(&w.path().join("session.lock")))
+    world_open_in(&saves(dirs))
+}
+
+/// Comme `world_open`, pour un dossier `saves/` quelconque (par exemple celui du `.minecraft` de l'utilisateur).
+pub fn world_open_in(saves_dir: &Path) -> bool {
+    fs::read_dir(saves_dir).into_iter().flatten().flatten().any(|w| locked(&w.path().join("session.lock")))
 }
 
 #[cfg(windows)]

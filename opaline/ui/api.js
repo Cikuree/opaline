@@ -28,6 +28,7 @@ export const packMods = (id) => call('pack_mods', { id });
 export const packUninstall = (id) => call('pack_uninstall', { id });
 export const packRepair = (id) => call('pack_repair', { id });
 export const play = (id) => call('play', { id });
+export const officialCloseLauncher = () => call('official_close_launcher');
 export const serverStatus = (id) => call('server_status', { id });
 export const playtime = () => call('playtime');
 export const runStats = (id) => call('run_stats', { id });

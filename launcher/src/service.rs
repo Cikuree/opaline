@@ -342,8 +342,30 @@ pub struct OfficialLaunched {
     pub profile_name: String,
 }
 
-/// Message quand le Launcher officiel tourne déjà.
-pub const LAUNCHER_RUNNING: &str = "Ferme le Launcher Minecraft puis relance JOUER (il écraserait le profil Opaline)";
+/// Raison typée renvoyée par `play` quand le Launcher officiel tourne seul : l'interface propose de le fermer.
+pub const LAUNCHER_OPEN: &str = "officialLauncherOpen";
+/// Une partie lancée par le Launcher officiel tourne : rien n'est fermé.
+pub const OFFICIAL_GAME_RUNNING: &str = "Une partie est en cours dans le Launcher Minecraft : quitte le jeu d'abord";
+
+/// Si le Launcher tourne : erreur typée (`LAUNCHER_OPEN`) ou refus (`OFFICIAL_GAME_RUNNING`) ; `Ok` sinon.
+fn check_launcher(root: &Dirs, mc: &Path) -> Result<()> {
+    if !official::launcher_running() {
+        return Ok(());
+    }
+    match official::decide(true, official::game_running(root, mc)) {
+        official::LauncherDecision::GameRunning => bail!("{OFFICIAL_GAME_RUNNING}"),
+        _ => bail!("{LAUNCHER_OPEN}"),
+    }
+}
+
+/// Ferme le Launcher Minecraft (jamais le jeu) après accord de l'utilisateur ; refusé si une partie tourne.
+pub fn close_official_launcher(root: &Dirs) -> Result<()> {
+    let mc = official::minecraft_dir().context("dossier .minecraft introuvable")?;
+    if official::game_running(root, &mc) {
+        bail!("{OFFICIAL_GAME_RUNNING}");
+    }
+    official::close_launcher()
+}
 
 /// Mode officiel : prépare la version `opaline-<pack>` et le profil du même nom dans le `.minecraft` du Launcher officiel (qui
 /// connecte le compte et lance le jeu), puis l'ouvre. `interact` : refuse si le Launcher tourne (il réécrirait
@@ -353,8 +375,8 @@ pub fn launch_official(root: &Dirs, e: &PackEntry, cfg: &Config, mc: &Path, inte
     if !e.supported() {
         bail!("ce pack n'est pas pris en charge par cette version d'Opaline");
     }
-    if interact && official::launcher_running() {
-        bail!("{LAUNCHER_RUNNING}");
+    if interact {
+        check_launcher(root, mc)?;
     }
     let profiles = official::profiles_path(mc)?;
     official::read_profiles(&profiles)?;

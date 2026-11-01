@@ -59,6 +59,110 @@ pub fn launcher_running() -> bool {
     cfg!(target_os = "linux") && Command::new("pgrep").args(["-x", "minecraft-launcher"]).output().is_ok_and(|o| o.status.success())
 }
 
+/// Que faire quand on veut préparer le profil officiel ?
+#[derive(Debug, PartialEq, Eq)]
+pub enum LauncherDecision {
+    /// Le Launcher ne tourne pas : on prépare le profil.
+    Free,
+    /// Le Launcher tourne seul : proposer de le fermer.
+    OfferClose,
+    /// Une partie lancée par le Launcher tourne : ne rien fermer.
+    GameRunning,
+}
+
+pub fn decide(launcher_running: bool, game_running: bool) -> LauncherDecision {
+    match (launcher_running, game_running) {
+        (false, _) => LauncherDecision::Free,
+        (true, false) => LauncherDecision::OfferClose,
+        (true, true) => LauncherDecision::GameRunning,
+    }
+}
+
+/// Une ligne de commande est celle d'un Minecraft lancé depuis `.minecraft` ou depuis une instance d'Opaline (`markers`).
+pub fn is_launcher_game(cmdline: &str, markers: &[String]) -> bool {
+    let norm = |s: &str| s.to_ascii_lowercase().replace('\\', "/");
+    let c = norm(cmdline);
+    let minecraft = ["net.minecraft", "--gamedir", "bootstraplauncher", "knotclient", "fabricloader", "--assetsdir"].iter().any(|k| c.contains(k));
+    // Le marqueur doit être un nom de dossier complet (`.minecraft` ne doit pas correspondre à `net.minecraft.client`).
+    let in_dir = |m: &str| c.match_indices(&norm(m)).any(|(i, x)| c[i + x.len()..].chars().next().is_none_or(|n| matches!(n, '/' | ' ' | '"' | '\'')));
+    minecraft && markers.iter().any(|m| in_dir(m))
+}
+
+/// Lignes de commande des processus `java` / `javaw` en cours (liste vide si indisponible).
+#[allow(unreachable_code)]
+fn java_cmdlines() -> Vec<String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='javaw.exe' OR Name='java.exe'\" | ForEach-Object { $_.CommandLine }"])
+            .creation_flags(0x0800_0000)
+            .output();
+        return out.map(|o| String::from_utf8_lossy(&o.stdout).lines().map(str::to_string).collect()).unwrap_or_default();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return fs::read_dir("/proc")
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| fs::read(e.path().join("cmdline")).ok())
+            .map(|b| String::from_utf8_lossy(&b).replace('\0', " "))
+            .filter(|c| c.split_whitespace().next().is_some_and(|x| x.ends_with("java")))
+            .collect();
+    }
+    Vec::new()
+}
+
+/// Une partie lancée par le Launcher officiel tourne : processus java de `.minecraft` / d'une instance d'Opaline, ou monde ouvert
+/// (`session.lock`) dans le `.minecraft` ou une instance d'Opaline.
+pub fn game_running(root: &crate::config::Dirs, mc: &Path) -> bool {
+    let instances = root.root.join("instances");
+    let markers = vec![".minecraft".to_string(), instances.to_string_lossy().into_owned(), mc.to_string_lossy().into_owned()];
+    if java_cmdlines().iter().any(|c| is_launcher_game(c, &markers)) {
+        return true;
+    }
+    crate::backup::world_open_in(&mc.join("saves")) || fs::read_dir(&instances).into_iter().flatten().flatten().any(|i| crate::backup::world_open_in(&i.path().join("saves")))
+}
+
+/// Ferme le Launcher Minecraft seulement (jamais `java` / `javaw`) : fermeture douce, attente de 5 s au plus, puis forcée.
+pub fn close_launcher() -> Result<()> {
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+    let kill = |force: bool| {
+        if cfg!(windows) {
+            for img in ["MinecraftLauncher.exe", "Minecraft.exe"] {
+                let mut c = Command::new("taskkill");
+                c.args(["/IM", img]);
+                if force {
+                    c.arg("/F");
+                }
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    c.creation_flags(0x0800_0000);
+                }
+                let _ = c.output();
+            }
+        } else {
+            let _ = Command::new("pkill").args([if force { "-KILL" } else { "-TERM" }, "-x", "minecraft-launcher"]).output();
+        }
+    };
+    kill(false);
+    let t = Instant::now();
+    while launcher_running() && t.elapsed() < Duration::from_secs(5) {
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    if launcher_running() {
+        kill(true);
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    if launcher_running() {
+        bail!("le Launcher Minecraft ne se ferme pas : ferme-le toi-même");
+    }
+    Ok(())
+}
+
 /// Taille d'un fichier ; `None` s'il n'existe pas. Toute autre erreur est propagée.
 fn file_len(p: &Path) -> Result<Option<u64>> {
     match fs::metadata(p) {
@@ -294,6 +398,19 @@ mod tests {
 
     fn spec<'a>(now: &'a str, dir: &'a Path) -> ProfileSpec<'a> {
         ProfileSpec { name: "Opaline · Classroom Run", version_id: "fabric-loader-0.20.1-26.3", game_dir: dir, java_args: "-Xmx4096M", icon: "Furnace", now }
+    }
+
+    #[test]
+    fn launcher_decision_and_game_detection() {
+        assert_eq!(decide(false, false), LauncherDecision::Free);
+        assert_eq!(decide(false, true), LauncherDecision::Free);
+        assert_eq!(decide(true, false), LauncherDecision::OfferClose);
+        assert_eq!(decide(true, true), LauncherDecision::GameRunning);
+        let m = vec![".minecraft".to_string(), r"C:\Users\u\AppData\Roaming\Opaline\instances".to_string()];
+        assert!(is_launcher_game(r"javaw.exe -Xmx4G net.minecraft.client.main.Main --gameDir C:\Users\u\AppData\Roaming\.minecraft", &m));
+        assert!(is_launcher_game(r"javaw.exe -cp x cpw.mods.bootstraplauncher.BootstrapLauncher --gameDir C:\Users\u\AppData\Roaming\Opaline\instances\classroom-run", &m));
+        assert!(!is_launcher_game("java -jar server.jar nogui", &m));
+        assert!(!is_launcher_game(r"javaw.exe net.minecraft.client.main.Main --gameDir D:\autre\dossier", &m));
     }
 
     #[test]

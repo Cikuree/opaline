@@ -732,6 +732,12 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
     }
 }
 
+/// Ferme le Launcher Minecraft (processus du launcher seulement) ; l'interface relance ensuite `play`. Refusé si une partie tourne.
+#[tauri::command]
+async fn official_close_launcher(state: State<'_, S>) -> CmdResult<()> {
+    state.blocking(service::close_official_launcher).await
+}
+
 async fn play_official(s: S, id: String) -> Value {
     let s2 = s.clone();
     let r = s
@@ -950,6 +956,7 @@ pub fn run_with(svc: Services) {
             pack_repair,
             pack_uninstall,
             play,
+            official_close_launcher,
             server_status,
             playtime,
             run_stats,

@@ -209,17 +209,27 @@ export function initHome() {
   $('#availMore').addEventListener('click', () => { showAvail = !showAvail; renderPacks(); });
   $('#packSearch').addEventListener('input', (e) => { filter = e.target.value.trim().toLowerCase(); renderPacks(); });
   $('#btnUpd').addEventListener('click', () => { const p = current(); if (p) startInstall(p.id); });
-  $('#btnPlay').addEventListener('click', async () => {
-    const p = current(); if (!p) return;
+  $('#btnPlay').addEventListener('click', () => { const p = current(); if (p) doPlay(p); });
+  // Launcher Minecraft ouvert (mode officiel) : confirmation avant de le fermer ; jamais proposé si une partie tourne (le backend refuse).
+  $('#lcNo').addEventListener('click', () => { $('#launcherDlg').hidden = true; $('#btnPlay').focus(); });
+  $('#lcOk').addEventListener('click', async () => {
+    const p = current(); $('#launcherDlg').hidden = true; if (!p) return;
+    toast('Fermeture du Launcher Minecraft…');
+    try { await api.officialCloseLauncher(); } catch (e) { return toast(api.errMsg(e)); }
+    doPlay(p, true);
+  });
+  $('#launcherDlg').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#lcNo').click(); });
+  async function doPlay(p, retried = false) {
     if ($('#btnPlay').dataset.st === 'no') return startInstall(p.id);
     try {
       const r = await api.play(p.id);
-      if (!r.started) return toast(r.reason || 'Le jeu n’a pas pu démarrer.');
+      if (!r.started && r.reason === 'officialLauncherOpen' && !retried) { $('#launcherDlg').hidden = false; $('#lcNo').focus(); return; }
+      if (!r.started) return toast(r.reason === 'officialLauncherOpen' ? 'Le Launcher Minecraft ne s’est pas fermé : ferme-le toi-même.' : r.reason || 'Le jeu n’a pas pu démarrer.');
       if (r.serverListed) listed.add(p.id); else listed.delete(p.id);
       if (r.via === 'official') return toast(r.message || 'Profil prêt dans le Launcher Minecraft : clique sur Jouer'); // pas de processus à suivre : jamais « en jeu »
       state.inGame = true; emit('game'); renderHome(); toast('Lancement de ' + p.name + (r.joining ? ' : connexion au serveur…' : '…'));
     } catch (e) { toast(api.errMsg(e)); }
-  });
+  }
   $('#crashClose').addEventListener('click', () => ($('#crash').hidden = true));
   $('#demoTs')?.addEventListener('change', (e) => { api.demoControls.help = e.target.value; refreshServers(); });
   $('#demoTsL').hidden = !api.demoControls;

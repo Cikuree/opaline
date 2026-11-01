@@ -39,6 +39,10 @@
   <span class="appver" id="appVer" aria-label="Version d’Opaline"></span>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <div class="pkmenu" id="pkMenu" role="menu" aria-label="Options du pack" hidden><button role="menuitem" data-a="open">Ouvrir le dossier</button><button role="menuitem" data-a="repair">Vérifier et réparer</button><hr role="separator"><button role="menuitem" data-a="del" class="danger">Désinstaller…</button></div>
+  <div class="pkdlg" id="launcherDlg" hidden><div class="card" role="alertdialog" aria-modal="true" aria-labelledby="lcT">
+    <h2 id="lcT">Le Launcher Minecraft est ouvert</h2>
+    <p class="small mute" style="margin-top:6px">Opaline doit le fermer pour préparer le profil du pack. Ton jeu en cours, s’il y en a un, n’est jamais fermé.</p>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:16px"><button class="btn sm" id="lcNo">Annuler</button><button class="btn sm primary" id="lcOk">Fermer et jouer</button></div></div></div>
   <div class="pkdlg" id="uninst" hidden><div class="card" role="alertdialog" aria-modal="true" aria-labelledby="dlgT">
     <h2 id="dlgT"></h2>
     <p class="small mute">Le pack est retiré de cet ordinateur ; il repasse dans « À installer ».</p>
