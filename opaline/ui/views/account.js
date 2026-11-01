@@ -105,6 +105,7 @@ export function renderLogin() {
   $('#btnLogin').disabled = nc; $('#btnDevice').disabled = nc;
   loginMsg(nc ? 'La connexion Microsoft n’est pas configurée dans cette version d’Opaline.' : state.auth.mojangPending ? MOJANG_PENDING : '');
   if (state.auth.identity && !$('#mcName').value) $('#mcName').value = state.auth.identity.name;
+  $('#keepLogin').checked = !state.settings?.noRemember;
 }
 function stopLogin() { clearInterval(expTimer); $('#codeBox').hidden = true; $('#browserBox').hidden = true; $('#btnLogin').hidden = false; $('#btnDevice').hidden = false; }
 export function onAuthDone(p) {
@@ -121,6 +122,8 @@ export function initAccount() {
   const start = async (mode) => {
     loginMsg('');
     try {
+      // « Rester connecté » : appliqué avant la connexion, le jeton est mémorisé (ou non) à sa réussite
+      state.settings = await api.settingsSet({ noRemember: !$('#keepLogin').checked }).catch(() => state.settings);
       const r = await api.authStart(mode); attempt = r.attempt;
       $('#btnLogin').hidden = true; $('#btnDevice').hidden = true;
       if (r.mode === 'browser') {
