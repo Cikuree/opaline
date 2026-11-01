@@ -354,7 +354,7 @@ input[type=checkbox]:disabled{opacity:.45;cursor:default}
 main{--ft:0px;--fb:0px;-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 var(--ft),#000 calc(100% - var(--fb)),transparent 100%);mask-image:linear-gradient(to bottom,transparent 0,#000 var(--ft),#000 calc(100% - var(--fb)),transparent 100%)}
 
 /* Verre léger : cartes, barre de navigation et colonne d'amis laissent deviner le fond animé (flou discret, reflet fin en haut) */
-.card,.rail,.pk,.col{-webkit-backdrop-filter:blur(18px) saturate(1.25);backdrop-filter:blur(18px) saturate(1.25);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),inset 0 0 0 1px rgba(255,255,255,.035)}
+.card,.rail,.pk,.col{-webkit-backdrop-filter:blur(18px) saturate(1.25);backdrop-filter:blur(18px) saturate(1.25);box-shadow:none}
 .col .card{-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none}
 
 /* Texte discret posé sur le fond de la fenêtre (hors cartes) : plus clair, le fond animé peut s'éclaircir (contraste ≥ 4.5:1) */
