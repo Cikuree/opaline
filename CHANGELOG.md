@@ -1,5 +1,9 @@
 # Changelog
 
+## Classroom Run 0.4.3 : la mort se voit
+- **Mort collective visible** : l'équipe passe en spectateur avec le titre « Vous êtes morts » (cause et compte à rebours) avant la nouvelle run, puis revient en survie ; reconnexion pendant ce temps gérée.
+- Délai avant la nouvelle run porté à 6 s (`deathResetDelayTicks` = 120 ; un `config.json` existant garde sa valeur).
+
 ## Opaline 0.4.2 : finitions
 - **Amis** : la colonne montre les joueurs vus sur le serveur du pack (en ligne, ou dernière connexion), sans ajout manuel et sans soi-même ; repliée, elle s'ajuste à son contenu.
 - **Fenêtre** : toute la bande du haut attrape la fenêtre, alignée sur les boutons ; version d'Opaline affichée en bas à droite.
