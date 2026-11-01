@@ -7,7 +7,7 @@ use crate::config::{self, Config, Dirs};
 use crate::download::{self, Progress};
 use crate::{backup, extramods, friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update};
 use anyhow::{Context, Result, bail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::Arc;
@@ -150,12 +150,27 @@ pub struct SettingsView {
     pub launch_via: crate::config::LaunchVia,
     pub join_server: bool,
     pub notify_server: bool,
+    pub discord_presence: bool,
+    pub tray_on_game: bool,
+    /// Mode et mémoire réglés automatiquement au premier lancement (et pas encore modifiés).
+    pub auto_tuned: bool,
     pub system_ram_mb: Option<u64>,
 }
 
 pub fn settings_get(root: &Dirs) -> SettingsView {
     let c = Config::load(root);
-    SettingsView { perf_mode: c.perf_mode, memory_mb: c.memory_mb, no_remember: c.no_remember, launch_via: c.launch_via, join_server: c.join_server, notify_server: c.notify_server, system_ram_mb: sysmem::total_ram_mb() }
+    SettingsView {
+        perf_mode: c.perf_mode,
+        memory_mb: c.memory_mb,
+        no_remember: c.no_remember,
+        launch_via: c.launch_via,
+        join_server: c.join_server,
+        notify_server: c.notify_server,
+        discord_presence: c.discord_presence,
+        tray_on_game: c.tray_on_game,
+        auto_tuned: c.auto_tuned,
+        system_ram_mb: sysmem::total_ram_mb(),
+    }
 }
 
 /// Mémoire bornée : au moins 1 Go, au plus 75 % de la RAM physique (si connue).
@@ -164,22 +179,37 @@ pub fn clamp_memory(mb: u32, ram_mb: Option<u64>) -> u32 {
     mb.clamp(1024, max)
 }
 
-pub fn settings_set(root: &Dirs, mode: Option<perf::PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>, launch_via: Option<crate::config::LaunchVia>, join_server: Option<bool>, notify_server: Option<bool>) -> Result<SettingsView> {
+/// Modifications demandées par l'interface : seuls les champs présents changent.
+#[derive(Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SettingsPatch {
+    pub perf_mode: Option<perf::PerfMode>,
+    pub memory_mb: Option<u32>,
+    pub no_remember: Option<bool>,
+    pub launch_via: Option<crate::config::LaunchVia>,
+    pub join_server: Option<bool>,
+    pub notify_server: Option<bool>,
+    pub discord_presence: Option<bool>,
+    pub tray_on_game: Option<bool>,
+}
+
+pub fn settings_set(root: &Dirs, p: SettingsPatch) -> Result<SettingsView> {
     let mut c = Config::load(root);
-    if let Some(m) = mode {
+    if let Some(m) = p.perf_mode {
         c.perf_mode = m;
     }
-    if let Some(m) = memory_mb {
+    if let Some(m) = p.memory_mb {
         c.memory_mb = clamp_memory(m, sysmem::total_ram_mb());
     }
-    if let Some(n) = no_remember {
-        c.no_remember = n;
+    if p.perf_mode.is_some() || p.memory_mb.is_some() {
+        c.auto_tuned = false; // choix de l'utilisateur : le message « réglé automatiquement » disparaît
     }
-    if let Some(v) = launch_via {
-        c.launch_via = v;
-    }
-    c.join_server = join_server.unwrap_or(c.join_server);
-    c.notify_server = notify_server.unwrap_or(c.notify_server);
+    c.no_remember = p.no_remember.unwrap_or(c.no_remember);
+    c.launch_via = p.launch_via.unwrap_or(c.launch_via);
+    c.join_server = p.join_server.unwrap_or(c.join_server);
+    c.notify_server = p.notify_server.unwrap_or(c.notify_server);
+    c.discord_presence = p.discord_presence.unwrap_or(c.discord_presence);
+    c.tray_on_game = p.tray_on_game.unwrap_or(c.tray_on_game);
     c.save(root)?;
     Ok(settings_get(root))
 }
@@ -525,6 +555,19 @@ pub fn app_update_download(root: &Dirs, current: &str, progress: impl FnMut(u64,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn settings_patch_changes_only_given_fields_and_clears_auto_tuned() {
+        let d = Dirs::new(std::env::temp_dir().join(format!("opaline-patch-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&d.root);
+        let c = Config { auto_tuned: true, ..Config::default() };
+        c.save(&d).unwrap();
+        let v = settings_set(&d, serde_json::from_str(r#"{"discordPresence":false,"trayOnGame":false}"#).unwrap()).unwrap();
+        assert!(!v.discord_presence && !v.tray_on_game && v.auto_tuned && v.join_server);
+        let v = settings_set(&d, SettingsPatch { perf_mode: Some(perf::PerfMode::Low), ..Default::default() }).unwrap();
+        assert!(!v.auto_tuned && v.perf_mode == perf::PerfMode::Low && !v.discord_presence);
+        std::fs::remove_dir_all(&d.root).unwrap();
+    }
 
     #[test]
     fn list_entry_needs_known_suffix_for_short_hosts_only() {

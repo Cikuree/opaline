@@ -37,6 +37,10 @@ Le format de `packs.json` (`id`, `name`, `description`, `mc`, `loader`, `loaderV
 
 La CI injecte la variable de dépôt `MS_CLIENT_ID` au build (`CLASSROOM_MS_CLIENT_ID`). Si elle est vide, un avertissement est émis et la connexion est désactivée dans l'application publiée.
 
+## ID d'application Discord
+
+La CI injecte la variable de dépôt `DISCORD_APP_ID` au build. Vide : le statut Discord est désactivé dans l'application publiée. Création de l'application : `opaline/README.md`.
+
 ## Données privées
 
 Ni l'adresse du serveur ni aucun jeton ne sont publiés. Opaline vise `<host>.<suffixe MagicDNS>` calculé à l'exécution via Tailscale, sans jamais l'afficher.

@@ -32,7 +32,7 @@ export const playtime = () => call('playtime');
 export const runStats = (id) => call('run_stats', { id });
 export const runHistory = (id, run = null) => call('run_history', { id, run });
 export const settingsGet = () => call('settings_get');
-export const settingsSet = (patch) => call('settings_set', patch);
+export const settingsSet = (patch) => call('settings_set', { patch });
 export const openFolder = (id, kind) => call('open_folder', { id, kind });
 export const backupsList = (id) => call('backups_list', { id });
 export const backupRestore = (id, backupId) => call('backup_restore', { id, backupId });

@@ -19,7 +19,7 @@ const packs = [
 const MODS = [['Fabric API', '0.131.0', 'both'], ['Classroom Run', '0.9.2', 'both'], ['Sodium', '0.7.2', 'client'], ['Lithium', '0.18.1', 'both'], ['Iris Shaders', '1.9.3', 'client', false], ['Sodium Extra', '0.7.0', 'client'], ['Mod Menu', '15.0.0', 'client'], ['Fantasy', '0.8.1', 'server'], ['ServerReplay', '1.4.0', 'server'], ['Replay Mod', '2.7.0', 'client'], ['Cloth Config', '21.0.1', 'both']]
   .map(([name, version, side, ok]) => ({ name, version, side, file: name.toLowerCase().replace(/\W+/g, '-') + '.jar', verified: ok !== false }));
 
-let settings = { perfMode: 'balanced', memoryMb: 6144, noRemember: false, launchVia: 'opaline', joinServer: true, notifyServer: true, systemRamMb: 16384 };
+let settings = { perfMode: 'balanced', memoryMb: 6144, noRemember: false, launchVia: 'opaline', joinServer: true, notifyServer: true, discordPresence: true, trayOnGame: true, autoTuned: false, systemRamMb: 16384 };
 // ?signedout : écran de connexion ; ?official : mode officiel avec pseudo ; ?notapproved : la connexion échoue comme avec une app Azure non approuvée.
 const UUID = '3f9a21c4-7be0-4a11-9c3d-0b6e5f51e51d';
 let identity = q.has('official') ? { name: 'OddNode', uuid: UUID } : null, pending = false;
@@ -116,7 +116,7 @@ export async function invoke(cmd, a = {}) {
     case 'run_stats': return a.id === 'classroom-run' ? stats() : null;
     case 'run_history': return a.id !== 'classroom-run' ? null : a.run == null ? { runs: RUNS } : detail(a.run);
     case 'settings_get': return settings;
-    case 'settings_set': settings = { ...settings, ...a }; return settings;
+    case 'settings_set': settings = { ...settings, ...a.patch, ...(a.patch.perfMode || a.patch.memoryMb ? { autoTuned: false } : {}) }; return settings;
     case 'playtime': return { 'classroom-run': { totalSecs: 41 * 3600 + 25 * 60, lastPlayed: Math.floor(Date.now() / 1000) - 2 * 3600 }, survie: { totalSecs: 1500, lastPlayed: Math.floor(Date.now() / 1000) - 86400 * 4 } };
     case 'open_folder': return null;
     case 'extra_mods_list': return packs.find((p) => p.id === a.id)?.installed ? structuredClone(extras) : [];

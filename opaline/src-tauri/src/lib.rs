@@ -4,8 +4,8 @@
 use anyhow::{Context, anyhow, bail};
 use base64::Engine;
 use opaline_core::config::{Config, Dirs, LaunchVia};
+use opaline_core::shell::{Action, Prefs, Shell};
 use opaline_core::download::Progress;
-use opaline_core::perf::PerfMode;
 use opaline_core::{auth, auth_browser, friends, head, identity, official, service, skins};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -16,6 +16,8 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
+
+mod presence;
 
 type CmdResult<T> = Result<T, String>;
 
@@ -66,6 +68,9 @@ struct Inner {
     skins_synced: AtomicBool,
     /// Dernière connexion refusée par Mojang (app Azure non approuvée) : l'interface l'explique (mémoire seulement : le prochain essai tranche).
     mojang_pending: AtomicBool,
+    /// État du bureau pendant les parties (fenêtre cachée, statut Discord) et fil Discord (absent sans identifiant d'application).
+    shell: Mutex<Shell>,
+    presence: Option<std::sync::mpsc::Sender<presence::Message>>,
 }
 
 #[derive(Clone)]
@@ -101,6 +106,22 @@ impl S {
         }
         let session = service::session_for_play(&self.config(), &self.0.auth)?;
         Ok(session.access_token().to_string())
+    }
+
+    /// Exécute les actions décidées par la machine à états (statut Discord ; fenêtre dans la zone de notification).
+    fn desktop(&self, _app: &AppHandle, f: impl FnOnce(&mut Shell, Prefs) -> Vec<Action>) {
+        let c = self.config();
+        let actions = f(&mut self.0.shell.lock().unwrap(), Prefs { tray: c.tray_on_game, discord: c.discord_presence });
+        for a in actions {
+            match a {
+                Action::Presence(p) => {
+                    if let Some(tx) = &self.0.presence {
+                        let _ = tx.send(p);
+                    }
+                }
+                Action::Hide | Action::Show => {}
+            }
+        }
     }
 
     fn sync_skins_once(&self) {
@@ -176,8 +197,8 @@ async fn settings_get(state: State<'_, S>) -> CmdResult<service::SettingsView> {
 }
 
 #[tauri::command]
-async fn settings_set(state: State<'_, S>, perf_mode: Option<PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>, launch_via: Option<LaunchVia>, join_server: Option<bool>, notify_server: Option<bool>) -> CmdResult<service::SettingsView> {
-    state.blocking(move |r| service::settings_set(r, perf_mode, memory_mb, no_remember, launch_via, join_server, notify_server)).await
+async fn settings_set(state: State<'_, S>, patch: service::SettingsPatch) -> CmdResult<service::SettingsView> {
+    state.blocking(move |r| service::settings_set(r, patch)).await
 }
 
 // ---------- Authentification ----------
@@ -576,7 +597,7 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
             let e = service::entry(root, &id2)?;
             let l = service::launch_pack(root, &e, &cfg, &session)?;
             *s2.0.last_server.lock().unwrap() = Some(l.server.clone()).filter(|a| !a.is_empty());
-            Ok((l, session.access_token().to_string()))
+            Ok((l, session.access_token().to_string(), e.name))
         })
         .await;
     match launched {
@@ -584,10 +605,11 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
             s.0.activity.lock().unwrap().running.remove(&id);
             Ok(refused(reason, "direct"))
         }
-        Ok((mut l, token)) => {
+        Ok((mut l, token, name)) => {
             let (listed, joining) = (l.server_listed, l.joining);
             let since = std::time::SystemTime::now();
             let started = std::time::Instant::now();
+            s.desktop(&app, |sh, p| sh.game_started(&id, &name, friends::now_secs(), p));
             std::thread::spawn(move || {
                 let code = l.child.wait().ok().and_then(|st| st.code());
                 let _ = opaline_core::playtime::record(&s.0.root, &id, started.elapsed().as_secs(), friends::now_secs());
@@ -595,6 +617,7 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
                 // Code non nul : résumé lisible (latest.log + rapport de crash de cette session), sans jeton ni adresse.
                 let crash = (code != Some(0)).then(|| service::crash_view(&s.0.root, &id, code, tail.as_deref(), since, &token, &l.server).ok()).flatten();
                 s.0.activity.lock().unwrap().running.remove(&id);
+                s.desktop(&app, |sh, p| sh.game_exited(&id, p));
                 let _ = app.emit("game://exited", json!({ "packId": id, "code": code, "logTail": tail, "crash": crash }));
             });
             Ok(json!({ "started": true, "reason": null, "serverListed": listed, "via": "direct", "joining": joining }))
@@ -756,6 +779,8 @@ pub fn run_with(svc: Services) {
         last_server: Mutex::default(),
         skins_synced: AtomicBool::new(false),
         mojang_pending: AtomicBool::new(false),
+        shell: Mutex::default(),
+        presence: presence::start(),
     }));
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

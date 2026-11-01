@@ -28,6 +28,7 @@ pub mod playtime;
 pub mod ping;
 pub mod safe;
 pub mod serverview;
+pub mod shell;
 pub mod servers;
 pub mod service;
 pub mod skins;
