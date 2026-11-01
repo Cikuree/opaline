@@ -1,5 +1,10 @@
 # Changelog
 
+## Opaline 0.5.1 : serveurs hébergés
+- **Adresses d'hébergeur** (MineStrator…) : l'enregistrement SRV `_minecraft._tcp` est suivi pour un serveur public sur le port par défaut, comme le fait le jeu ; la carte serveur voit le vrai serveur.
+- **MOTD** comparé sans tenir compte des majuscules.
+- Libellés des chiffres de l'accueil alignés.
+
 ## Opaline 0.5.0 : packs importés de CurseForge
 - **Archive d'overrides** : un pack peut fournir ses gros dossiers (resource packs, datapacks, configs) dans une archive publiée sur la release `packs`. Opaline la télécharge (sha256 vérifié), l'extrait de façon sûre dans l'instance et retire à la mise à jour les fichiers qu'elle ne contient plus, sans toucher aux mondes ni aux captures.
 - **Mod publié avec les packs** : le mod Classroom Run a sa propre version et part avec le pack, sans nouvelle version d'Opaline.
