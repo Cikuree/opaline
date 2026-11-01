@@ -46,6 +46,11 @@ impl Shell {
         out
     }
 
+    /// L'utilisateur a réaffiché la fenêtre pendant la partie (menu ou clic sur l'icône) : plus rien à réafficher à la sortie.
+    pub fn user_shown(&mut self) {
+        self.hidden = false;
+    }
+
     /// La fenêtre est toujours réaffichée à la fin de la dernière partie, même si le réglage a été coupé entre-temps.
     pub fn game_exited(&mut self, id: &str, p: Prefs) -> Vec<Action> {
         self.running.retain(|r| r.0 != id);
@@ -87,6 +92,15 @@ mod tests {
         assert_eq!(s.game_started("b", "B", 2, ON), [Action::Presence(Some(("B".into(), 2)))]);
         assert_eq!(s.game_exited("b", ON), [Action::Presence(Some(("A".into(), 1)))]);
         assert_eq!(s.game_exited("a", ON), [Action::Show, Action::Presence(None)]);
+    }
+
+    #[test]
+    fn window_shown_by_the_user_is_not_shown_again() {
+        let mut s = Shell::default();
+        s.game_started("a", "A", 1, ON);
+        s.user_shown();
+        assert_eq!(s.game_exited("a", ON), [Action::Presence(None)]);
+        assert_eq!(s.game_started("b", "B", 2, ON)[0], Action::Hide); // la partie suivante recache
     }
 
     #[test]

@@ -25,7 +25,7 @@ export function renderSettings() {
   setSw($('#noRemember'), !!s.noRemember);
   const via = s.launchVia === 'official' ? 'official' : 'opaline';
   $$('#launchVia [data-v]').forEach((b) => b.setAttribute('aria-checked', b.dataset.v === via));
-  setSw($('#joinServer'), !!s.joinServer); setSw($('#notifyServer'), !!s.notifyServer); setSw($('#discordPresence'), !!s.discordPresence);
+  setSw($('#joinServer'), !!s.joinServer); setSw($('#notifyServer'), !!s.notifyServer); setSw($('#discordPresence'), !!s.discordPresence); setSw($('#trayOnGame'), !!s.trayOnGame);
   // Le Launcher officiel ne prend pas d'arguments de jeu de notre part : pas de connexion automatique dans ce mode.
   $('#jsH').textContent = official() || via === 'official'
     ? 'Indisponible avec le Launcher Minecraft : choisis le serveur dans Multijoueur (il y est ajouté).'
@@ -53,6 +53,7 @@ export function initSettings() {
   $('#joinServer').addEventListener('click', (e) => save({ joinServer: e.currentTarget.getAttribute('aria-checked') !== 'true' }));
   $('#notifyServer').addEventListener('click', (e) => save({ notifyServer: e.currentTarget.getAttribute('aria-checked') !== 'true' }));
   $('#discordPresence').addEventListener('click', (e) => save({ discordPresence: e.currentTarget.getAttribute('aria-checked') !== 'true' }));
+  $('#trayOnGame').addEventListener('click', (e) => save({ trayOnGame: e.currentTarget.getAttribute('aria-checked') !== 'true' }));
   // Sans connexion Opaline, JOUER passe de toute façon par le Launcher Minecraft : ce choix ne vaut qu'une fois connecté.
   $('#launchVia').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b) save({ launchVia: b.dataset.v }); });
 }

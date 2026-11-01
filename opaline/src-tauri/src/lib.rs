@@ -13,6 +13,8 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
@@ -109,7 +111,7 @@ impl S {
     }
 
     /// Exécute les actions décidées par la machine à états (statut Discord ; fenêtre dans la zone de notification).
-    fn desktop(&self, _app: &AppHandle, f: impl FnOnce(&mut Shell, Prefs) -> Vec<Action>) {
+    fn desktop(&self, app: &AppHandle, f: impl FnOnce(&mut Shell, Prefs) -> Vec<Action>) {
         let c = self.config();
         let actions = f(&mut self.0.shell.lock().unwrap(), Prefs { tray: c.tray_on_game, discord: c.discord_presence });
         for a in actions {
@@ -119,7 +121,8 @@ impl S {
                         let _ = tx.send(p);
                     }
                 }
-                Action::Hide | Action::Show => {}
+                Action::Hide => hide_to_tray(app, self.clone()),
+                Action::Show => show_main(app, None),
             }
         }
     }
@@ -134,6 +137,58 @@ impl S {
             let _ = skins::sync_current(&c, &s.0.svc.skins, &token, &skins::Wardrobe::new(s.0.root.skins()));
         });
     }
+}
+
+/// Cache la fenêtre derrière une icône de la zone de notification (menu « Afficher Opaline » / « Quitter »).
+/// Si l'icône ne peut pas être créée, la fenêtre reste visible : on ne la cache jamais sans moyen de la rappeler.
+fn hide_to_tray(app: &AppHandle, s: S) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let app = &handle;
+        let built = (|| -> tauri::Result<()> {
+            let menu = Menu::with_items(app, &[&MenuItem::with_id(app, "show", "Afficher Opaline", true, None::<&str>)?, &MenuItem::with_id(app, "quit", "Quitter", true, None::<&str>)?])?;
+            let (s1, s2) = (s.clone(), s.clone());
+            let mut b = TrayIconBuilder::with_id("main")
+                .tooltip("Opaline")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(move |app, e| match e.id.as_ref() {
+                    "show" => show_main(app, Some(&s1)),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(move |tray, e| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = e {
+                        show_main(tray.app_handle(), Some(&s2));
+                    }
+                });
+            if let Some(i) = app.default_window_icon() {
+                b = b.icon(i.clone());
+            }
+            b.build(app).map(|_| ())
+        })();
+        if built.is_ok()
+            && let Some(w) = app.get_webview_window("main")
+        {
+            let _ = w.hide();
+        }
+    });
+}
+
+/// Réaffiche la fenêtre et retire l'icône. `user` : demande de l'utilisateur pendant la partie (informe la machine à états).
+fn show_main(app: &AppHandle, user: Option<&S>) {
+    if let Some(s) = user {
+        s.0.shell.lock().unwrap().user_shown();
+    }
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        handle.remove_tray_by_id("main");
+        if let Some(w) = handle.get_webview_window("main") {
+            let _ = w.unminimize();
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    });
 }
 
 #[derive(Serialize, Clone)]
