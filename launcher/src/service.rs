@@ -59,7 +59,7 @@ fn install_inner(root: &Dirs, id: &str, progress: &Arc<Progress>, local_pack: Op
         Some(p) => p.to_path_buf(),
         None => packwiz::fetch_remote_pack(&client, &dirs, &e.pack)?,
     };
-    if local_pack.is_none() && !packwiz::load_pack(&pack_dir)?.index_hash.eq_ignore_ascii_case(e.pack_hash.trim()) {
+    if local_pack.is_none() && !catalog::pack_version_hash(&packwiz::load_pack(&pack_dir)?.index_hash, e.overrides.as_ref()).eq_ignore_ascii_case(e.pack_hash.trim()) {
         bail!("le pack téléchargé ne correspond pas au catalogue (packHash) : réessayez plus tard");
     }
     let params = install::InstallParams {
@@ -67,6 +67,7 @@ fn install_inner(root: &Dirs, id: &str, progress: &Arc<Progress>, local_pack: Op
         pack_dir: pack_dir.clone(),
         mod_jar: local_pack.and_then(|_| install::find_mod_jar(None, &pack_dir).ok()),
         endpoints: endpoints.clone(),
+        overrides: e.overrides.clone(),
     };
     let installed = install::install(&client, &params, progress)?;
     progress.set_stage("textures");

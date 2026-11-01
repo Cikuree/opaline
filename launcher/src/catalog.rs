@@ -15,6 +15,27 @@ pub struct ServerInfo {
     pub stats_port: u16,
 }
 
+/// Archive des fichiers « overrides » d'un pack (resourcepacks, datapacks, shaderpacks...) publiée à côté du zip du pack.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct Overrides {
+    pub url: String,
+    pub sha256: String,
+    pub size: u64,
+}
+
+/// Taille maximale annoncée d'une archive d'overrides (2 Go) : même limite que `pack-tools.py`.
+pub const OVERRIDES_MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+/// Hash de version d'un pack : `packHash` du catalogue. Sans overrides, c'est le hash d'index (inchangé) ; avec,
+/// `sha256_hex(utf8("<hash d'index>\n<sha256 de l'archive>"))` (`\n` = saut de ligne), en minuscules (formule de `pack-tools.py`).
+pub fn pack_version_hash(index_hash: &str, overrides: Option<&Overrides>) -> String {
+    use sha2::{Digest, Sha256};
+    match overrides {
+        None => index_hash.to_ascii_lowercase(),
+        Some(o) => hex::encode(Sha256::digest(format!("{}\n{}", index_hash.to_ascii_lowercase(), o.sha256.to_ascii_lowercase()))),
+    }
+}
+
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PackEntry {
@@ -38,6 +59,9 @@ pub struct PackEntry {
     /// Absent ou `null` : pack sans serveur (ni carte serveur, ni amis, ni statistiques).
     #[serde(default)]
     pub server: Option<ServerInfo>,
+    /// Absent ou `null` : pack sans overrides.
+    #[serde(default)]
+    pub overrides: Option<Overrides>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -111,6 +135,12 @@ fn validate(e: &PackEntry) -> Result<()> {
     if e.pack_hash.trim().len() < 8 {
         bail!("packHash absent");
     }
+    if let Some(o) = &e.overrides {
+        let local = o.url.starts_with("http://127.0.0.1") || o.url.starts_with("http://localhost");
+        if !(o.url.starts_with("https://") || local) || o.sha256.len() != 64 || !o.sha256.chars().all(|c| c.is_ascii_hexdigit()) || o.size == 0 || o.size > OVERRIDES_MAX_BYTES {
+            bail!("overrides invalides dans le catalogue");
+        }
+    }
     Ok(())
 }
 
@@ -177,6 +207,29 @@ mod tests {
         assert!(!p[2].view(None, false).has_server && p[0].view(None, false).has_server);
         assert!(p[0].view(None, false).has_stats && !p[1].view(None, false).has_stats && !p[2].view(None, false).has_stats);
         assert!(parse_catalog("{}").is_err() && parse_catalog("nope").is_err());
+    }
+
+    #[test]
+    fn overrides_are_validated_and_change_the_version_hash() {
+        let e = |o: &str| format!(r#"{{"packs":[{{"id":"a","name":"A","mc":"1","loader":"fabric","pack":"https://x/a.zip","packHash":"abcdef0123"{o}}}]}}"#);
+        let sha = "ab".repeat(32);
+        let ok = parse_catalog(&e(&format!(r#","overrides":{{"url":"https://x/o.zip","sha256":"{sha}","size":10}}"#))).unwrap();
+        assert_eq!(ok[0].overrides.as_ref().unwrap().size, 10);
+        for bad in [
+            format!(r#","overrides":{{"url":"http://evil/o.zip","sha256":"{sha}","size":10}}"#),
+            r#","overrides":{"url":"https://x/o.zip","sha256":"zz","size":10}"#.to_string(),
+            format!(r#","overrides":{{"url":"https://x/o.zip","sha256":"{sha}","size":0}}"#),
+            format!(r#","overrides":{{"url":"https://x/o.zip","sha256":"{sha}","size":{}}}"#, OVERRIDES_MAX_BYTES + 1),
+        ] {
+            assert!(parse_catalog(&e(&bad)).unwrap().is_empty(), "{bad}");
+        }
+        assert_eq!(parse_catalog(&e("")).unwrap()[0].overrides, None);
+        let o = ok[0].overrides.as_ref();
+        assert_eq!(pack_version_hash("ABC", None), "abc");
+        assert_ne!(pack_version_hash("abc", o), "abc");
+        assert_eq!(pack_version_hash("abc", o).len(), 64);
+        // vecteur partagé avec scripts/test_pack_tools.py (même formule des deux côtés)
+        assert_eq!(pack_version_hash("ABCDEF0123", o), "43d3f77780af2ff9fa4f009f1b6ea2cb6bb5cac91bb33342c2fce45866e35288");
     }
 
     #[test]

@@ -7,6 +7,9 @@
       Ecrit mods/classroomrun.pw.toml (side both, url = --base-url + classroomrun-X.Y.Z.jar, sha512 du jar), puis reindexe.
   pack-tools.py catalog --base-url https://github.com/OWNER/REPO/releases/download/packs/ [--out packs.json]
       Genere packs.json (contrat Opaline §3) depuis tous les packs/<id>/ ; valide chaque opaline.toml.
+  [overrides] facultatif d'opaline.toml : archive des fichiers non commites (resourcepacks, datapacks...) publiee a part ;
+catalog valide url / sha256 / size et les expose dans packs.json. packHash = hash d'index sans [overrides] (inchange) ;
+avec : sha256_hex(utf8("<hash d'index>" + LF + "<sha256 de l'archive>")) (minuscules, LF = un saut de ligne).
 Fichiers bruts (configs, options.txt, mods hors Modrinth...) : tout fichier de packs/<id>/ hors pack.toml, index.toml,
 opaline.toml, *.pw.toml et fichiers caches est indexe (metafile = false, sha256).
   pack-tools.py zip --pack packs/<id> --out pack-<id>.zip
@@ -107,6 +110,7 @@ def load_opaline(pack):
         bad("`widgets` requis (liste de textes)")
     if set(w) - WIDGETS:
         bad(f"widgets inconnus {sorted(set(w) - WIDGETS)} ; autorises : {sorted(WIDGETS)}")
+    o["overrides"] = check_overrides(o, bad)
     s = o.get("server")  # section facultative : sans elle, pas de carte serveur ni de statistiques
     if s is None:
         return o
@@ -121,6 +125,34 @@ def load_opaline(pack):
         if type(v) is not int or not 0 <= v <= 65535 or (k == "port" and v == 0):
             bad(f"`server.{k}` requis, entier 0-65535" + (" (0 = pas d'endpoint)" if k == "statsPort" else ", > 0"))
     return o
+
+
+OVERRIDES_BASE = "https://github.com/Cikuree/opaline/releases/download/packs/"
+OVERRIDES_MAX_BYTES = 2 * 1024 ** 3  # launcher/src/catalog.rs OVERRIDES_MAX_BYTES
+
+
+def check_overrides(o, bad):
+    """Valide la section facultative [overrides] ; renvoie {url, sha256, size} ou None."""
+    ov = o.get("overrides")
+    if ov is None:
+        return None
+    if not isinstance(ov, dict) or set(ov) != {"url", "sha256", "size"}:
+        bad("[overrides] doit contenir exactement url, sha256 et size")
+    u, h, n = ov["url"], ov["sha256"], ov["size"]
+    if not (isinstance(u, str) and u.startswith(OVERRIDES_BASE) and re.fullmatch(r"[A-Za-z0-9._-]+\.zip", u[len(OVERRIDES_BASE):]) and ".." not in u):
+        bad(f"`overrides.url` doit etre {OVERRIDES_BASE}<nom simple>.zip")
+    if not (isinstance(h, str) and re.fullmatch(r"[0-9a-f]{64}", h)):
+        bad("`overrides.sha256` requis : 64 caracteres hexadecimaux minuscules")
+    if type(n) is not int or not 0 < n <= OVERRIDES_MAX_BYTES:
+        bad("`overrides.size` requis : entier > 0 et <= 2 Go (2147483648)")
+    return {"url": u, "sha256": h, "size": n}
+
+
+def pack_hash(index_hash, overrides):
+    """packHash : hash d'index seul sans overrides (inchange), sinon sha256 de index + LF + sha256 de l'archive."""
+    if overrides is None:
+        return index_hash
+    return hashlib.sha256((index_hash.lower() + "\n" + overrides["sha256"]).encode()).hexdigest()
 
 
 def verify(d, pt):
@@ -163,8 +195,10 @@ def catalog(root, base, out):
             "modsCount": len(list((d / "mods").glob("*.pw.toml"))),
             "thumbnail": o["thumbnail"], "widgets": o["widgets"],
             "pack": f"{base}pack-{d.name}.zip",
-            "packHash": pt["index"]["hash"], "server": o.get("server"),
+            "packHash": pack_hash(pt["index"]["hash"], o["overrides"]), "server": o.get("server"),
         })
+        if o["overrides"]:
+            packs[-1]["overrides"] = o["overrides"]
     out.write_text(json.dumps({"packs": packs}, ensure_ascii=False, indent=2) + "\n", "utf-8")
     print("catalogue:", out, [p["id"] for p in packs])
 

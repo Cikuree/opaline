@@ -32,8 +32,8 @@ export const HELP = {
   unexpectedServer: ['Serveur inattendu', 'Le serveur joint ne correspond pas à ce pack.'],
 };
 
-export const STAGES = { java: 'Installation de Java', minecraft: 'Téléchargement de Minecraft', loader: 'Installation du chargeur', mods: 'Téléchargement des mods', assets: 'Téléchargement des ressources', textures: 'Extraction des textures' };
-export const STAGE_ORDER = ['java', 'minecraft', 'assets', 'loader', 'mods', 'textures']; // ordre émis par le backend (contrat §6)
+export const STAGES = { java: 'Installation de Java', minecraft: 'Téléchargement de Minecraft', loader: 'Installation du chargeur', mods: 'Téléchargement des mods', overrides: 'Téléchargement des fichiers du pack', assets: 'Téléchargement des ressources', textures: 'Extraction des textures' };
+export const STAGE_ORDER = ['java', 'minecraft', 'assets', 'loader', 'mods', 'overrides', 'textures']; // ordre émis par le backend (contrat §6)
 
 export const PERF = [
   { id: 'low', name: 'Faible', sub: 'Pour les PC modestes', gb: 3 },

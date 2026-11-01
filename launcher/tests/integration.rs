@@ -217,7 +217,7 @@ impl Fx {
     }
 
     fn params(&self) -> InstallParams {
-        InstallParams { dirs: self.dirs.clone(), pack_dir: self.pack.clone(), mod_jar: Some(self.jar.clone()), endpoints: self.ep.clone() }
+        InstallParams { dirs: self.dirs.clone(), pack_dir: self.pack.clone(), mod_jar: Some(self.jar.clone()), endpoints: self.ep.clone(), overrides: None }
     }
 
     /// (chemin de java, id de version) ; `Installed` n'est pas `Debug`.
