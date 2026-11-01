@@ -4,7 +4,7 @@ thumbnail = "ender_pearl"
 widgets = ["server", "news"]
 
 [server]
-host = "91.197.6.154"
+host = "hellyeaahhh.minesr.com"
 port = 25565
 motd = "cobblemon"
 statsPort = 0
