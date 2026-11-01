@@ -181,7 +181,7 @@ export function initHome() {
       if (!r.started) return toast(r.reason || 'Le jeu n’a pas pu démarrer.');
       if (r.serverListed) listed.add(p.id); else listed.delete(p.id);
       if (r.via === 'official') return toast(r.message || 'Profil prêt dans le Launcher Minecraft : clique sur Jouer'); // pas de processus à suivre : jamais « en jeu »
-      state.inGame = true; emit('game'); renderHome(); toast('Lancement de ' + p.name + '…');
+      state.inGame = true; emit('game'); renderHome(); toast('Lancement de ' + p.name + (r.joining ? ' : connexion au serveur…' : '…'));
     } catch (e) { toast(api.errMsg(e)); }
   });
   $('#crashClose').addEventListener('click', () => ($('#crash').hidden = true));

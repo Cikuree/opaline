@@ -19,7 +19,7 @@ const packs = [
 const MODS = [['Fabric API', '0.131.0', 'both'], ['Classroom Run', '0.9.2', 'both'], ['Sodium', '0.7.2', 'client'], ['Lithium', '0.18.1', 'both'], ['Iris Shaders', '1.9.3', 'client', false], ['Sodium Extra', '0.7.0', 'client'], ['Mod Menu', '15.0.0', 'client'], ['Fantasy', '0.8.1', 'server'], ['ServerReplay', '1.4.0', 'server'], ['Replay Mod', '2.7.0', 'client']]
   .map(([name, version, side, ok]) => ({ name, version, side, file: name.toLowerCase().replace(/\W+/g, '-') + '.jar', verified: ok !== false }));
 
-let settings = { perfMode: 'balanced', memoryMb: 6144, noRemember: false, launchVia: 'opaline', systemRamMb: 16384 };
+let settings = { perfMode: 'balanced', memoryMb: 6144, noRemember: false, launchVia: 'opaline', joinServer: true, notifyServer: true, systemRamMb: 16384 };
 // ?signedout : écran de connexion ; ?official : mode officiel avec pseudo ; ?notapproved : la connexion échoue comme avec une app Azure non approuvée.
 const UUID = '3f9a21c4-7be0-4a11-9c3d-0b6e5f51e51d';
 let identity = q.has('official') ? { name: 'OddNode', uuid: UUID } : null, pending = false;
@@ -101,7 +101,7 @@ export async function invoke(cmd, a = {}) {
     case 'pack_install': case 'pack_repair': runInstall(a.id); return null;
     case 'pack_changelog': return a.id === 'classroom-run' ? { added: ['Cloth Config 21.0.1'], removed: ['Indium 1.0.37'], updated: [{ name: 'Classroom Run', from: '0.9.2', to: '0.9.3' }, { name: 'Sodium', from: '0.7.1', to: '0.7.2' }] } : { added: [], removed: [], updated: [] };
     case 'pack_mods': return a.id === 'classroom-run' ? MODS : packs.find((p) => p.id === a.id)?.installed ? MODS.slice(0, 5).map((m) => ({ ...m, verified: true })) : [];
-    case 'play': if (!packs.find((p) => p.id === a.id)?.installed) throw 'Le pack n’est pas installé.'; if (!signedIn || settings.launchVia === 'official') return { started: true, reason: null, serverListed: true, via: 'official', message: 'Profil prêt dans le Launcher Minecraft : clique sur Jouer' }; setTimeout(() => emit('game://exited', q.has('crash') ? { packId: a.id, code: 1, logTail: '[12:01:03] [main/ERROR]: Échec du chargement du mod « sodium ».\njava.lang.IllegalStateException: démo de plantage précoce' } : { packId: a.id, code: 0, logTail: null }), 5000); return { started: true, reason: null, serverListed: packs.find((p) => p.id === a.id)?.hasServer !== false, via: 'direct' };
+    case 'play': if (!packs.find((p) => p.id === a.id)?.installed) throw 'Le pack n’est pas installé.'; if (!signedIn || settings.launchVia === 'official') return { started: true, reason: null, serverListed: true, via: 'official', message: 'Profil prêt dans le Launcher Minecraft : clique sur Jouer' }; setTimeout(() => emit('game://exited', q.has('crash') ? { packId: a.id, code: 1, logTail: '[12:01:03] [main/ERROR]: Échec du chargement du mod « sodium ».\njava.lang.IllegalStateException: démo de plantage précoce' } : { packId: a.id, code: 0, logTail: null }), 5000); return { started: true, reason: null, serverListed: packs.find((p) => p.id === a.id)?.hasServer !== false, via: 'direct', joining: settings.joinServer && packs.find((p) => p.id === a.id)?.hasServer !== false };
     case 'server_status': {
       if (a.id === 'solo') return null; // pack sans serveur
       const ts = a.id !== 'survie'; // « survie » = serveur public hébergé : ping direct, sans Tailscale

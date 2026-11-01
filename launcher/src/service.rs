@@ -125,12 +125,14 @@ pub struct SettingsView {
     pub memory_mb: u32,
     pub no_remember: bool,
     pub launch_via: crate::config::LaunchVia,
+    pub join_server: bool,
+    pub notify_server: bool,
     pub system_ram_mb: Option<u64>,
 }
 
 pub fn settings_get(root: &Dirs) -> SettingsView {
     let c = Config::load(root);
-    SettingsView { perf_mode: c.perf_mode, memory_mb: c.memory_mb, no_remember: c.no_remember, launch_via: c.launch_via, system_ram_mb: sysmem::total_ram_mb() }
+    SettingsView { perf_mode: c.perf_mode, memory_mb: c.memory_mb, no_remember: c.no_remember, launch_via: c.launch_via, join_server: c.join_server, notify_server: c.notify_server, system_ram_mb: sysmem::total_ram_mb() }
 }
 
 /// Mémoire bornée : au moins 1 Go, au plus 75 % de la RAM physique (si connue).
@@ -139,7 +141,7 @@ pub fn clamp_memory(mb: u32, ram_mb: Option<u64>) -> u32 {
     mb.clamp(1024, max)
 }
 
-pub fn settings_set(root: &Dirs, mode: Option<perf::PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>, launch_via: Option<crate::config::LaunchVia>) -> Result<SettingsView> {
+pub fn settings_set(root: &Dirs, mode: Option<perf::PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>, launch_via: Option<crate::config::LaunchVia>, join_server: Option<bool>, notify_server: Option<bool>) -> Result<SettingsView> {
     let mut c = Config::load(root);
     if let Some(m) = mode {
         c.perf_mode = m;
@@ -153,6 +155,8 @@ pub fn settings_set(root: &Dirs, mode: Option<perf::PerfMode>, memory_mb: Option
     if let Some(v) = launch_via {
         c.launch_via = v;
     }
+    c.join_server = join_server.unwrap_or(c.join_server);
+    c.notify_server = notify_server.unwrap_or(c.notify_server);
     c.save(root)?;
     Ok(settings_get(root))
 }
@@ -189,11 +193,13 @@ pub struct Launched {
     pub server: String,
     /// Le serveur du pack figure dans `servers.dat` (faux : pas de serveur, suffixe MagicDNS inconnu, ou écriture impossible).
     pub server_listed: bool,
+    /// Le jeu a reçu `--quickPlayMultiplayer` : il rejoint le serveur du pack au lieu de s'arrêter au menu principal.
+    pub joining: bool,
     pub log: PathBuf,
 }
 
-/// Lance le jeu jusqu'au menu principal (aucune connexion automatique, aucune vérification réseau). Si le pack a un
-/// serveur, il est d'abord ajouté à la liste Multijoueur de l'instance ; un échec de cet ajout ne bloque pas le lancement.
+/// Lance le jeu : menu principal, ou serveur du pack si `cfg.join_server` (Quick Play, aucune vérification réseau). Si le pack
+/// a un serveur, il est d'abord ajouté à la liste Multijoueur de l'instance ; un échec de cet ajout ne bloque pas le lancement.
 pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) -> Result<Launched> {
     if !e.supported() {
         bail!("ce pack n'est pas pris en charge par cette version d'Opaline");
@@ -204,7 +210,8 @@ pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) 
     let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?
         .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
     let env = mojang::Env::current(&[]);
-    let cmd = launch::build_command(&launch::LaunchInput {
+    let quick_play = cfg.join_server.then(|| e.server.as_ref().and_then(quick_play_target)).flatten();
+    let cmd = launch::build_command_with(&launch::LaunchInput {
         java: &inst.java,
         version: &inst.version,
         fabric: &inst.fabric,
@@ -212,9 +219,9 @@ pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) 
         session,
         memory_mb,
         env: &env,
-    })?;
+    }, quick_play.as_deref())?;
     let child = launch::spawn(&cmd, &dirs)?;
-    Ok(Launched { child, server, server_listed, log: dirs.instance().join("logs").join("launcher-game.log") })
+    Ok(Launched { child, server, server_listed, joining: quick_play.is_some(), log: dirs.instance().join("logs").join("launcher-game.log") })
 }
 
 pub struct OfficialLaunched {
@@ -283,6 +290,12 @@ pub fn identity_set(root: &Dirs, name: &str, api: &str) -> Result<Option<Identit
     }
     c.save(root)?;
     Ok(identity_get(root))
+}
+
+/// Adresse Quick Play du serveur (la même que dans la liste Multijoueur) ; `None` si le suffixe MagicDNS est inconnu.
+fn quick_play_target(s: &catalog::ServerInfo) -> Option<String> {
+    let suffix = if config::is_short_host(&s.host) { serverview::cached_magic_suffix() } else { None };
+    config::quick_play_addr(&s.host, s.port, suffix.as_deref())
 }
 
 /// Ajoute (ou met à jour) le serveur dans `servers.dat` ; renvoie son adresse (pour masquage des journaux) et si l'entrée y figure.

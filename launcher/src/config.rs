@@ -32,6 +32,10 @@ pub struct Config {
     pub mc_uuid: String,
     /// Avec une session Opaline : lancer le jeu directement ou via le Launcher Minecraft officiel.
     pub launch_via: LaunchVia,
+    /// Lancement direct : rejoindre le serveur du pack (Quick Play) au lieu de s'arrêter au menu principal.
+    pub join_server: bool,
+    /// Notification quand le serveur d'un pack passe de hors ligne à en ligne.
+    pub notify_server: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -44,7 +48,7 @@ pub enum LaunchVia {
 
 impl Default for Config {
     fn default() -> Self {
-        Config { nickname: "Player".into(), memory_mb: 4096, perf_mode: PerfMode::Balanced, no_remember: false, mc_name: String::new(), mc_uuid: String::new(), launch_via: LaunchVia::Opaline }
+        Config { nickname: "Player".into(), memory_mb: 4096, perf_mode: PerfMode::Balanced, no_remember: false, mc_name: String::new(), mc_uuid: String::new(), launch_via: LaunchVia::Opaline, join_server: true, notify_server: true }
     }
 }
 
@@ -111,6 +115,14 @@ pub fn list_addr(base: &str, port: u16, suffix: Option<&str>) -> String {
         None if port == crate::ping::DEFAULT_PORT => choose_host(base, suffix, None),
         None => join_port(&choose_host(base, suffix, None), port),
     }
+}
+
+/// Adresse Quick Play : celle de `servers.dat` (`list_addr`). `None` : nom court dont le suffixe MagicDNS est inconnu (pas de connexion automatique).
+pub fn quick_play_addr(base: &str, port: u16, suffix: Option<&str>) -> Option<String> {
+    if is_short_host(base) && suffix.is_none() && !server_overridden() {
+        return None;
+    }
+    Some(list_addr(base, port, suffix))
 }
 
 /// Hôte (sans port) pour l'endpoint HTTP de stats.
@@ -258,6 +270,23 @@ mod tests {
         assert_eq!(list_addr("mon.minestrator.com", 25999, None), "mon.minestrator.com:25999");
         assert_eq!(list_addr("::1", 25999, None), "[::1]:25999");
         assert_eq!(server_addr("mon.minestrator.com", 25565, None), "mon.minestrator.com:25565");
+    }
+
+    #[test]
+    fn quick_play_needs_known_suffix_for_short_hosts() {
+        if server_override().is_some() {
+            return;
+        }
+        assert_eq!(quick_play_addr("home-server", 25565, Some("x.ts.net")).as_deref(), Some("home-server.x.ts.net"));
+        assert_eq!(quick_play_addr("home-server", 25565, None), None);
+        assert_eq!(quick_play_addr("mon.minestrator.com", 25565, None).as_deref(), Some("mon.minestrator.com"));
+        assert_eq!(quick_play_addr("mon.minestrator.com", 25999, None).as_deref(), Some("mon.minestrator.com:25999"));
+    }
+
+    #[test]
+    fn extras_default_on_and_missing_keys_ok() {
+        let c: Config = serde_json::from_str(r#"{"nickname":"A"}"#).unwrap();
+        assert!(c.join_server && c.notify_server);
     }
 
     #[test]

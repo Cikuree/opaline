@@ -25,6 +25,11 @@ export function renderSettings() {
   setSw($('#noRemember'), !!s.noRemember);
   const via = s.launchVia === 'official' ? 'official' : 'opaline';
   $$('#launchVia [data-v]').forEach((b) => b.setAttribute('aria-checked', b.dataset.v === via));
+  setSw($('#joinServer'), !!s.joinServer);
+  // Le Launcher officiel ne prend pas d'arguments de jeu de notre part : pas de connexion automatique dans ce mode.
+  $('#jsH').textContent = official() || via === 'official'
+    ? 'Indisponible avec le Launcher Minecraft : choisis le serveur dans Multijoueur (il y est ajouté).'
+    : 'Le jeu se connecte tout seul au serveur du pack (Minecraft 1.20 ou plus). Sans serveur, ou si son adresse n’est pas encore connue, tu arrives au menu principal.';
   $('#lvH').textContent = official()
     ? 'Sans connexion Microsoft dans Opaline, le jeu passe toujours par le Launcher Minecraft.'
     : via === 'official' ? 'JOUER prépare le profil du pack dans le Launcher Minecraft, qui lance le jeu.' : 'Opaline lance le jeu directement avec ton compte.';
@@ -45,6 +50,7 @@ export function initSettings() {
   $('#mem').addEventListener('input', () => memUi(+$('#mem').value));
   $('#mem').addEventListener('change', () => save({ perfMode: 'custom', memoryMb: +$('#mem').value * 1024 }));
   $('#noRemember').addEventListener('click', (e) => save({ noRemember: e.currentTarget.getAttribute('aria-checked') !== 'true' }));
+  $('#joinServer').addEventListener('click', (e) => save({ joinServer: e.currentTarget.getAttribute('aria-checked') !== 'true' }));
   // Sans connexion Opaline, JOUER passe de toute façon par le Launcher Minecraft : ce choix ne vaut qu'une fois connecté.
   $('#launchVia').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b) save({ launchVia: b.dataset.v }); });
 }

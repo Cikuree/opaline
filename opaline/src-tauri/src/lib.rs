@@ -175,8 +175,8 @@ async fn settings_get(state: State<'_, S>) -> CmdResult<service::SettingsView> {
 }
 
 #[tauri::command]
-async fn settings_set(state: State<'_, S>, perf_mode: Option<PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>, launch_via: Option<LaunchVia>) -> CmdResult<service::SettingsView> {
-    state.blocking(move |r| service::settings_set(r, perf_mode, memory_mb, no_remember, launch_via)).await
+async fn settings_set(state: State<'_, S>, perf_mode: Option<PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>, launch_via: Option<LaunchVia>, join_server: Option<bool>, notify_server: Option<bool>) -> CmdResult<service::SettingsView> {
+    state.blocking(move |r| service::settings_set(r, perf_mode, memory_mb, no_remember, launch_via, join_server, notify_server)).await
 }
 
 // ---------- Authentification ----------
@@ -502,14 +502,14 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
             Ok(refused(reason, "direct"))
         }
         Ok((mut l, token)) => {
-            let listed = l.server_listed;
+            let (listed, joining) = (l.server_listed, l.joining);
             std::thread::spawn(move || {
                 let code = l.child.wait().ok().and_then(|st| st.code());
                 let tail = service::log_tail(&l.log, &token, &l.server, &s.0.root, 40);
                 s.0.activity.lock().unwrap().running.remove(&id);
                 let _ = app.emit("game://exited", json!({ "packId": id, "code": code, "logTail": tail }));
             });
-            Ok(json!({ "started": true, "reason": null, "serverListed": listed, "via": "direct" }))
+            Ok(json!({ "started": true, "reason": null, "serverListed": listed, "via": "direct", "joining": joining }))
         }
     }
 }
