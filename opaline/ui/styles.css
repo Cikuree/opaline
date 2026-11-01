@@ -339,3 +339,11 @@ body.tauri .window{max-width:none;max-height:none;border-radius:0;box-shadow:non
 .xt{display:flex;flex-direction:column;gap:2px;min-width:0}.xw{color:var(--warn);font-weight:700}.mrh{display:flex;align-items:center;gap:12px;min-width:0}.mrh img{border-radius:10px;flex:none}
 .more{margin-top:8px}
 #mrQ{width:100%;background:var(--win-deep);border:1px solid var(--line);border-radius:999px;padding:9px 16px;color:inherit;font:inherit}
+
+/* Cases à cocher aux couleurs d'Opaline (même famille que les interrupteurs) */
+input[type=checkbox]{-webkit-appearance:none;appearance:none;flex:none;width:18px;height:18px;margin:0;border-radius:6px;border:1.5px solid var(--mute);background:var(--win-deep);cursor:pointer;display:inline-grid;place-content:center;transition:background .15s,border-color .15s}
+input[type=checkbox]::after{content:"";width:9px;height:5px;border:2px solid var(--on-coral);border-top:0;border-right:0;transform:translateY(-1px) rotate(-45deg) scale(0);transition:transform .15s var(--ease)}
+input[type=checkbox]:checked{background:var(--coral);border-color:var(--coral)}
+input[type=checkbox]:checked::after{transform:translateY(-1px) rotate(-45deg) scale(1)}
+input[type=checkbox]:focus-visible{outline:2px solid var(--cream);outline-offset:2px}
+input[type=checkbox]:disabled{opacity:.45;cursor:default}
