@@ -79,7 +79,7 @@ pub fn motd_contains(st: &ServerStatus, expected: &str) -> bool {
             out.push(c);
         }
     }
-    out.contains(expected)
+    out.to_lowercase().contains(&expected.to_lowercase())
 }
 
 pub fn handshake(host: &str, port: u16) -> Vec<u8> {
@@ -192,6 +192,51 @@ pub fn split_host(addr: &str) -> (String, u16) {
     }
 }
 
+/// Plus petite priorité d'une réponse SRV au format DNS JSON (`"priorité poids port cible."`) : `(cible, port)`.
+pub fn parse_srv(json: &str) -> Option<(String, u16)> {
+    let v: Value = serde_json::from_str(json).ok()?;
+    v["Answer"].as_array()?.iter()
+        .filter(|a| a["type"] == 33)
+        .filter_map(|a| {
+            let mut it = a["data"].as_str()?.split_whitespace();
+            let (prio, _weight, port, target) = (it.next()?.parse::<u32>().ok()?, it.next()?, it.next()?.parse::<u16>().ok()?, it.next()?);
+            let target = target.trim_end_matches('.').to_ascii_lowercase();
+            let ok = port != 0 && !target.is_empty() && target.len() <= 253 && target.contains('.')
+                && target.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.');
+            ok.then_some((prio, target, port))
+        })
+        .min_by_key(|(prio, ..)| *prio)
+        .map(|(_, t, p)| (t, p))
+}
+
+/// Enregistrement SRV `_minecraft._tcp.<host>` (comme le client Minecraft pour une adresse sans port), via DNS sur HTTPS
+/// (Cloudflare) : la bibliothèque standard ne sait pas interroger les SRV. Mis en cache 10 min, échecs compris.
+pub fn resolve_srv(host: &str) -> Option<(String, u16)> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    type Srv = Option<(String, u16)>;
+    static CACHE: OnceLock<Mutex<HashMap<String, (Instant, Srv)>>> = OnceLock::new();
+    let host = host.to_ascii_lowercase();
+    if host.parse::<std::net::IpAddr>().is_ok() || !host.contains('.') || !host.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'.') {
+        return None;
+    }
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some((at, r)) = cache.lock().unwrap().get(&host)
+        && at.elapsed() < Duration::from_secs(600)
+    {
+        return r.clone();
+    }
+    let r = (|| {
+        let c = reqwest::blocking::Client::builder().timeout(Duration::from_secs(3)).build().ok()?;
+        // `host` déjà validé (lettres, chiffres, `-`, `.`) : aucun échappement nécessaire dans l'URL
+        let res = c.get(format!("https://cloudflare-dns.com/dns-query?name=_minecraft._tcp.{host}&type=SRV"))
+            .header("accept", "application/dns-json").send().ok()?;
+        parse_srv(&res.text().ok()?)
+    })();
+    cache.lock().unwrap().insert(host, (Instant::now(), r.clone()));
+    r
+}
+
 pub fn ping(addr: &str, timeout: Duration) -> Result<ServerStatus> {
     let (host, port) = split_host(addr);
     let sa = (host.as_str(), port).to_socket_addrs()?.next().with_context(|| format!("adresse introuvable : {addr}"))?;
@@ -203,6 +248,17 @@ pub fn ping(addr: &str, timeout: Duration) -> Result<ServerStatus> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn srv_lowest_priority_and_validated() {
+        let j = |d: &str| format!(r#"{{"Status":0,"Answer":[{d}]}}"#);
+        let a = |p: u32, port: u16, t: &str| format!(r#"{{"name":"_minecraft._tcp.x.com.","type":33,"data":"{p} 5 {port} {t}"}}"#);
+        assert_eq!(parse_srv(&j(&format!("{},{}", a(10, 1, "b.example.com."), a(0, 26678, "8034.Mystrator.com.")))), Some(("8034.mystrator.com".into(), 26678)));
+        assert_eq!(parse_srv(&j(&a(0, 0, "x.com."))), None);
+        assert_eq!(parse_srv(&j(&a(0, 25565, "bad host!."))), None);
+        assert_eq!(parse_srv(r#"{"Status":3}"#), None);
+        assert!(resolve_srv("127.0.0.1").is_none() && resolve_srv("home-server").is_none());
+    }
     use super::*;
 
     #[test]

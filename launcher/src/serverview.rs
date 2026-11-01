@@ -106,7 +106,13 @@ pub fn check_with(srv: &ServerInfo, info: Option<&tailscale::TailscaleInfo>) -> 
         None
     } else {
         let suffix = info.and_then(|i| i.magic_dns_suffix.as_deref());
-        ping::ping(&crate::config::server_addr(&srv.host, srv.port, suffix), Duration::from_secs(3)).ok()
+        // serveur public sur le port par défaut : suivre l'éventuel SRV, comme le client Minecraft (ex. hébergeurs)
+        let srv_target = (info.is_none() && !overridden && srv.port == ping::DEFAULT_PORT).then(|| ping::resolve_srv(&srv.host)).flatten();
+        let addr = match srv_target {
+            Some((h, p)) => format!("{h}:{p}"),
+            None => crate::config::server_addr(&srv.host, srv.port, suffix),
+        };
+        ping::ping(&addr, Duration::from_secs(3)).ok()
     };
     (build(st.as_ref(), &srv.motd, info.map(|i| i.state), overridden), st)
 }
