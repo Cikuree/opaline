@@ -1,5 +1,9 @@
 # Changelog
 
+## Opaline 0.4.1 : mise à jour depuis le launcher
+- **Mise à jour en un clic** : bouton « Mettre à jour » dans la bannière ; Opaline télécharge l'installeur de la release officielle, vérifie son empreinte sha256 (publiée dans `launcher.json`), l'installe puis redémarre. Lien manuel conservé en secours.
+- Dernière version à installer à la main : les suivantes se mettent à jour depuis Opaline.
+
 ## Opaline 0.4.0 : choix du lancement, amis par pseudo
 - **Réglage « Lancer le jeu avec »** : Opaline ou Launcher Minecraft, au choix une fois connecté ; sans connexion, le jeu passe toujours par le Launcher Minecraft.
 - **Amis** : ajout et retrait par pseudo Minecraft (tête affichée), fusionnés avec les joueurs vus sur le serveur du pack ; « Ajouter » sur un joueur vu.
