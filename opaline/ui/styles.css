@@ -373,3 +373,8 @@ main{margin-bottom:calc(-1 * var(--pad));padding-bottom:calc(var(--pad) + 6px)}
 .stx>b{font-size:14px} .stx>span{font-size:12px;color:var(--mute)}
 .shelp{width:20px;height:20px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;color:var(--mute);border:1.5px solid var(--line);cursor:help;position:relative}
 .shelp:hover::after,.shelp:focus::after{content:attr(data-tip);position:absolute;right:0;bottom:calc(100% + 8px);width:260px;padding:8px 10px;border-radius:10px;background:var(--win-deep);border:1px solid var(--line);color:var(--cream);font-size:12px;font-weight:500;line-height:1.4;z-index:5;text-transform:none;letter-spacing:0}
+/* Packs à installer : contour pointillé transparent, détachés de « Mes packs » */
+#availBox{margin-top:18px}
+#packsAvail .pk{background:transparent;border:2px dashed rgba(245,214,217,.32);-webkit-backdrop-filter:none;backdrop-filter:none}
+#packsAvail .pk:hover{background:rgba(54,22,23,.35)}
+#packsAvail .pk[aria-checked=true]{border-color:var(--coral);background:rgba(54,22,23,.35)}
