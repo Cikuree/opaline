@@ -1,5 +1,16 @@
 # Changelog
 
+## Opaline 0.6.0 : la grosse mise à jour
+- **Jouer** : rejoindre le serveur du pack en un clic (Quick Play), fermeture du Launcher Minecraft proposée en mode officiel, plein écran fenêtré en option (Cubes Without Borders géré par Opaline).
+- **Packs** : accueil en « Mes packs » / « À installer », installation par bouton, clic droit pour ouvrir le dossier, réparer ou désinstaller (mondes et captures sauvegardés), boutons et menu dans « Fichiers & mods », liste des mods courte avec « Tout afficher ».
+- **Mondes** : sauvegarde automatique avant installation, mise à jour, réparation et désinstallation, restauration en un clic.
+- **Mes mods** : mods perso par pack, recherche Modrinth avec dépendances installées automatiquement, glisser-déposer de .jar.
+- **Crash expliqué** en français avec « Vérifier et réparer », « Ouvrir les logs », « Copier le rapport ».
+- **Serveur** : notification quand il repasse en ligne, carte BlueMap intégrée.
+- **Réglages** : copie des réglages entre packs, choix du shader, réglage automatique selon le PC, réduction près de l'horloge pendant le jeu, statut Discord, fond animé, « Mémoriser la connexion » et « Rester connecté ».
+- **Stats** : temps de jeu et dernière session par pack.
+- Interface : salutation dans la police de l'application, clic droit limité aux endroits utiles, icône « Vérifier et réparer » corrigée, vérification des mods mémorisée (changement de pack instantané).
+
 ## Opaline 0.5.1 : serveurs hébergés
 - **Adresses d'hébergeur** (MineStrator…) : l'enregistrement SRV `_minecraft._tcp` est suivi pour un serveur public sur le port par défaut, comme le fait le jeu ; la carte serveur voit le vrai serveur.
 - **MOTD** comparé sans tenir compte des majuscules.
