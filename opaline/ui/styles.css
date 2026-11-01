@@ -276,6 +276,7 @@ body:has(.window.max){padding:0}
   .col .tx,.col .mtx,.col .colx .lbl{opacity:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;transition:opacity .18s}
   .window.colmini .col .tx,.window.colmini .col .mtx,.window.colmini .col .colx .lbl{opacity:0;pointer-events:none}
   .col #online,.col #offline{display:flex;flex-direction:column;gap:14px;margin-top:14px!important}
+  .col #online:empty,.col #offline:empty,.window.colmini .col .fadd,.window.colmini .col p.tx,.window.colmini .col #online:has(> p.tx:only-child){display:none}
   .col .pl{display:flex;flex-direction:row;align-items:center;gap:12px;padding:0 16px;height:40px;width:100%;border-radius:0}
   .col .avatar{width:40px;height:40px}
   .col .me .avatar{width:44px;height:44px}
