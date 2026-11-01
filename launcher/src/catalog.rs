@@ -18,6 +18,20 @@ pub struct ServerInfo {
     pub map: Option<String>,
 }
 
+/// URL de carte à ouvrir : un nom d'hôte court (nom MagicDNS Tailscale, comme pour le serveur de jeu) reçoit le suffixe du tailnet
+/// s'il est connu ; `localhost`, les noms complets et les IP sont gardés tels quels. `None` : URL invalide.
+pub fn resolve_map(u: &str, suffix: Option<&str>) -> Option<String> {
+    if !valid_map(u) {
+        return None;
+    }
+    let mut url = reqwest::Url::parse(u).ok()?;
+    let host = url.host_str()?.to_string();
+    if crate::config::is_short_host(&host) && host != "localhost" {
+        url.set_host(Some(&crate::config::choose_host(&host, suffix, None))).ok()?;
+    }
+    Some(url.to_string())
+}
+
 /// Longueur maximale d'une URL de carte : même limite que `pack-tools.py`.
 pub const MAP_MAX_LEN: usize = 300;
 
@@ -265,6 +279,16 @@ mod tests {
         for bad in ["ftp://x.fr/", "javascript:alert(1)", "map.example.fr", "https://u:p@x.fr/", "https://u@x.fr/", "https://x.fr@evil.fr/", "https://x.fr/a b", "", &long, "https://x.fr/é", "https:///x", "file:///c:/x", "https://x.fr:0/", "https://x.fr\\@evil.fr/", "https:/x.fr/", "https://"] {
             assert!(!valid_map(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn short_tailscale_names_get_the_magic_dns_suffix() {
+        assert_eq!(resolve_map("http://home-server:8100/", Some("x.ts.net")).as_deref(), Some("http://home-server.x.ts.net:8100/"));
+        assert_eq!(resolve_map("http://home-server:8100", None).as_deref(), Some("http://home-server:8100/"));
+        assert_eq!(resolve_map("https://map.example.fr/a?b=1", Some("x.ts.net")).as_deref(), Some("https://map.example.fr/a?b=1"));
+        assert_eq!(resolve_map("http://10.0.0.2:8100/", Some("x.ts.net")).as_deref(), Some("http://10.0.0.2:8100/"));
+        assert_eq!(resolve_map("http://localhost:8100/", Some("x.ts.net")).as_deref(), Some("http://localhost:8100/"));
+        assert_eq!(resolve_map("http://u:p@home-server/", Some("x.ts.net")), None);
     }
 
     #[test]

@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' asset: http://asset.localhost data: https://textures.minecraft.net https://cdn.modrinth.com; connect-src ipc: http://ipc.localhost",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' asset: http://asset.localhost data: https://textures.minecraft.net https://cdn.modrinth.com; connect-src ipc: http://ipc.localhost; frame-src http: https:",
       "assetProtocol": {
         "enable": true,
         "scope": [

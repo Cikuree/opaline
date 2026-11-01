@@ -2,6 +2,7 @@ import * as api from '../api.js';
 import { state, current, hasWidget, statsMissing, emit, on, who } from '../state.js';
 import { $, esc, toast, tex, hms, ago, headHtml, hydrateHeads } from '../util.js';
 import { SPLITS, splitByKey, HELP, STAGE_ORDER, loaderName } from '../data.js';
+import { splitPacks, AVAIL_FOLD } from '../packs.js';
 import { causeInfo, loadRecent } from './history.js';
 
 const GR = ['linear-gradient(135deg,#e0574f,#f07a5a)', 'linear-gradient(135deg,#7b4bb7,#a66ad6)', 'linear-gradient(135deg,#f6dcc8,#f3b9b4)'];
@@ -59,13 +60,45 @@ function blob() {
 }
 const fmtHours = (ms) => { const h = ms / 3600e3; return h >= 1 ? Math.floor(h).toLocaleString('fr-FR').replace(/\s/g, ' ') + ' h' : Math.round(ms / 60e3) + ' min'; };
 
+let menuFor = null, unTarget = null, showAvail = false; // menu « ⋯ » ouvert, pack à désinstaller (confirmation), liste « À installer » dépliée
+
 function renderPacks() {
-  const list = state.packs.filter((p) => p.name.toLowerCase().includes(filter));
-  $('#packs').innerHTML = list.map((p) => {
+  const { mine, avail } = splitPacks(state.packs, filter);
+  $('#packs').innerHTML = mine.map((p) => {
     const i = state.packs.indexOf(p), st = statusOf(p), s = servers.get(p.id), up = s?.online;
     const srv = s ? `<span><span class="dot ${up ? '' : 'off'}"></span> ${up ? 'En ligne' : 'Hors ligne'}</span>` : '';
-    return `<button class="pk" role="radio" aria-checked="${p.id === state.pack}" data-k="${esc(p.id)}"><span class="th" style="background:${GR[i % 3]}">${tex(p.thumbnail, 32)}</span><span class="tx2"><b>${esc(p.name)}</b><span class="meta">${esc(loaderName(p.loader))} ${esc(p.mc)} · ${Number(p.modsCount)} mods</span><span class="st"><span class="pill ${st === 'upd' ? 's-upd' : st === 'ok' ? '' : 's-no'}">${STATUS[st]}</span>${srv}</span></span></button>`;
+    const menu = menuFor === p.id ? `<div class="pkmenu" role="menu"><button role="menuitem" data-un="${esc(p.id)}">Désinstaller</button></div>` : '';
+    return `<div class="pkw"><button class="pk" role="radio" aria-checked="${p.id === state.pack}" data-k="${esc(p.id)}"><span class="th" style="background:${GR[i % 3]}">${tex(p.thumbnail, 32)}</span><span class="tx2"><b>${esc(p.name)}</b><span class="meta">${esc(loaderName(p.loader))} ${esc(p.mc)} · ${Number(p.modsCount)} mods</span><span class="st"><span class="pill ${st === 'upd' ? 's-upd' : st === 'ok' ? '' : 's-no'}">${STATUS[st]}</span>${srv}</span></span></button><button class="pkm" data-m="${esc(p.id)}" aria-label="Options de ${esc(p.name)}" aria-haspopup="menu" aria-expanded="${menuFor === p.id}">⋯</button>${menu}</div>`;
   }).join('');
+  $('#mineT').hidden = !mine.length;
+  $('#availBox').hidden = !avail.length;
+  const folded = avail.length > AVAIL_FOLD && !showAvail;
+  $('#packsAvail').innerHTML = folded ? '' : avail.map((p) => {
+    const i = state.packs.indexOf(p);
+    return `<div class="pk avail ${p.supported ? '' : 'xp-gray'}"><span class="th" style="background:${GR[i % 3]}">${tex(p.thumbnail, 32)}</span><span class="tx2"><b>${esc(p.name)}</b><span class="meta">${esc(loaderName(p.loader))} ${esc(p.mc)} · ${Number(p.modsCount)} mods</span>${p.supported ? '' : '<span class="st"><span class="pill s-no">Non pris en charge</span></span>'}</span>${p.supported ? `<button class="btn sm primary" data-i="${esc(p.id)}" ${state.install ? 'disabled' : ''}>Installer</button>` : ''}</div>`;
+  }).join('');
+  const more = $('#availMore');
+  more.hidden = avail.length <= AVAIL_FOLD;
+  more.textContent = showAvail ? 'Replier' : `Voir les ${avail.length} packs disponibles`;
+}
+
+function askUninstall(id) {
+  const p = state.packs.find((x) => x.id === id); if (!p) return;
+  if (state.inGame) return toast('Ferme le jeu avant de désinstaller un pack.');
+  if (state.install) return toast('Attends la fin de l’installation en cours.');
+  unTarget = id; $('#uninstT').textContent = `Désinstaller ${p.name} ?`; $('#uninst').hidden = false;
+}
+
+async function doUninstall() {
+  const id = unTarget; unTarget = null; $('#uninst').hidden = true; if (!id) return;
+  const p = state.packs.find((x) => x.id === id);
+  try {
+    await api.packUninstall(id);
+    toast(`${p?.name || 'Pack'} désinstallé : tes mondes sont dans les sauvegardes`);
+    const next = state.packs.find((x) => x.installed && x.id !== id);
+    if (state.pack === id && next) emit('selectPack', next.id);
+    emit('reloadPacks');
+  } catch (e) { toast(api.errMsg(e)); }
 }
 
 const fmtPlay = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s / 60) % 60).padStart(2, '0')}` : `${Math.max(1, Math.round(s / 60))} min`);
@@ -105,7 +138,6 @@ function renderHero(p, st, cr) {
 function renderServer(p) {
   const s = servers.get(p.id), on = !!s?.online;
   $('#srvName').textContent = p.name;
-  $('#srvMap').hidden = !p.hasMap;
   $('#srvPill').innerHTML = s ? (on ? '<span class="dot"></span>En ligne' : '<span class="dot off"></span>Hors ligne') : '<span class="dot idle"></span>Inconnu';
   $('#lat').textContent = on && s.latencyMs != null ? s.latencyMs + ' ms' : '—';
   $('#kvPl').textContent = on ? `${s.players.online}/${s.players.max}` : '—';
@@ -181,7 +213,18 @@ export function renderHome() {
 export function initHome() {
   blob();
   $('#home').addEventListener('click', (e) => { const b = e.target.closest('[data-d]'); if (b) emit('openDeath', recent[+b.dataset.d]); });
-  $('#packs').addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (b) emit('selectPack', b.dataset.k); });
+  $('#packs').addEventListener('click', (e) => {
+    const m = e.target.closest('[data-m]'), u = e.target.closest('[data-un]'), b = e.target.closest('[data-k]');
+    if (u) { menuFor = null; renderPacks(); return askUninstall(u.dataset.un); }
+    if (m) { menuFor = menuFor === m.dataset.m ? null : m.dataset.m; return renderPacks(); }
+    if (b) emit('selectPack', b.dataset.k);
+  });
+  document.addEventListener('click', (e) => { if (menuFor && !e.target.closest('.pkw')) { menuFor = null; renderPacks(); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menuFor) { menuFor = null; renderPacks(); } });
+  $('#packsAvail').addEventListener('click', (e) => { const b = e.target.closest('[data-i]'); if (b && !b.disabled) startInstall(b.dataset.i); });
+  $('#availMore').addEventListener('click', () => { showAvail = !showAvail; renderPacks(); });
+  $('#uninstOk').addEventListener('click', doUninstall);
+  $('#uninstNo').addEventListener('click', () => { unTarget = null; $('#uninst').hidden = true; });
   $('#packSearch').addEventListener('input', (e) => { filter = e.target.value.trim().toLowerCase(); renderPacks(); });
   $('#btnUpd').addEventListener('click', () => { const p = current(); if (p) startInstall(p.id); });
   $('#btnPlay').addEventListener('click', async () => {
@@ -195,7 +238,6 @@ export function initHome() {
       state.inGame = true; emit('game'); renderHome(); toast('Lancement de ' + p.name + (r.joining ? ' : connexion au serveur…' : '…'));
     } catch (e) { toast(api.errMsg(e)); }
   });
-  $('#srvMap').addEventListener('click', () => { const p = current(); if (p) api.openMap(p.id).catch((e) => toast(api.errMsg(e))); });
   $('#crashClose').addEventListener('click', () => ($('#crash').hidden = true));
   $('#demoTs')?.addEventListener('change', (e) => { api.demoControls.help = e.target.value; refreshServers(); });
   $('#demoTsL').hidden = !api.demoControls;

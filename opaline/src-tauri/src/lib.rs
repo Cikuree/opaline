@@ -532,13 +532,19 @@ async fn exclusive<T: Send + 'static>(s: &S, id: String, f: impl FnOnce(&Dirs) -
     {
         let mut a = s.0.activity.lock().unwrap();
         if a.running.contains(&id) || a.installing.contains(&id) || a.installing.contains(UPDATING) {
-            return Err("Ferme le jeu et attends la fin des installations avant de modifier Mes mods".into());
+            return Err("Ferme le jeu et attends la fin des installations avant cette modification".into());
         }
         a.installing.insert(id.clone());
     }
     let r = s.blocking(f).await;
     s.0.activity.lock().unwrap().installing.remove(&id);
     r
+}
+
+/// Désinstalle le pack : mondes sauvegardés puis instance supprimée. Refusé pendant le jeu, une installation ou avec un monde ouvert.
+#[tauri::command]
+async fn pack_uninstall(state: State<'_, S>, id: String) -> CmdResult<()> {
+    exclusive(&state, id.clone(), move |r| service::uninstall_pack(r, &id)).await
 }
 
 #[tauri::command]
@@ -610,18 +616,18 @@ async fn open_folder(app: AppHandle, state: State<'_, S>, id: String, kind: Stri
     app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|_| "Impossible d'ouvrir le dossier".to_string())
 }
 
+/// Carte intégrée à la vue « Carte » : adresse résolue et sonde (joignable ? intégrable ?).
+#[tauri::command]
+async fn map_info(state: State<'_, S>, id: String) -> CmdResult<service::MapInfo> {
+    state.blocking(move |r| service::map_info(r, &id)).await
+}
+
 /// Ouvre la carte du serveur (BlueMap...) dans une fenêtre séparée vers l'URL externe du catalogue. Cette fenêtre n'a aucune capability
 /// (`capabilities/default.json` ne vise que `main`) et le gestionnaire de commandes refuse tout appel venant d'une autre fenêtre.
 #[tauri::command]
 async fn open_map(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<()> {
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-    let (name, url) = state
-        .blocking(move |r| {
-            let e = service::entry(r, &id)?;
-            let url = e.server.and_then(|s| s.map).filter(|m| opaline_core::catalog::valid_map(m)).context("ce serveur n'a pas de carte")?;
-            Ok((e.name, url))
-        })
-        .await?;
+    let (name, url) = state.blocking(move |r| service::map_target(r, &id)).await?;
     let url: tauri::Url = url.parse().map_err(|_| "Adresse de carte invalide".to_string())?;
     // Une seule carte à la fois ; libellé neuf à chaque ouverture (la fermeture d'une fenêtre est asynchrone).
     for (label, w) in app.webview_windows() {
@@ -923,6 +929,7 @@ pub fn run_with(svc: Services) {
             pack_changelog,
             pack_mods,
             pack_repair,
+            pack_uninstall,
             play,
             server_status,
             playtime,
@@ -932,6 +939,7 @@ pub fn run_with(svc: Services) {
             settings_set,
             open_folder,
             open_map,
+            map_info,
             backups_list,
             extra_mods_list,
             extra_mod_add,

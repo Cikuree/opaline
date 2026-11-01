@@ -36,6 +36,19 @@ pub fn packs_list(root: &Dirs) -> Result<Vec<PackView>> {
         .collect()
 }
 
+/// Désinstalle un pack : copie des mondes (`backups/<pack>/`, refusée si un monde est ouvert), puis suppression de l'instance de ce
+/// pack seulement (mods, Mes mods, configs, mondes). `shared/`, `backups/` et les autres packs ne sont jamais touchés.
+/// L'appelant a déjà refusé si le jeu ou une installation de ce pack tourne.
+pub fn uninstall_pack(root: &Dirs, id: &str) -> Result<()> {
+    let dirs = root.for_pack(id)?;
+    let inst = dirs.instance();
+    if !inst.is_dir() {
+        bail!("ce pack n'est pas installé");
+    }
+    backup::backup_saves(&dirs, friends::now_secs())?; // refuse si un monde est ouvert : rien n'est alors supprimé
+    std::fs::remove_dir_all(&inst).context("suppression du pack impossible (un fichier est-il ouvert ailleurs ?)")
+}
+
 /// Installe ou met à jour le pack (revérifie tout : sert aussi de réparation). `local_pack` : dossier packwiz de dev.
 /// Une panique devient une erreur : l'interface ne reste jamais figée.
 pub fn install_pack(root: &Dirs, id: &str, progress: &Arc<Progress>, local_pack: Option<&Path>) -> Result<()> {
@@ -137,6 +150,49 @@ pub fn ensure_textures(root: &Dirs, endpoints: &install::Endpoints) -> Result<Op
 pub fn textures_dir(root: &Dirs) -> Option<PathBuf> {
     let d = root.textures();
     std::fs::read_dir(&d).ok()?.flatten().any(|e| e.path().extension().is_some_and(|x| x == "png")).then_some(d)
+}
+
+// ---------- Carte du serveur ----------
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MapInfo {
+    pub name: String,
+    pub url: String,
+    /// Le site a répondu.
+    pub reachable: bool,
+    /// Aucun en-tête n'interdit l'intégration dans un cadre (`X-Frame-Options`, `frame-ancestors`).
+    pub embeddable: bool,
+}
+
+/// Nom du pack et URL de carte à ouvrir (nom court Tailscale complété par le suffixe MagicDNS connu).
+pub fn map_target(root: &Dirs, id: &str) -> Result<(String, String)> {
+    let e = entry(root, id)?;
+    let raw = e.server.and_then(|s| s.map).context("ce serveur n'a pas de carte")?;
+    let url = catalog::resolve_map(&raw, magic_suffix().as_deref()).context("adresse de carte invalide")?;
+    Ok((e.name, url))
+}
+
+/// Le site interdit-il l'intégration dans un cadre ? `X-Frame-Options` (DENY, SAMEORIGIN) ou `frame-ancestors` sans `*` ni http(s).
+pub fn frame_allowed(xfo: Option<&str>, csp: Option<&str>) -> bool {
+    if xfo.is_some_and(|v| !v.trim().is_empty()) {
+        return false;
+    }
+    let ancestors = csp.into_iter().flat_map(|c| c.split(';')).map(str::trim).find_map(|d| d.strip_prefix("frame-ancestors"));
+    ancestors.is_none_or(|a| a.split_whitespace().any(|t| t == "*" || t.starts_with("http:") || t.starts_with("https:")))
+}
+
+/// Sonde la carte (un GET, corps ignoré) : joignable, et intégrable ou non. Sert à choisir entre le cadre et un message clair.
+pub fn map_info(root: &Dirs, id: &str) -> Result<MapInfo> {
+    let (name, url) = map_target(root, id)?;
+    let h = |r: &reqwest::blocking::Response, k: &str| r.headers().get(k).and_then(|v| v.to_str().ok()).map(str::to_string);
+    Ok(match short_client()?.get(&url).send() {
+        Ok(r) if !r.status().is_server_error() => {
+            let embeddable = frame_allowed(h(&r, "x-frame-options").as_deref(), h(&r, "content-security-policy").as_deref());
+            MapInfo { name, url, reachable: true, embeddable }
+        }
+        _ => MapInfo { name, url, reachable: false, embeddable: true },
+    })
 }
 
 // ---------- Réglages ----------
@@ -561,6 +617,45 @@ pub fn app_update_download(root: &Dirs, current: &str, progress: impl FnMut(u64,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frame_policy() {
+        assert!(frame_allowed(None, None));
+        assert!(frame_allowed(None, Some("default-src 'self'; script-src 'self'")));
+        assert!(!frame_allowed(Some("DENY"), None));
+        assert!(!frame_allowed(Some("SAMEORIGIN"), None));
+        assert!(!frame_allowed(None, Some("default-src 'self'; frame-ancestors 'none'")));
+        assert!(!frame_allowed(None, Some("frame-ancestors 'self'")));
+        assert!(frame_allowed(None, Some("frame-ancestors *")));
+        assert!(frame_allowed(None, Some("frame-ancestors https://opaline.example")));
+    }
+
+    #[test]
+    fn uninstall_backs_up_saves_then_removes_only_this_instance() {
+        let d = Dirs::new(std::env::temp_dir().join(format!("opaline-uninst-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&d.root);
+        let (a, b) = (d.for_pack("a").unwrap(), d.for_pack("b").unwrap());
+        for p in [&a, &b] {
+            std::fs::create_dir_all(p.instance().join("saves/Monde")).unwrap();
+            std::fs::write(p.instance().join("saves/Monde/level.dat"), "x").unwrap();
+            std::fs::write(p.install_marker(), "ok").unwrap();
+        }
+        std::fs::create_dir_all(d.libraries()).unwrap();
+        std::fs::write(d.libraries().join("lib.jar"), "j").unwrap();
+        // monde ouvert : refus, rien de supprimé
+        let lock = std::fs::File::create(a.instance().join("saves/Monde/session.lock")).unwrap();
+        lock.lock().unwrap();
+        assert!(uninstall_pack(&d, "a").unwrap_err().to_string().contains("monde est ouvert"));
+        assert!(a.install_marker().is_file());
+        drop(lock);
+        uninstall_pack(&d, "a").unwrap();
+        assert!(!a.instance().exists() && !a.install_marker().exists());
+        assert_eq!(backup::list(&a).len(), 1, "mondes sauvegardés avant suppression");
+        assert!(b.install_marker().is_file() && d.libraries().join("lib.jar").is_file());
+        assert!(uninstall_pack(&d, "a").unwrap_err().to_string().contains("pas installé"));
+        assert!(uninstall_pack(&d, "../b").is_err());
+        std::fs::remove_dir_all(&d.root).unwrap();
+    }
 
     #[test]
     fn settings_patch_changes_only_given_fields_and_clears_auto_tuned() {

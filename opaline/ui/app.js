@@ -9,6 +9,7 @@ import { initSettings, renderSettings } from './views/settings.js';
 import { initFiles, renderFiles, syncBusy } from './views/files.js';
 import { initHistory, renderHistory, openDeath } from './views/history.js';
 import { initNews, renderNews } from './views/news.js';
+import { initMap, renderMap } from './views/map.js';
 import { initFriends, renderMe, refreshFriends } from './views/friends.js';
 
 let crashPack = null, crashReport = '';
@@ -27,9 +28,10 @@ function selectPack(id) {
   state.pack = id; LS.set('opaline.pack', id); state.stats = null; emit('packs');
   refreshStats(); refreshServers();
   if (currentView() === 'history' && !hasWidget(current(), 'classroomRun')) show('home');
+  if (currentView() === 'map' && !current()?.hasMap) show('home');
 }
 
-const VIEWS = { home: renderHome, account: renderAccount, settings: renderSettings, files: renderFiles, history: renderHistory, news: renderNews };
+const VIEWS = { home: renderHome, account: renderAccount, settings: renderSettings, files: renderFiles, history: renderHistory, map: renderMap, news: renderNews };
 
 async function applyAuth() {
   renderLogin(); renderMe();
@@ -71,11 +73,14 @@ function wireEvents() {
   on('install', () => { progressUi(); syncBusy(); });
   on('game', syncBusy);
   on('selectPack', selectPack);
+  on('reloadPacks', async () => { await loadPacks(); refreshServers(); refreshStats(); });
   on('auth', applyAuth);
   on('openDeath', async (d) => { await openDeath(d); show('history'); });
   on('view', (v) => VIEWS[v]?.());
   on('packs', () => {
     $('#rail [data-view=history]').hidden = !hasWidget(current(), 'classroomRun');
+    $('#rail [data-view=map]').hidden = !current()?.hasMap;
+    if (currentView() === 'map') { if (current()?.hasMap) renderMap(); else show('home'); }
     if (currentView() === 'files') renderFiles();
     if (currentView() === 'news') renderNews();
   });
@@ -84,7 +89,7 @@ function wireEvents() {
 }
 
 async function boot() {
-  initChrome(signed); initHome(); initAccount(); initSettings(); initFiles(); initHistory(); initNews(); initFriends();
+  initChrome(signed); initHome(); initAccount(); initSettings(); initFiles(); initHistory(); initNews(); initMap(); initFriends();
   wireEvents();
   await Promise.all([
     api.appInfo().then((i) => { state.info = i; $('#appVer').textContent = 'Opaline ' + i.version; }).catch(() => {}),

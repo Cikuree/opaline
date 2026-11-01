@@ -36,9 +36,11 @@ const SIDE = { client: 'Client', server: 'Serveur' };
 
 export async function renderFiles() {
   const p = current(); if (!p) return;
+  const inst = state.packs.find((q) => q.installed);
+  if (!p.installed && inst && state.pack === p.id) return emit('selectPack', inst.id); // le sélecteur ne liste que les packs installés
   const st = statusOf(p);
   if (shownFor !== p.id) { shownFor = p.id; showAll = false; }
-  $('#filePacks').innerHTML = state.packs.map((q) => `<button role="radio" aria-checked="${q.id === p.id}" data-k="${esc(q.id)}">${esc(q.name)}</button>`).join('');
+  $('#filePacks').innerHTML = state.packs.filter((q) => q.installed).map((q) => `<button role="radio" aria-checked="${q.id === p.id}" data-k="${esc(q.id)}">${esc(q.name)}</button>`).join('');
   $('#folders').innerHTML = FOLDERS.map((f) => `<button data-f="${f[0]}" ${p.installed ? '' : 'disabled'}><span class="ic">${tex(f[2], 32)}</span>${f[1]}</button>`).join('');
   let mods = []; if (p.installed && p.supported) { try { mods = await api.packMods(p.id); } catch (e) { toast(api.errMsg(e)); } }
   if (current()?.id !== p.id) return;
