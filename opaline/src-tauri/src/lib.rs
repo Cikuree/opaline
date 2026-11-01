@@ -91,9 +91,22 @@ impl p2p::Handler for P2pHandler {
         Some(p2p::Presence { app: "opaline".into(), v: 1, uuid: friends::dashed(&uuid)?, name, in_game: pack_id.is_some(), pack_id, pack_version, app_version: self.app.package_info().version.to_string() })
     }
 
-    fn may_invite(&self, uuid: &str, from: IpAddr) -> bool {
-        // L'IP source doit être celle vue à la dernière découverte pour cet UUID (sinon n'importe quel pair du tailnet usurperait un ami).
-        friends::list_load(&self.s.0.root).contains_key(uuid) && self.s.0.peers.lock().unwrap().get(uuid).is_some_and(|ip| IpAddr::V4(*ip) == from)
+    fn is_friend(&self, uuid: &str) -> bool {
+        friends::list_load(&self.s.0.root).contains_key(uuid)
+    }
+
+    fn verify_source(&self, uuid: &str, from: IpAddr) -> bool {
+        // Adresse déjà connue de la dernière découverte, sinon vérifiée à la volée (fenêtre masquée : `peers` est périmé).
+        let IpAddr::V4(ip) = from else { return false };
+        let known = self.s.0.peers.lock().unwrap().get(uuid) == Some(&ip);
+        if known {
+            return true;
+        }
+        let ok = tailscale::is_tailnet_ip(ip) && p2p::verify_source(from, uuid, p2p::PORT, p2p::DISCOVERY_TIMEOUT);
+        if ok {
+            self.s.0.peers.lock().unwrap().insert(uuid.to_string(), ip);
+        }
+        ok
     }
 
     fn on_invite(&self, i: p2p::Invite) {

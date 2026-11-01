@@ -87,8 +87,10 @@ impl Gate {
 pub trait Handler: Send + Sync {
     /// `None` : pas d'identité (présence désactivée).
     fn presence(&self) -> Option<Presence>;
-    /// Invitation acceptable : `uuid` est dans la liste d'amis ET `from` (IP source de la connexion) est l'adresse connue de cet ami.
-    fn may_invite(&self, uuid: &str, from: IpAddr) -> bool;
+    fn is_friend(&self, uuid: &str) -> bool;
+    /// `from` (IP source de la connexion) est bien l'adresse de l'ami `uuid` : connue, ou vérifiée à la volée (`verify_source`).
+    /// Appelé après l'anti-spam, jamais sous un verrou.
+    fn verify_source(&self, uuid: &str, from: IpAddr) -> bool;
     fn on_invite(&self, invite: Invite);
 }
 
@@ -137,11 +139,15 @@ fn route(req: &Request, body: &[u8], from: IpAddr, h: &dyn Handler, gate: &Mutex
         },
         ("POST", "/opaline/v1/invite") => {
             let Some(inv) = parse_invite(body) else { return err(400) };
-            if !h.may_invite(&inv.from_uuid, from) {
+            if !h.is_friend(&inv.from_uuid) {
                 return err(403);
             }
-            if !gate.lock().unwrap().allow(&inv.from_uuid, Instant::now()) {
+            let allowed = gate.lock().unwrap().allow(&inv.from_uuid, Instant::now());
+            if !allowed {
                 return err(429);
+            }
+            if !h.verify_source(&inv.from_uuid, from) {
+                return err(403);
             }
             h.on_invite(inv);
             (200, r#"{"ok":true}"#.into())
@@ -357,6 +363,11 @@ fn exchange(addr: SocketAddr, req: &str, timeout: Duration) -> Option<(u16, Vec<
 pub fn query_presence(addr: SocketAddr, timeout: Duration) -> Option<Presence> {
     let (code, body) = exchange(addr, "GET /opaline/v1/presence HTTP/1.1\r\nHost: opaline\r\nConnection: close\r\n\r\n", timeout)?;
     (code == 200).then(|| serde_json::from_slice(&body).ok()).flatten().and_then(validate_presence)
+}
+
+/// Vérifie à la volée qu'une adresse est bien celle de `uuid` : sa présence (échéance totale `timeout`) doit annoncer cet UUID.
+pub fn verify_source(from: IpAddr, uuid: &str, port: u16, timeout: Duration) -> bool {
+    query_presence(SocketAddr::new(from, port), timeout).is_some_and(|p| p.uuid == uuid)
 }
 
 /// Interroge les pairs, 8 à la fois ; seuls les pairs Opaline répondent correctement.

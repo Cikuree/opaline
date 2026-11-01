@@ -2,7 +2,7 @@
 use opaline_core::p2p::{self, Handler, Invite, Presence, Server};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -14,14 +14,27 @@ struct Fake {
     invites: Mutex<Vec<Invite>>,
     /// Simule un ami dont l'IP connue diffère de l'IP source.
     wrong_source: AtomicBool,
+    /// Port du serveur de présence à interroger pour vérifier la source (0 : source déjà connue, aucune vérification).
+    presence_port: AtomicU16,
+    /// UUID annoncé par `presence` (par défaut : « aa »).
+    me: Mutex<Option<String>>,
 }
 
 impl Handler for Fake {
     fn presence(&self) -> Option<Presence> {
-        Some(Presence { app: "opaline".into(), v: 1, uuid: "00000000-0000-0000-0000-0000000000aa".into(), name: "Moi".into(), in_game: true, pack_id: Some("survie".into()), pack_version: Some("a1b2".into()), app_version: "0.3.0".into() })
+        Some(Presence { app: "opaline".into(), v: 1, uuid: self.me.lock().unwrap().clone().unwrap_or_else(|| "00000000-0000-0000-0000-0000000000aa".into()), name: "Moi".into(), in_game: true, pack_id: Some("survie".into()), pack_version: Some("a1b2".into()), app_version: "0.3.0".into() })
     }
-    fn may_invite(&self, uuid: &str, from: IpAddr) -> bool {
-        uuid == FRIEND && from.is_loopback() && !self.wrong_source.load(Ordering::SeqCst)
+    fn is_friend(&self, uuid: &str) -> bool {
+        uuid == FRIEND
+    }
+    fn verify_source(&self, uuid: &str, from: IpAddr) -> bool {
+        if self.wrong_source.load(Ordering::SeqCst) {
+            return false;
+        }
+        match self.presence_port.load(Ordering::SeqCst) {
+            0 => true,
+            port => p2p::verify_source(from, uuid, port, Duration::from_millis(800)),
+        }
     }
     fn on_invite(&self, invite: Invite) {
         self.invites.lock().unwrap().push(invite);
@@ -174,4 +187,19 @@ fn trickling_peer_is_dropped_at_the_total_deadline() {
     let t = std::time::Instant::now();
     assert!(p2p::query_presence(addr, Duration::from_millis(800)).is_none());
     assert!(t.elapsed() < Duration::from_millis(1500), "{:?}", t.elapsed());
+}
+
+/// Ami absent de `peers` (fenêtre masquée) : la source est vérifiée en demandant sa présence ; l'UUID annoncé doit correspondre.
+#[test]
+fn unknown_source_is_verified_through_its_presence() {
+    for (announced, expected) in [(FRIEND, "HTTP/1.1 200"), (STRANGER, "HTTP/1.1 403")] {
+        let stub_h = Arc::new(Fake::default());
+        *stub_h.me.lock().unwrap() = Some(announced.into());
+        let stub = Server::start("127.0.0.1:0".parse().unwrap(), stub_h).unwrap();
+        let (srv, h) = start();
+        h.presence_port.store(stub.local_addr().port(), Ordering::SeqCst);
+        let r = post(srv.local_addr(), &invite(FRIEND));
+        assert!(r.starts_with(expected), "{announced}: {r}");
+        assert_eq!(h.invites.lock().unwrap().len(), usize::from(expected.ends_with("200")));
+    }
 }
