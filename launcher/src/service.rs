@@ -5,7 +5,7 @@ use crate::catalog::{self, PackEntry, PackView};
 use crate::changelog::{self, Changelog, ModView};
 use crate::config::{self, Config, Dirs};
 use crate::download::{self, Progress};
-use crate::{backup, friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update};
+use crate::{backup, extramods, friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update};
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -90,6 +90,27 @@ pub fn changelog(root: &Dirs, id: &str) -> Result<Changelog> {
         packwiz::fetch_remote_pack_in(&download::http_client()?, &work, &e.pack).and_then(|dir| packwiz::load_pack(&dir)).map(|p| changelog::snapshot_of(&p));
     let _ = std::fs::remove_dir_all(&work);
     Ok(changelog::diff(&installed, &published?))
+}
+
+// ---------- Mes mods ----------
+
+pub fn extra_mods_list(root: &Dirs, id: &str) -> Result<Vec<extramods::ExtraMod>> {
+    Ok(extramods::list(&root.for_pack(id)?))
+}
+
+pub fn extra_mod_search(root: &Dirs, id: &str, query: &str, api: &dyn crate::modrinth::Api) -> Result<Vec<crate::modrinth::Hit>> {
+    let e = entry(root, id)?;
+    anyhow::ensure!(!query.trim().is_empty() && query.len() <= 100, "saisis un nom de mod");
+    api.search(query.trim(), &e.mc, &e.loader)
+}
+
+/// Ajoute un projet Modrinth (et ses dépendances requises) à Mes mods.
+pub fn extra_mod_add_modrinth(root: &Dirs, id: &str, project: &str, api: &dyn crate::modrinth::Api) -> Result<extramods::AddResult> {
+    let e = entry(root, id)?;
+    let dirs = root.for_pack(id)?;
+    anyhow::ensure!(dirs.install_marker().is_file(), "installe le pack avant d'ajouter des mods");
+    let client = download::http_client()?;
+    extramods::add_modrinth(&dirs, api, project, &e.mc, &e.loader, &|r, dest| extramods::download_job(&client, r, dest))
 }
 
 pub fn pack_mods(root: &Dirs, id: &str) -> Result<Vec<ModView>> {
@@ -212,6 +233,7 @@ pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) 
     let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?
         .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
     let env = mojang::Env::current(&[]);
+    let _ = extramods::sync_for_launch(&dirs); // Mes mods : recopiés dans mods/ ; un échec ne bloque pas le lancement
     let quick_play = cfg.join_server.then(|| e.server.as_ref().and_then(quick_play_target)).flatten();
     let cmd = launch::build_command_with(&launch::LaunchInput {
         java: &inst.java,
@@ -255,6 +277,7 @@ pub fn launch_official(root: &Dirs, e: &PackEntry, cfg: &Config, mc: &Path, inte
     let (server, server_listed) = e.server.as_ref().map(|s| list_entry(&dirs.instance(), &e.name, s)).unwrap_or_default();
     let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?
         .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
+    let _ = extramods::sync_for_launch(&dirs);
     let vid = official::version_id(&e.id);
     official::install_version(&dirs, mc, &inst.profile_id, &vid, &inst.fabric.libraries, inst.fabric.version_name.is_some())?;
     let profile_name = format!("Opaline · {}", e.name);

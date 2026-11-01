@@ -16,7 +16,7 @@ const packs = [
   { id: 'solo', name: 'Vanilla amélioré', description: 'Sodium, Lithium et quelques mods de confort, pour jouer en solo ou sur n’importe quel serveur.', mc: '26.3', loader: 'fabric', loaderVersion: '0.20.1', modsCount: 12, thumbnail: 'oak_log', widgets: ['server'], hasServer: false, hasStats: false, supported: true, installed: true, updateAvailable: false, installedVersionHash: 'e5f6' },
   { id: 'create', name: 'Create & Co', description: 'Automatisation et usines avec Create.', mc: '26.1', loader: 'neoforge', loaderVersion: '6.0.4', modsCount: 112, thumbnail: 'piston_side', widgets: ['server'], hasServer: true, hasStats: false, supported: false, installed: false, updateAvailable: false, installedVersionHash: null },
 ];
-const MODS = [['Fabric API', '0.131.0', 'both'], ['Classroom Run', '0.9.2', 'both'], ['Sodium', '0.7.2', 'client'], ['Lithium', '0.18.1', 'both'], ['Iris Shaders', '1.9.3', 'client', false], ['Sodium Extra', '0.7.0', 'client'], ['Mod Menu', '15.0.0', 'client'], ['Fantasy', '0.8.1', 'server'], ['ServerReplay', '1.4.0', 'server'], ['Replay Mod', '2.7.0', 'client']]
+const MODS = [['Fabric API', '0.131.0', 'both'], ['Classroom Run', '0.9.2', 'both'], ['Sodium', '0.7.2', 'client'], ['Lithium', '0.18.1', 'both'], ['Iris Shaders', '1.9.3', 'client', false], ['Sodium Extra', '0.7.0', 'client'], ['Mod Menu', '15.0.0', 'client'], ['Fantasy', '0.8.1', 'server'], ['ServerReplay', '1.4.0', 'server'], ['Replay Mod', '2.7.0', 'client'], ['Cloth Config', '21.0.1', 'both']]
   .map(([name, version, side, ok]) => ({ name, version, side, file: name.toLowerCase().replace(/\W+/g, '-') + '.jar', verified: ok !== false }));
 
 let settings = { perfMode: 'balanced', memoryMb: 6144, noRemember: false, launchVia: 'opaline', joinServer: true, notifyServer: true, systemRamMb: 16384 };
@@ -66,6 +66,9 @@ const detail = (n) => {
 };
 
 let backups = [[60 * 20, 412e6], [60 * 24 * 3, 398e6], [60 * 24 * 9, 377e6]].map(([m, size], i) => ({ id: '2026110' + (3 - i) + '-1803' + i + '0', createdAt: iso(m), sizeBytes: size }));
+let extras = [{ file: 'zoomify-2.14.jar', title: null, auto: false, requiredBy: [], sizeBytes: 812000, warning: null }];
+const MR = [['YL57xq9U', 'Iris Shaders', 'Shaders modernes pour Minecraft, compatibles avec Sodium.', 18400000, ['AANobbMI']], ['AANobbMI', 'Sodium', 'Moteur de rendu moderne qui accélère le jeu.', 52100000, []], ['gvQqBUqZ', 'Lithium', 'Optimisations du serveur de jeu intégré.', 41000000, []]];
+const MRT = Object.fromEntries(MR.map((m) => [m[0], m[1]]));
 let started = null, attemptN = 0, cancelled = false;
 const stats = () => ({ runNumber: 20, totalTimeMs: 12 * 3600e3 + 34 * 60e3 + 56e3 + (started ? Date.now() - started : 0), running: true, deaths: 19, currentSplit: 6, currentSplitName: 'ENDER_EYE', reachedSplits: SPL.slice(0, 6), bestSplit: 'ENDER_EYE', players: ['LunaFox', 'Creeper_Kid', 'Maelle'] });
 started = Date.now();
@@ -116,6 +119,18 @@ export async function invoke(cmd, a = {}) {
     case 'settings_set': settings = { ...settings, ...a }; return settings;
     case 'playtime': return { 'classroom-run': { totalSecs: 41 * 3600 + 25 * 60, lastPlayed: Math.floor(Date.now() / 1000) - 2 * 3600 }, survie: { totalSecs: 1500, lastPlayed: Math.floor(Date.now() / 1000) - 86400 * 4 } };
     case 'open_folder': return null;
+    case 'extra_mods_list': return packs.find((p) => p.id === a.id)?.installed ? structuredClone(extras) : [];
+    case 'extra_mod_import': case 'extra_mod_add': { const n = a.name || String(a.path).split(/[\\/]/).pop(); if (!/\.jar$/i.test(n)) throw 'seuls les fichiers .jar au nom simple sont acceptés'; if (extras.some((x) => x.file === n)) throw '« ' + n + ' » est déjà dans Mes mods'; extras.push({ file: n, title: null, auto: false, requiredBy: [], sizeBytes: 123456, warning: /sodium/i.test(n) ? 'Même identifiant (« sodium ») que le mod « Sodium » du pack : risque de conflit.' : null }); return n; }
+    case 'extra_mod_remove': { const e = extras.find((x) => x.file === a.file); if (!e) throw 'ce mod n’est pas dans Mes mods'; extras = extras.filter((x) => x.file !== a.file); const gone = [a.file]; extras.filter((x) => x.auto && x.requiredBy.includes(e.title)).forEach((x) => { x.requiredBy = x.requiredBy.filter((r) => r !== e.title); if (!x.requiredBy.length) { extras = extras.filter((y) => y !== x); gone.push(x.file); } }); return gone; }
+    case 'modrinth_search': return MR.filter((m) => m[1].toLowerCase().includes(String(a.query).toLowerCase())).map(([projectId, title, description, downloads]) => ({ projectId, title, description, downloads, iconUrl: null }));
+    case 'modrinth_add': {
+      const m = MR.find((x) => x[0] === a.projectId); if (!m) throw 'Projet introuvable';
+      if (extras.some((x) => x.title === m[1])) throw '« ' + m[1] + ' » est déjà dans Mes mods';
+      const deps = [], provided = [];
+      for (const d of m[4]) { const t = MRT[d]; if (a.id === 'classroom-run') provided.push(t); else if (!extras.some((x) => x.title === t)) { extras.push({ file: t.toLowerCase() + '-1.0.jar', title: t, auto: true, requiredBy: [m[1]], sizeBytes: 900000, warning: null }); deps.push({ title: t, file: t.toLowerCase() + '-1.0.jar' }); } }
+      extras.push({ file: m[1].toLowerCase().replace(/\W+/g, '-') + '-1.0.jar', title: m[1], auto: false, requiredBy: [], sizeBytes: 1500000, warning: null });
+      return { added: { title: m[1], file: m[1].toLowerCase() + '.jar', version: '1.0' }, deps, provided };
+    }
     case 'backups_list': return a.id === 'classroom-run' ? structuredClone(backups) : [];
     case 'backup_restore': if (!backups.some((b) => b.id === a.backupId)) throw 'Sauvegarde introuvable'; backups.unshift({ id: '20261104-120000', createdAt: iso(0), sizeBytes: 415e6 }); backups = backups.slice(0, 3); return null;
     case 'textures_dir': return { dir: q.has('notex') ? null : 'demo' };

@@ -447,6 +447,62 @@ async fn backup_restore(state: State<'_, S>, id: String, backup_id: String) -> C
     r
 }
 
+// ---------- Mes mods ----------
+
+/// Modifie « Mes mods » d'un pack : refusé pendant le jeu ou une installation de ce pack (le pack est réservé pendant l'opération).
+async fn exclusive<T: Send + 'static>(s: &S, id: String, f: impl FnOnce(&Dirs) -> anyhow::Result<T> + Send + 'static) -> CmdResult<T> {
+    {
+        let mut a = s.0.activity.lock().unwrap();
+        if a.running.contains(&id) || a.installing.contains(&id) || a.installing.contains(UPDATING) {
+            return Err("Ferme le jeu et attends la fin des installations avant de modifier Mes mods".into());
+        }
+        a.installing.insert(id.clone());
+    }
+    let r = s.blocking(f).await;
+    s.0.activity.lock().unwrap().installing.remove(&id);
+    r
+}
+
+#[tauri::command]
+async fn extra_mods_list(state: State<'_, S>, id: String) -> CmdResult<Vec<opaline_core::extramods::ExtraMod>> {
+    state.blocking(move |r| service::extra_mods_list(r, &id)).await
+}
+
+/// Glisser-déposer : chemin d'un `.jar` (copié dans `opaline-extra-mods/`, nom validé).
+#[tauri::command]
+async fn extra_mod_add(state: State<'_, S>, id: String, path: String) -> CmdResult<String> {
+    exclusive(&state, id.clone(), move |r| opaline_core::extramods::add_path(&r.for_pack(&id)?, std::path::Path::new(&path))).await
+}
+
+/// Sélecteur de fichier de l'interface : contenu du jar en base64.
+#[tauri::command]
+async fn extra_mod_import(state: State<'_, S>, id: String, name: String, data_base64: String) -> CmdResult<String> {
+    exclusive(&state, id.clone(), move |r| {
+        if data_base64.len() as u64 > opaline_core::extramods::MAX_JAR_BYTES * 4 / 3 + 16 {
+            bail!("fichier trop lourd (200 Mo maximum)");
+        }
+        let bytes = base64::engine::general_purpose::STANDARD.decode(data_base64.trim()).map_err(|_| anyhow!("fichier illisible"))?;
+        opaline_core::extramods::add_bytes(&r.for_pack(&id)?, &name, &bytes)
+    })
+    .await
+}
+
+/// Retire un mod perso et les dépendances automatiques qui ne servent plus ; renvoie les fichiers retirés.
+#[tauri::command]
+async fn extra_mod_remove(state: State<'_, S>, id: String, file: String) -> CmdResult<Vec<String>> {
+    exclusive(&state, id.clone(), move |r| opaline_core::extramods::remove(&r.for_pack(&id)?, &file)).await
+}
+
+#[tauri::command]
+async fn modrinth_search(state: State<'_, S>, id: String, query: String) -> CmdResult<Vec<opaline_core::modrinth::Hit>> {
+    state.blocking(move |r| service::extra_mod_search(r, &id, &query, &opaline_core::modrinth::Http::default_api()?)).await
+}
+
+#[tauri::command]
+async fn modrinth_add(state: State<'_, S>, id: String, project_id: String) -> CmdResult<opaline_core::extramods::AddResult> {
+    exclusive(&state, id.clone(), move |r| service::extra_mod_add_modrinth(r, &id, &project_id, &opaline_core::modrinth::Http::default_api()?)).await
+}
+
 #[tauri::command]
 async fn open_folder(app: AppHandle, state: State<'_, S>, id: String, kind: String) -> CmdResult<()> {
     let path = state
@@ -745,6 +801,12 @@ pub fn run_with(svc: Services) {
             settings_set,
             open_folder,
             backups_list,
+            extra_mods_list,
+            extra_mod_add,
+            extra_mod_import,
+            extra_mod_remove,
+            modrinth_search,
+            modrinth_add,
             backup_restore,
             textures_dir,
             skins_list,

@@ -70,6 +70,17 @@ struct MetaFile {
     #[serde(default)]
     side: Option<String>,
     download: MetaDownload,
+    #[serde(default)]
+    update: Option<MetaUpdate>,
+}
+#[derive(Deserialize)]
+struct MetaUpdate {
+    modrinth: Option<MetaModrinth>,
+}
+#[derive(Deserialize)]
+struct MetaModrinth {
+    #[serde(rename = "mod-id")]
+    mod_id: String,
 }
 #[derive(Deserialize)]
 struct MetaDownload {
@@ -90,6 +101,8 @@ pub struct ModEntry {
     pub filename: String,
     pub url: String,
     pub hash: Hash,
+    /// Identifiant du projet Modrinth (`[update.modrinth] mod-id`), s'il est connu.
+    pub project_id: Option<String>,
 }
 
 /// Fichier non-méta de l'index (config, etc.) : copié du dossier du pack vers l'instance.
@@ -173,6 +186,7 @@ pub fn parse_index(index_toml: &str, read: impl Fn(&str) -> Result<String>) -> R
             filename: safe_file_name(&m.filename)?.to_string(),
             url,
             hash: Hash::new(&m.download.hash_format, &m.download.hash)?,
+            project_id: m.update.and_then(|u| u.modrinth).map(|m| m.mod_id),
         });
     }
     Ok((mods, files))

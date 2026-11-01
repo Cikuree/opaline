@@ -230,6 +230,14 @@
       <article class="card"><h2>Mods installés</h2><div id="modsBox"></div></article>
       <article class="card" id="packCard"></article>
     </div>
+    <article class="card" id="extraCard" hidden>
+      <div class="row"><h2>Mes mods</h2><button class="btn sm" id="extraAdd">Ajouter un .jar</button><input type="file" id="extraFile" accept=".jar" multiple hidden></div>
+      <p class="small mute" style="margin-top:6px">Tes mods perso restent sur cet ordinateur, à part du pack partagé : la mise à jour du pack ne les supprime jamais. Ajoute un .jar (CurseForge, etc.) ou cherche sur Modrinth ; les dépendances requises sont ajoutées avec.</p>
+      <div class="drop" id="extraDrop" tabindex="0">Glisse un fichier .jar ici</div>
+      <div class="row" style="justify-content:flex-start;margin-top:10px"><label class="search" style="flex:1;min-width:220px"><span class="sr">Rechercher un mod sur Modrinth</span><input type="search" id="mrQ" placeholder="Rechercher un mod"></label><button class="btn sm primary" id="mrGo">Rechercher</button></div>
+      <p class="small" id="extraMsg" style="margin-top:8px" role="status"></p>
+      <div id="mrBox"></div><div id="extraBox"></div>
+    </article>
     <article class="card" id="backupsCard"><div class="row"><h2>Sauvegardes des mondes</h2><button class="btn sm" id="backupsOpen">Ouvrir le dossier</button></div>
       <p class="small mute" style="margin-top:6px">Copie de tes mondes avant chaque installation, mise à jour ou réparation. Les 3 plus récentes sont gardées.</p><div id="backupsBox"></div></article>
   </section>
