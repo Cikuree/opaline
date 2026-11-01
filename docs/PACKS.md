@@ -57,6 +57,7 @@ host = "monserveur"           # nom court (sans point) = nom MagicDNS Tailscale 
 port = 25565
 motd = "Mon pack"             # le MOTD du serveur doit contenir ce texte
 statsPort = 0                 # 0 : pas d'endpoint HTTP (le widget classroomRun n'est utile que pour Classroom Run)
+map = "http://home-server:8100"   # facultatif : carte du serveur (BlueMap), http(s) ; nom court = Tailscale ; voir docs/OPALINE_CONTRACT.md
 ```
 
 Fichiers trop lourds pour git (resourcepacks, datapacks, shaderpacks importés, souvent des centaines de Mo) : section facultative `[overrides]`, l'archive étant publiée sur la release `packs` (Opaline Atelier le fait seul) :

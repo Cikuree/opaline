@@ -59,6 +59,97 @@ pub fn launcher_running() -> bool {
     cfg!(target_os = "linux") && Command::new("pgrep").args(["-x", "minecraft-launcher"]).output().is_ok_and(|o| o.status.success())
 }
 
+/// Une ligne de commande est celle d'un Minecraft lancé depuis `.minecraft` ou depuis une instance d'Opaline (`markers`).
+pub fn is_launcher_game(cmdline: &str, markers: &[String]) -> bool {
+    let norm = |s: &str| s.to_ascii_lowercase().replace('\\', "/");
+    let c = norm(cmdline);
+    let minecraft = ["net.minecraft", "--gamedir", "bootstraplauncher", "knotclient", "fabricloader", "--assetsdir"].iter().any(|k| c.contains(k));
+    // Le marqueur doit être un nom de dossier complet (`.minecraft` ne doit pas correspondre à `net.minecraft.client`).
+    let in_dir = |m: &str| c.match_indices(&norm(m)).any(|(i, x)| c[i + x.len()..].chars().next().is_none_or(|n| matches!(n, '/' | ' ' | '"' | '\'')));
+    minecraft && markers.iter().any(|m| in_dir(m))
+}
+
+/// Lignes de commande des processus `java` / `javaw` en cours (liste vide si indisponible).
+#[allow(unreachable_code)]
+fn java_cmdlines() -> Vec<String> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", "Get-CimInstance Win32_Process -Filter \"Name='javaw.exe' OR Name='java.exe'\" | ForEach-Object { $_.CommandLine }"])
+            .creation_flags(0x0800_0000)
+            .output();
+        return out.map(|o| String::from_utf8_lossy(&o.stdout).lines().map(str::to_string).collect()).unwrap_or_default();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        return fs::read_dir("/proc")
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| fs::read(e.path().join("cmdline")).ok())
+            .map(|b| String::from_utf8_lossy(&b).replace('\0', " "))
+            .filter(|c| c.split_whitespace().next().is_some_and(|x| x.ends_with("java")))
+            .collect();
+    }
+    Vec::new()
+}
+
+/// Une partie lancée par le Launcher officiel tourne : processus java de `.minecraft` / d'une instance d'Opaline, ou monde ouvert
+/// (`session.lock`) dans le `.minecraft` ou une instance d'Opaline.
+pub fn game_running(root: &crate::config::Dirs, mc: &Path) -> bool {
+    let instances = root.root.join("instances");
+    let markers = vec![".minecraft".to_string(), instances.to_string_lossy().into_owned(), mc.to_string_lossy().into_owned()];
+    if java_cmdlines().iter().any(|c| is_launcher_game(c, &markers)) {
+        return true;
+    }
+    crate::backup::world_open_in(&mc.join("saves")) || fs::read_dir(&instances).into_iter().flatten().flatten().any(|i| crate::backup::world_open_in(&i.path().join("saves")))
+}
+
+/// Message quand le Launcher ne se ferme pas de lui-même : Opaline ne force jamais sa fermeture.
+pub const CLOSE_BY_HAND: &str = "Ferme le Launcher Minecraft à la main puis relance JOUER";
+
+/// Demande la fermeture avec `ask`, puis attend au plus `timeout` que `running` devienne faux. Jamais de fermeture forcée.
+pub fn close_with(ask: impl Fn(), running: impl Fn() -> bool, timeout: std::time::Duration, poll: std::time::Duration) -> Result<()> {
+    ask();
+    let t = std::time::Instant::now();
+    while running() && t.elapsed() < timeout {
+        std::thread::sleep(poll);
+    }
+    if running() {
+        bail!("{CLOSE_BY_HAND}");
+    }
+    Ok(())
+}
+
+/// Ferme le Launcher Minecraft seulement (jamais `java` / `javaw`) : fermeture douce (sans `/F`), 5 s d'attente, sinon erreur.
+pub fn close_launcher() -> Result<()> {
+    use std::process::Command;
+    let ask = || {
+        if cfg!(windows) {
+            for img in ["MinecraftLauncher.exe", "Minecraft.exe"] {
+                let mut c = Command::new("taskkill");
+                c.args(["/IM", img]);
+                #[cfg(windows)]
+                {
+                    use std::os::windows::process::CommandExt;
+                    c.creation_flags(0x0800_0000);
+                }
+                let _ = c.output();
+            }
+        } else {
+            let _ = Command::new("pkill").args(["-TERM", "-x", "minecraft-launcher"]).output();
+        }
+    };
+    close_with(ask, launcher_running, std::time::Duration::from_secs(5), std::time::Duration::from_millis(250))
+}
+
+/// Un jeu tourne dans cette instance : processus `java` dont la ligne de commande contient son dossier, ou monde ouvert.
+pub fn instance_in_use(instance: &Path) -> bool {
+    let markers = [instance.to_string_lossy().into_owned()];
+    crate::backup::world_open_in(&instance.join("saves")) || java_cmdlines().iter().any(|c| is_launcher_game(c, &markers))
+}
+
 /// Taille d'un fichier ; `None` s'il n'existe pas. Toute autre erreur est propagée.
 fn file_len(p: &Path) -> Result<Option<u64>> {
     match fs::metadata(p) {
@@ -297,6 +388,15 @@ mod tests {
     }
 
     #[test]
+    fn game_detection_and_close_policy() {
+        let m = vec![".minecraft".to_string(), r"C:\Users\u\AppData\Roaming\Opaline\instances".to_string()];
+        assert!(is_launcher_game(r"javaw.exe -Xmx4G net.minecraft.client.main.Main --gameDir C:\Users\u\AppData\Roaming\.minecraft", &m));
+        assert!(is_launcher_game(r"javaw.exe -cp x cpw.mods.bootstraplauncher.BootstrapLauncher --gameDir C:\Users\u\AppData\Roaming\Opaline\instances\classroom-run", &m));
+        assert!(!is_launcher_game("java -jar server.jar nogui", &m));
+        assert!(!is_launcher_game(r"javaw.exe net.minecraft.client.main.Main --gameDir D:\autre\dossier", &m));
+    }
+
+    #[test]
     fn minecraft_dir_per_os() {
         let (d, h) = (Path::new("/r"), Path::new("/h"));
         assert_eq!(minecraft_dir_for("windows", d, h), d.join(".minecraft"));
@@ -454,5 +554,16 @@ mod tests {
         assert!(tasklist_has(out, &["MinecraftLauncher.exe", "Minecraft.exe"]));
         assert!(tasklist_has("minecraft.exe  9", &["Minecraft.exe"]));
         assert!(!tasklist_has("MinecraftBedrock.exe 1\nnotminecraft.exe 2", &["Minecraft.exe"]));
+    }
+
+    #[test]
+    fn close_never_forces_and_asks_to_close_by_hand() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        let asked = Cell::new(0);
+        let e = close_with(|| asked.set(asked.get() + 1), || true, Duration::from_millis(30), Duration::from_millis(5)).unwrap_err();
+        assert_eq!((asked.get(), e.to_string()), (1, CLOSE_BY_HAND.to_string())); // une seule demande douce, puis message
+        let up = Cell::new(true);
+        close_with(|| up.set(false), || up.get(), Duration::from_millis(30), Duration::from_millis(5)).unwrap();
     }
 }

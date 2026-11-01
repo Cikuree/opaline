@@ -111,6 +111,9 @@ pub fn merge_lines(existing: &str, sep: char, kv: &[(&str, String)]) -> String {
     out.join(nl) + nl
 }
 
+/// Clés d'`options.txt` écrites par les modes de performance (jamais copiées d'un pack à l'autre).
+pub const MANAGED_OPTIONS: [&str; 5] = ["graphicsPreset", "renderDistance", "simulationDistance", "particles", "renderClouds"];
+
 pub fn options_pairs(s: &Settings) -> Vec<(&'static str, String)> {
     vec![
         ("graphicsPreset", format!("\"{}\"", s.graphics_preset)),
@@ -131,7 +134,18 @@ pub fn iris_pairs(s: &Settings, shader_pack: Option<&str>) -> Vec<(&'static str,
     v
 }
 
-fn merge_file(path: &Path, sep: char, kv: &[(&str, String)]) -> Result<()> {
+/// Contenu d'un fichier de réglages : UTF-8, sinon chaque octet devient un caractère (Latin-1, sans perte). `None` : absent ou illisible.
+pub(crate) fn read_text(path: &Path) -> Option<String> {
+    let b = std::fs::read(path).ok()?;
+    Some(String::from_utf8(b).unwrap_or_else(|e| e.as_bytes().iter().map(|&b| b as char).collect()))
+}
+
+/// Valeur de `key` dans un texte `clé=valeur` (dernière occurrence) ; `None` si la clé est absente.
+pub fn prop(text: &str, key: &str) -> Option<String> {
+    text.lines().filter_map(|l| l.split_once('=')).filter(|(k, _)| k.trim() == key).map(|(_, v)| v.trim().to_string()).next_back()
+}
+
+pub(crate) fn merge_file(path: &Path, sep: char, kv: &[(&str, String)]) -> Result<()> {
     let old = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
@@ -155,13 +169,28 @@ fn merge_file(path: &Path, sep: char, kv: &[(&str, String)]) -> Result<()> {
     Ok(())
 }
 
+/// Shader déjà choisi dans `iris.properties` : `Some("")` = aucun, `Some(nom)` si `shaderpacks/<nom>` existe ; sinon `None` (pack par défaut).
+fn shader_choice(iris: &Path) -> Option<String> {
+    let v = prop(&read_text(iris)?, "shaderPack")?;
+    let none = v.is_empty() || v == "(internal)";
+    let present = crate::safe::safe_file_name(&v).is_ok() && iris.parent()?.parent()?.join("shaderpacks").join(&v).exists();
+    (none || present).then(|| if none { String::new() } else { v })
+}
+
 /// À appeler avant chaque lancement. Mode Personnalisé : aucune écriture. Retourne la mémoire à utiliser.
 pub fn apply(instance: &Path, mode: PerfMode, shader_pack: Option<&str>, ram_mb: Option<u64>) -> Result<Option<u32>> {
     let Some(s) = settings(mode) else {
         return Ok(None);
     };
     merge_file(&instance.join("options.txt"), ':', &options_pairs(&s))?;
-    merge_file(&instance.join("config").join("iris.properties"), '=', &iris_pairs(&s, shader_pack))?;
+    // Shader choisi par l'utilisateur (Opaline ou Iris) : conservé tant que le zip existe ; sinon celui du pack.
+    let iris = instance.join("config").join("iris.properties");
+    let pairs = match (shader_choice(&iris), s.shaders) {
+        (Some(c), true) if c.is_empty() => Vec::new(), // « Aucun » : on ne rallume pas les shaders
+        (Some(_), true) => iris_pairs(&s, None),
+        _ => iris_pairs(&s, shader_pack),
+    };
+    merge_file(&iris, '=', &pairs)?;
     Ok(memory_mb(mode, ram_mb))
 }
 
@@ -203,6 +232,40 @@ mod tests {
     fn iris_pairs_depend_on_shaders() {
         assert_eq!(iris_pairs(&settings(PerfMode::Low).unwrap(), Some("a.zip")), [("enableShaders", "false".to_string())]);
         assert_eq!(iris_pairs(&settings(PerfMode::Balanced).unwrap(), Some("a.zip")).len(), 2);
+    }
+
+    #[test]
+    fn user_shader_choice_survives_launch_but_low_mode_still_disables() {
+        let d = std::env::temp_dir().join(format!("crl-perf-shader-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(d.join("config")).unwrap();
+        std::fs::create_dir_all(d.join("shaderpacks")).unwrap();
+        std::fs::write(d.join("shaderpacks/Mien.zip"), "z").unwrap();
+        let iris = d.join("config/iris.properties");
+        let get = |k| prop(&std::fs::read_to_string(&iris).unwrap(), k);
+        std::fs::write(&iris, "shaderPack=Mien.zip
+enableShaders=false
+").unwrap();
+        apply(&d, PerfMode::Balanced, Some("C.zip"), None).unwrap();
+        assert_eq!((get("shaderPack").as_deref(), get("enableShaders").as_deref()), (Some("Mien.zip"), Some("true")));
+        apply(&d, PerfMode::Low, Some("C.zip"), None).unwrap();
+        assert_eq!((get("shaderPack").as_deref(), get("enableShaders").as_deref()), (Some("Mien.zip"), Some("false")));
+        std::fs::write(&iris, "shaderPack=
+enableShaders=false
+").unwrap(); // « Aucun »
+        apply(&d, PerfMode::Quality, Some("C.zip"), None).unwrap();
+        assert_eq!((get("shaderPack").as_deref(), get("enableShaders").as_deref()), (Some(""), Some("false")));
+        std::fs::write(&iris, "shaderPack=Disparu.zip
+").unwrap(); // zip supprimé : retour au shader du pack
+        apply(&d, PerfMode::Balanced, Some("C.zip"), None).unwrap();
+        assert_eq!(get("shaderPack").as_deref(), Some("C.zip"));
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn managed_options_list_matches_the_table() {
+        let keys: Vec<&str> = options_pairs(&settings(PerfMode::Balanced).unwrap()).iter().map(|p| p.0).collect();
+        assert_eq!(keys, MANAGED_OPTIONS);
     }
 
     #[test]

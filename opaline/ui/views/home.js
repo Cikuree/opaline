@@ -1,7 +1,9 @@
 import * as api from '../api.js';
 import { state, current, hasWidget, statsMissing, emit, on, who } from '../state.js';
-import { $, esc, toast, tex, hms, headHtml, hydrateHeads } from '../util.js';
+import { $, esc, toast, tex, hms, ago, headHtml, hydrateHeads } from '../util.js';
 import { SPLITS, splitByKey, HELP, STAGE_ORDER, loaderName } from '../data.js';
+import { openMenu } from './packmenu.js';
+import { splitPacks, AVAIL_FOLD } from '../packs.js';
 import { causeInfo, loadRecent } from './history.js';
 
 const GR = ['linear-gradient(135deg,#e0574f,#f07a5a)', 'linear-gradient(135deg,#7b4bb7,#a66ad6)', 'linear-gradient(135deg,#f6dcc8,#f3b9b4)'];
@@ -59,14 +61,36 @@ function blob() {
 }
 const fmtHours = (ms) => { const h = ms / 3600e3; return h >= 1 ? Math.floor(h).toLocaleString('fr-FR').replace(/\s/g, ' ') + ' h' : Math.round(ms / 60e3) + ' min'; };
 
+let showAvail = false; // liste « À installer » dépliée
+
 function renderPacks() {
-  const list = state.packs.filter((p) => p.name.toLowerCase().includes(filter));
-  $('#packs').innerHTML = list.map((p) => {
+  const { mine, avail } = splitPacks(state.packs, filter);
+  $('#packs').innerHTML = mine.map((p) => {
     const i = state.packs.indexOf(p), st = statusOf(p), s = servers.get(p.id), up = s?.online;
     const srv = s ? `<span><span class="dot ${up ? '' : 'off'}"></span> ${up ? 'En ligne' : 'Hors ligne'}</span>` : '';
     return `<button class="pk" role="radio" aria-checked="${p.id === state.pack}" data-k="${esc(p.id)}"><span class="th" style="background:${GR[i % 3]}">${tex(p.thumbnail, 32)}</span><span class="tx2"><b>${esc(p.name)}</b><span class="meta">${esc(loaderName(p.loader))} ${esc(p.mc)} · ${Number(p.modsCount)} mods</span><span class="st"><span class="pill ${st === 'upd' ? 's-upd' : st === 'ok' ? '' : 's-no'}">${STATUS[st]}</span>${srv}</span></span></button>`;
   }).join('');
+  $('#mineT').hidden = !mine.length;
+  $('#availBox').hidden = !avail.length;
+  const folded = avail.length > AVAIL_FOLD && !showAvail;
+  $('#packsAvail').innerHTML = folded ? '' : avail.map((p) => {
+    const i = state.packs.indexOf(p), off = !p.supported;
+    // Carte = sélection du pack ; « Installer » = vrai bouton frère (pas imbriqué), seule action qui lance l'installation.
+    return `<div class="pkw ${off ? 'xp-gray' : ''}"><button class="pk" role="radio" aria-checked="${p.id === state.pack}" data-k="${esc(p.id)}"><span class="th" style="background:${GR[i % 3]}">${tex(p.thumbnail, 32)}</span><span class="tx2"><b>${esc(p.name)}</b><span class="meta">${esc(loaderName(p.loader))} ${esc(p.mc)} · ${Number(p.modsCount)} mods</span>${off ? '<span class="st"><span class="pill s-no">Non pris en charge</span></span>' : ''}</span></button><button class="btn sm ${off ? '' : 'primary'} pki" data-i="${esc(p.id)}" aria-label="${off ? 'Indisponible : ' : 'Installer '}${esc(p.name)}" ${off || state.install ? 'disabled' : ''}>${off ? 'Indisponible' : 'Installer'}</button></div>`;
+  }).join('');
+  const more = $('#availMore');
+  more.hidden = avail.length <= AVAIL_FOLD;
+  more.textContent = showAvail ? 'Replier' : `Voir les ${avail.length} packs disponibles`;
 }
+
+const fmtPlay = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s / 60) % 60).padStart(2, '0')}` : `${Math.max(1, Math.round(s / 60))} min`);
+/** Temps de jeu mesuré par Opaline ; mode officiel : non mesuré (le Launcher Minecraft possède le processus). */
+function playtimeText(id) {
+  if (state.auth.mode !== 'direct') return 'Temps de jeu non mesuré avec le Launcher Minecraft.';
+  const t = state.playtime[id];
+  return t ? `Joué ${fmtPlay(t.totalSecs)} · dernière session ${ago(new Date(t.lastPlayed * 1000).toISOString())}` : 'Aucune session mesurée pour l’instant.';
+}
+export async function refreshPlaytime() { try { state.playtime = await api.playtime(); } catch { /* inchangé */ } renderHome(); }
 
 function renderHero(p, st, cr) {
   const s = state.stats, inst = state.install?.packId === p.id ? state.install : null;
@@ -81,6 +105,7 @@ function renderHero(p, st, cr) {
     : tex(p.thumbnail, 80, 'dragon sm') + tex('diamond', 48, 'eye') + tex('diamond_pickaxe', 48, 'dia');
   // Réécrire le même contenu relancerait l'animation de flottement (saut visible à chaque rafraîchissement).
   if ($('#heroArt').dataset.art !== art) { $('#heroArt').innerHTML = art; $('#heroArt').dataset.art = art; }
+  $('#heroPlay').textContent = st === 'no' || st === 'unsupported' ? p.description || '' : playtimeText(p.id);
   const play = $('#btnPlay'), busy = !!state.install;
   $('.bl', play).textContent = st === 'no' ? 'INSTALLER' : st === 'unsupported' ? 'INDISPONIBLE' : state.inGame ? 'EN JEU' : 'JOUER';
   play.firstElementChild.firstElementChild.setAttribute('href', st === 'no' ? '#i-down' : '#i-play');
@@ -171,19 +196,40 @@ export function initHome() {
   blob();
   $('#home').addEventListener('click', (e) => { const b = e.target.closest('[data-d]'); if (b) emit('openDeath', recent[+b.dataset.d]); });
   $('#packs').addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (b) emit('selectPack', b.dataset.k); });
+  // Clic droit ou touche Menu / Maj+F10 sur un pack installé : menu au curseur (ou sous la carte au clavier) ; menu natif coupé sur ces cartes seulement.
+  $('#packs').addEventListener('contextmenu', (e) => {
+    const b = e.target.closest('.pk[data-k]'); if (!b) return;
+    e.preventDefault(); const r = b.getBoundingClientRect(), kb = !e.clientX && !e.clientY;
+    openMenu(b.dataset.k, kb ? r.left + 20 : e.clientX, kb ? r.bottom : e.clientY, b);
+  });
+  $('#packsAvail').addEventListener('click', (e) => {
+    const i = e.target.closest('[data-i]'), k = e.target.closest('[data-k]');
+    if (i) { if (!i.disabled) startInstall(i.dataset.i); } else if (k) emit('selectPack', k.dataset.k);
+  });
+  $('#availMore').addEventListener('click', () => { showAvail = !showAvail; renderPacks(); });
   $('#packSearch').addEventListener('input', (e) => { filter = e.target.value.trim().toLowerCase(); renderPacks(); });
   $('#btnUpd').addEventListener('click', () => { const p = current(); if (p) startInstall(p.id); });
-  $('#btnPlay').addEventListener('click', async () => {
-    const p = current(); if (!p) return;
+  $('#btnPlay').addEventListener('click', () => { const p = current(); if (p) doPlay(p); });
+  // Launcher Minecraft ouvert (mode officiel) : confirmation avant de le fermer ; jamais proposé si une partie tourne (le backend refuse).
+  $('#lcNo').addEventListener('click', () => { $('#launcherDlg').hidden = true; $('#btnPlay').focus(); });
+  $('#lcOk').addEventListener('click', async () => {
+    const p = current(); $('#launcherDlg').hidden = true; if (!p) return;
+    toast('Fermeture du Launcher Minecraft…');
+    try { await api.officialCloseLauncher(); } catch (e) { return toast(api.errMsg(e)); }
+    doPlay(p, true);
+  });
+  $('#launcherDlg').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#lcNo').click(); });
+  async function doPlay(p, retried = false) {
     if ($('#btnPlay').dataset.st === 'no') return startInstall(p.id);
     try {
       const r = await api.play(p.id);
-      if (!r.started) return toast(r.reason || 'Le jeu n’a pas pu démarrer.');
+      if (!r.started && r.reason === 'officialLauncherOpen' && !retried) { $('#launcherDlg').hidden = false; $('#lcNo').focus(); return; }
+      if (!r.started) return toast(r.reason === 'officialLauncherOpen' ? 'Le Launcher Minecraft ne s’est pas fermé : ferme-le toi-même.' : r.reason || 'Le jeu n’a pas pu démarrer.');
       if (r.serverListed) listed.add(p.id); else listed.delete(p.id);
       if (r.via === 'official') return toast(r.message || 'Profil prêt dans le Launcher Minecraft : clique sur Jouer'); // pas de processus à suivre : jamais « en jeu »
-      state.inGame = true; emit('game'); renderHome(); toast('Lancement de ' + p.name + '…');
+      state.inGame = true; emit('game'); renderHome(); toast('Lancement de ' + p.name + (r.joining ? ' : connexion au serveur…' : '…'));
     } catch (e) { toast(api.errMsg(e)); }
-  });
+  }
   $('#crashClose').addEventListener('click', () => ($('#crash').hidden = true));
   $('#demoTs')?.addEventListener('change', (e) => { api.demoControls.help = e.target.value; refreshServers(); });
   $('#demoTsL').hidden = !api.demoControls;

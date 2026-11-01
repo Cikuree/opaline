@@ -11,6 +11,7 @@ use std::process::{Child, Command, Stdio};
 
 pub const LAUNCHER_NAME: &str = "Opaline";
 
+#[derive(Clone, Copy)]
 pub struct LaunchInput<'a> {
     pub java: &'a Path,
     pub version: &'a VersionJson,
@@ -51,8 +52,19 @@ pub fn classpath(i: &LaunchInput) -> Result<Vec<PathBuf>> {
     Ok(cp)
 }
 
-/// Retourne `[java, args...]`. Fonction pure (aucun accès disque ni réseau).
+/// Retourne `[java, args...]`. Fonction pure (aucun accès disque ni réseau). Arrêt au menu principal.
 pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
+    build_command_with(i, None)
+}
+
+/// Comme `build_command` ; `quick_play` : adresse du serveur à rejoindre (`--quickPlayMultiplayer`, Minecraft 1.20+ : la règle
+/// `is_quick_play_multiplayer` du version.json ; sans cette règle, l'argument n'est simplement pas ajouté).
+pub fn build_command_with(i: &LaunchInput, quick_play: Option<&str>) -> Result<Vec<String>> {
+    let mut env = i.env.clone();
+    if quick_play.is_some() {
+        env.features.insert("is_quick_play_multiplayer".into(), true);
+    }
+    let i = &LaunchInput { env: &env, ..*i };
     let sep = if i.env.os == "windows" { ";" } else { ":" };
     let libs = i.dirs.libraries();
     let cp = classpath(i)?.iter().map(|p| p.to_string_lossy().into_owned()).collect::<Vec<_>>().join(sep);
@@ -74,6 +86,7 @@ pub fn build_command(i: &LaunchInput) -> Result<Vec<String>> {
         ("launcher_name", LAUNCHER_NAME.into()),
         ("launcher_version", env!("CARGO_PKG_VERSION").into()),
         ("classpath", cp),
+        ("quickPlayMultiplayer", quick_play.unwrap_or_default().to_string()),
     ]);
     let mut cmd = vec![i.java.to_string_lossy().into_owned(), "-Xms512M".into(), format!("-Xmx{}M", i.memory_mb)];
     cmd.extend(expand_args(&i.version.arguments.jvm, i.env, &vars));
@@ -194,6 +207,25 @@ mod tests {
         assert!(parts.last().unwrap().ends_with("26.3.jar"));
         assert!(parts.iter().all(|p| !p.contains("${")));
         assert!(c.iter().all(|a| !a.contains("${")), "variable non substituée");
+    }
+
+    #[test]
+    fn quick_play_adds_server_argument() {
+        let (v, f) = (version(), fabric());
+        let dirs = Dirs::new("/root");
+        let session = Session::offline("Bob");
+        let env = Env { os: "linux", arch: "x86_64", features: HashMap::new() };
+        let input = LaunchInput { java: Path::new("/j/java"), version: &v, fabric: &f, dirs: &dirs, session: &session, memory_mb: 2048, env: &env };
+        let c = build_command_with(&input, Some("home-server.x.ts.net")).unwrap();
+        assert!(c.windows(2).any(|w| w == ["--quickPlayMultiplayer", "home-server.x.ts.net"]));
+        assert!(env.features.is_empty(), "l'environnement de l'appelant n'est pas modifié");
+        let c = build_command_with(&input, None).unwrap();
+        assert!(!c.iter().any(|a| a.contains("quickPlay")));
+        // Minecraft < 1.20 : pas de règle quick play dans le version.json, rien n'est ajouté
+        let mut old = version();
+        old.arguments.game.pop();
+        let input = LaunchInput { version: &old, ..input };
+        assert!(!build_command_with(&input, Some("a.b")).unwrap().iter().any(|a| a.contains("quickPlay")));
     }
 
     #[test]

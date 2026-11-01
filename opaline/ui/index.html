@@ -38,6 +38,16 @@
 <div class="window" id="app">
   <span class="appver" id="appVer" aria-label="Version d’Opaline"></span>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="pkmenu" id="pkMenu" role="menu" aria-label="Options du pack" hidden><button role="menuitem" data-a="open">Ouvrir le dossier</button><button role="menuitem" data-a="repair">Vérifier et réparer</button><hr role="separator"><button role="menuitem" data-a="del" class="danger">Désinstaller…</button></div>
+  <div class="pkdlg" id="launcherDlg" hidden><div class="card" role="alertdialog" aria-modal="true" aria-labelledby="lcT">
+    <h2 id="lcT">Le Launcher Minecraft est ouvert</h2>
+    <p class="small mute" style="margin-top:6px">Opaline doit le fermer pour préparer le profil du pack. Ton jeu en cours, s’il y en a un, n’est jamais fermé.</p>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:16px"><button class="btn sm" id="lcNo">Annuler</button><button class="btn sm primary" id="lcOk">Fermer et jouer</button></div></div></div>
+  <div class="pkdlg" id="uninst" hidden><div class="card" role="alertdialog" aria-modal="true" aria-labelledby="dlgT">
+    <h2 id="dlgT"></h2>
+    <p class="small mute">Le pack est retiré de cet ordinateur ; il repasse dans « À installer ».</p>
+    <ul class="small" style="margin:10px 0 0 18px;line-height:1.7"><li>Tes mondes et tes captures d’écran sont <b>sauvegardés automatiquement</b> (copie conservée « Avant désinstallation », restaurable).</li><li><b>Supprimés</b> : les mods, tes mods perso, les réglages, les cartes et waypoints (<code>journeymap/</code>, <code>xaero*</code>), les schematics, et les resource packs et shaders ajoutés à la main.</li><li>Les autres packs et les sauvegardes ne sont pas touchés.</li></ul>
+    <div class="row" style="justify-content:flex-end;gap:8px;margin-top:16px"><button class="btn sm" id="uninstNo">Annuler</button><button class="btn sm danger" id="uninstOk">Désinstaller</button></div></div></div>
 
   <header class="titlebar" id="titlebar" data-tauri-drag-region>
     <div class="tt" data-tauri-drag-region><svg class="logo-svg" width="18" height="18" viewBox="0 0 64 64" aria-hidden="true"><use href="#logo-o"/></svg>Opaline</div>
@@ -55,6 +65,7 @@
     <button data-view="settings" aria-label="Réglages"><svg class="i"><use href="#i-sliders"/></svg></button>
     <button data-view="files" aria-label="Fichiers et mods"><svg class="i"><use href="#i-folder"/></svg></button>
     <button data-view="history" aria-label="Historique des runs"><svg class="i"><use href="#i-clock"/></svg></button>
+    <button data-view="map" aria-label="Carte du serveur" hidden><svg class="i" viewBox="0 0 24 24"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg></button>
     <span class="spacer"></span>
     <button id="colToggle" class="coltoggle" aria-label="Joueurs du serveur" aria-expanded="false" aria-controls="col"><svg class="i"><use href="#i-users"/></svg></button>
     <button data-view="news" id="newsBtn" aria-label="Actualités et mises à jour"><svg class="i"><use href="#i-bell"/></svg><span class="badge" id="newsBadge" hidden></span></button>
@@ -102,10 +113,17 @@
     </div>
     <article class="card crash" id="crash" role="alert" hidden>
       <h2 id="crashT">Le jeu s&rsquo;est arrêté</h2>
-      <pre id="crashLog"></pre>
-      <div class="row"><button class="btn sm" id="crashCopy"><svg class="i" style="width:16px;height:16px"><use href="#i-copy"/></svg>Copier le journal</button><button class="btn sm" id="crashClose">Fermer</button></div>
+      <ul class="crashl" id="crashList"></ul>
+      <details class="small" style="margin-top:8px"><summary>Fin du journal</summary><pre id="crashLog"></pre></details>
+      <div class="row" style="justify-content:flex-start;margin-top:10px"><button class="btn sm primary" id="crashRepair"><svg class="i" style="width:16px;height:16px"><use href="#i-wrench"/></svg>Vérifier et réparer</button><button class="btn sm" id="crashLogs">Ouvrir les logs</button><button class="btn sm" id="crashCopy"><svg class="i" style="width:16px;height:16px"><use href="#i-copy"/></svg>Copier le rapport</button><button class="btn sm" id="crashClose">Fermer</button></div>
     </article>
-    <div class="packs" id="packs" role="radiogroup" aria-label="Modpacks du groupe"></div>
+    <h2 class="sec" id="mineT">Mes packs <span class="mute xs" style="font-weight:500">Clic droit sur un pack pour plus d’options</span></h2>
+    <div class="packs" id="packs" role="radiogroup" aria-labelledby="mineT"></div>
+    <section id="availBox" hidden>
+      <h2 class="sec" id="availT">À installer</h2>
+      <div class="packs" id="packsAvail" role="radiogroup" aria-labelledby="availT"></div>
+      <button class="btn sm more" id="availMore" hidden></button>
+    </section>
     <div class="home" id="home">
       <article class="card hero" aria-labelledby="heroT">
         <div class="art" id="heroArt" aria-hidden="true"></div>
@@ -114,6 +132,7 @@
           <h2 id="heroT" style="margin-top:10px"></h2>
         </div>
         <div class="stats" id="heroStats"></div>
+        <p class="xs" id="heroPlay" style="opacity:.8"></p>
         <div class="acts"><button class="play" id="btnPlay"><svg class="bi" aria-hidden="true"><use href="#i-play"/></svg><span class="bl">JOUER</span></button><button class="btn cream" id="btnUpd" hidden><svg class="bi i" aria-hidden="true"><use href="#i-down"/></svg><span class="bl">Mettre à jour</span></button></div>
       </article>
 
@@ -191,6 +210,7 @@
   <section class="view" id="v-settings" aria-labelledby="setT">
     <div class="bar"><h1 id="setT">Réglages</h1><span class="mute small">Appliqués au prochain lancement</span></div>
     <article class="card"><h2 id="perfT">Mode de performance</h2>
+      <p class="small" id="autoMsg" style="margin-top:6px;color:var(--ok)" hidden>Réglé automatiquement pour ton PC. Tu peux le modifier ci-dessous.</p>
       <div class="perf" role="radiogroup" aria-labelledby="perfT" id="perf" style="margin-top:12px"></div></article>
     <div class="grid2">
       <article class="card field">
@@ -209,17 +229,76 @@
           <button role="radio" aria-checked="true" data-v="opaline">Opaline</button><button role="radio" aria-checked="false" data-v="official">Launcher Minecraft</button></div>
         <p class="small mute" style="margin-top:8px" id="lvH"></p>
       </article>
+      <article class="card field">
+        <div class="row"><div><h2 id="jsL">Rejoindre le serveur du pack au lancement</h2><p class="small mute" style="margin-top:2px" id="jsH"></p></div>
+          <button class="sw" role="switch" aria-checked="true" aria-labelledby="jsL" id="joinServer"></button></div>
+      </article>
+      <article class="card field">
+        <div class="row"><div><h2 id="nsL">Prévenir quand le serveur est en ligne</h2><p class="small mute" style="margin-top:2px">Notification quand le serveur d’un pack installé passe de hors ligne à en ligne (pas pour les connexions de joueurs).</p></div>
+          <button class="sw" role="switch" aria-checked="true" aria-labelledby="nsL" id="notifyServer"></button></div>
+      </article>
+      <article class="card field">
+        <div class="row"><div><h2 id="dcL">Statut Discord</h2><p class="small mute" style="margin-top:2px">Pendant une partie lancée par Opaline, ton statut Discord indique « Joue à » suivi du pack et la durée. Seulement si Discord est ouvert ; jamais avec le Launcher Minecraft.</p></div>
+          <button class="sw" role="switch" aria-checked="true" aria-labelledby="dcL" id="discordPresence"></button></div>
+      </article>
+      <article class="card field">
+        <div class="row"><div><h2 id="blL">Plein écran fenêtré</h2><p class="small mute" style="margin-top:2px">Installe le mod Cubes Without Borders (côté client seulement) dans chaque pack et démarre en plein écran sans bordure. Désactivé : le mod est retiré. Pris en compte au lancement.</p>
+          <p class="small" id="blNote" role="status" style="margin-top:6px;color:var(--warn)" hidden></p></div>
+          <button class="sw" role="switch" aria-checked="false" aria-labelledby="blL" id="borderless"></button></div>
+      </article>
+      <article class="card field">
+        <div class="row"><div><h2 id="bgL">Fond animé</h2><p class="small mute" style="margin-top:2px">Dégradé discret qui bouge doucement derrière l’interface. Mis en pause quand la fenêtre est cachée ou pendant une partie ; désactivé, le fond reste fixe.</p></div>
+          <button class="sw" role="switch" aria-checked="true" aria-labelledby="bgL" id="bgAnim"></button></div>
+      </article>
+      <article class="card field">
+        <div class="row"><div><h2 id="trL">Se réduire dans la zone de notification pendant le jeu</h2><p class="small mute" style="margin-top:2px">Pendant une partie lancée par Opaline, la fenêtre se cache derrière son icône (clic ou menu « Afficher Opaline » pour la rappeler) et revient à la fermeture du jeu.</p></div>
+          <button class="sw" role="switch" aria-checked="true" aria-labelledby="trL" id="trayOnGame"></button></div>
+      </article>
+      <article class="card field" style="grid-column:1/-1">
+        <h2 id="cpT">Copier mes réglages d’un pack vers un autre</h2>
+        <p class="small mute" style="margin-top:2px">Les réglages de la destination sont fusionnés (le reste est conservé) et son ancien fichier est gardé en <code>options.txt.bak</code>. Les réglages de performance ne sont jamais copiés.</p>
+        <div class="row" style="justify-content:flex-start;gap:12px;flex-wrap:wrap;margin-top:10px">
+          <label class="small">De <select id="cpFrom"></select></label><label class="small">Vers <select id="cpTo"></select></label>
+        </div>
+        <div class="row" id="cpCats" style="justify-content:flex-start;gap:6px 16px;flex-wrap:wrap;margin-top:10px" role="group" aria-labelledby="cpT"></div>
+        <div class="row" style="justify-content:flex-start;margin-top:12px"><button class="btn sm primary" id="cpGo">Copier</button><span class="small mute" id="cpMsg" role="status"></span></div>
+      </article>
     </div>
   </section>
 
+  <section class="view" id="v-map" aria-labelledby="mapT">
+    <div class="bar"><h1 id="mapT">Carte</h1><span class="mute small" id="mapSub"></span></div>
+    <article class="card mapcard">
+      <div class="row" style="padding:12px 16px;gap:10px"><span class="small mute" id="mapMsg" role="status">Chargement de la carte…</span><button class="btn sm" id="mapPop">Ouvrir en grand</button></div>
+      <iframe id="mapFrame" title="Carte du serveur" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer" hidden></iframe>
+    </article>
+  </section>
+
   <section class="view" id="v-files" aria-labelledby="fT">
-    <div class="bar"><h1 id="fT">Fichiers &amp; mods</h1><button class="btn primary" id="btnRepair"><svg class="i" style="width:18px;height:18px"><use href="#i-wrench"/></svg>Vérifier et réparer</button></div>
+    <div class="bar"><h1 id="fT">Fichiers &amp; mods</h1>
+      <div class="facts" id="fileActs"><button class="btn primary" id="btnRepair"><svg class="i" style="width:18px;height:18px"><use href="#i-wrench"/></svg>Vérifier et réparer</button><button class="btn danger" id="btnUninst">Désinstaller</button></div>
+      <button class="btn burger" id="fileBurger" aria-label="Actions du pack" aria-haspopup="menu" aria-expanded="false"><svg class="i" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></div>
     <div class="seg" id="filePacks" role="radiogroup" aria-label="Pack concerné" style="align-self:flex-start;flex-wrap:wrap"></div>
     <div class="files" id="folders"></div>
     <div class="grid2 filesgrid">
       <article class="card"><h2>Mods installés</h2><div id="modsBox"></div></article>
       <article class="card" id="packCard"></article>
     </div>
+    <article class="card" id="shaderCard" hidden>
+      <div class="row"><h2 id="shT"><label for="shSel">Shaders</label></h2><select id="shSel"></select></div>
+      <p class="small mute" style="margin-top:6px">Shader Iris utilisé par ce pack. Pour en ajouter, glisse le fichier .zip dans le dossier shaderpacks.</p>
+      <p class="small" id="shMsg" role="status" style="margin-top:6px"></p>
+    </article>
+    <article class="card" id="extraCard" hidden>
+      <div class="row"><h2>Mes mods</h2><button class="btn sm" id="extraAdd">Ajouter un .jar</button><input type="file" id="extraFile" accept=".jar" multiple hidden></div>
+      <p class="small mute" style="margin-top:6px">Tes mods perso restent sur cet ordinateur, à part du pack partagé : la mise à jour du pack ne les supprime jamais. Ajoute un .jar (CurseForge, etc.) ou cherche sur Modrinth ; les dépendances requises sont ajoutées avec.</p>
+      <div class="drop" id="extraDrop" tabindex="0">Glisse un fichier .jar ici</div>
+      <div class="row" style="justify-content:flex-start;margin-top:10px"><label class="search" style="flex:1;min-width:220px"><span class="sr">Rechercher un mod sur Modrinth</span><input type="search" id="mrQ" placeholder="Rechercher un mod"></label><button class="btn sm primary" id="mrGo">Rechercher</button></div>
+      <p class="small" id="extraMsg" style="margin-top:8px" role="status"></p>
+      <div id="mrBox"></div><div id="extraBox"></div>
+    </article>
+    <article class="card" id="backupsCard"><div class="row"><h2>Sauvegardes des mondes</h2><button class="btn sm" id="backupsOpen">Ouvrir le dossier</button></div>
+      <p class="small mute" style="margin-top:6px">Copie de tes mondes avant chaque installation, mise à jour ou réparation. Les 3 plus récentes sont gardées.</p><div id="backupsBox"></div></article>
   </section>
 
   <section class="view" id="v-history" aria-labelledby="hT">

@@ -1,16 +1,20 @@
 import * as api from './api.js';
 import { state, current, hasWidget, emit, on, usable } from './state.js';
-import { $, toast, copy, setProgress, LS, refreshTextures } from './util.js';
+import { $, esc, toast, copy, setProgress, LS, refreshTextures } from './util.js';
 import { STAGES, STAGE_ORDER } from './data.js';
 import { initChrome, show, currentView } from './views/chrome.js';
-import { initHome, renderHome, refreshServers, refreshStats, installPct } from './views/home.js';
+import { initHome, renderHome, refreshServers, refreshStats, installPct, startInstall, refreshPlaytime } from './views/home.js';
 import { initAccount, renderAccount, renderLogin, onAuthDone, refreshAuth } from './views/account.js';
 import { initSettings, renderSettings } from './views/settings.js';
 import { initFiles, renderFiles, syncBusy } from './views/files.js';
 import { initHistory, renderHistory, openDeath } from './views/history.js';
 import { initNews, renderNews } from './views/news.js';
+import { initMap, renderMap } from './views/map.js';
+import { initBackground, setGamePaused } from './bgfx.js';
+import { initPackMenu } from './views/packmenu.js';
 import { initFriends, renderMe, refreshFriends } from './views/friends.js';
 
+let crashPack = null, crashReport = '';
 const signed = usable; // connecté, ou mode officiel choisi
 
 async function loadPacks() {
@@ -26,15 +30,16 @@ function selectPack(id) {
   state.pack = id; LS.set('opaline.pack', id); state.stats = null; emit('packs');
   refreshStats(); refreshServers();
   if (currentView() === 'history' && !hasWidget(current(), 'classroomRun')) show('home');
+  if (currentView() === 'map' && !current()?.hasMap) show('home');
 }
 
-const VIEWS = { home: renderHome, account: renderAccount, settings: renderSettings, files: renderFiles, history: renderHistory, news: renderNews };
+const VIEWS = { home: renderHome, account: renderAccount, settings: renderSettings, files: renderFiles, history: renderHistory, map: renderMap, news: renderNews };
 
 async function applyAuth() {
   renderLogin(); renderMe();
   if (!signed()) { show('login', false); return; }
   if (currentView() === 'login') show('home');
-  refreshFriends(); await loadPacks(); refreshServers(); refreshStats();
+  refreshFriends(); await loadPacks(); refreshServers(); refreshStats(); refreshPlaytime();
 }
 
 function progressUi() {
@@ -53,22 +58,31 @@ function wireEvents() {
     if (p.ok) { toast('Pack prêt'); await reloadTextures(); await loadPacks(); refreshServers(); refreshStats(); } else toast(p.error || 'L’installation a échoué.');
   });
   api.listen('game://exited', (p) => {
-    state.inGame = false; emit('game');
-    if (p.code !== 0 && p.logTail) {
+    state.inGame = false; emit('game'); refreshPlaytime();
+    if (p.code !== 0 && (p.logTail || p.crash)) {
+      crashPack = p.packId;
       $('#crashT').textContent = `Le jeu s’est arrêté${p.code != null ? ` (code ${p.code})` : ''}`;
-      $('#crashLog').textContent = p.logTail; $('#crash').hidden = false; show('home');
+      const f = p.crash?.findings || [];
+      $('#crashList').innerHTML = f.length ? f.map((x) => `<li>${esc(x.text)}</li>`).join('') : '<li class="mute">Cause non identifiée : consulte la fin du journal ci-dessous.</li>';
+      crashReport = p.crash?.report || p.logTail || '';
+      $('#crashLog').textContent = p.logTail || ''; $('#crash').hidden = false; show('home');
       toast('Le jeu s’est arrêté de façon inattendue');
     }
   });
-  $('#crashCopy').addEventListener('click', () => copy($('#crashLog').textContent, 'Journal copié'));
+  $('#crashCopy').addEventListener('click', () => copy(crashReport, 'Rapport copié'));
+  $('#crashLogs').addEventListener('click', () => api.openFolder(crashPack, 'logs').catch((e) => toast(api.errMsg(e))));
+  $('#crashRepair').addEventListener('click', () => { $('#crash').hidden = true; startInstall(crashPack); });
   on('install', () => { progressUi(); syncBusy(); });
-  on('game', syncBusy);
+  on('game', () => { syncBusy(); setGamePaused(state.inGame); }); // fond animé en pause pendant le jeu
   on('selectPack', selectPack);
+  on('reloadPacks', async () => { await loadPacks(); refreshServers(); refreshStats(); });
   on('auth', applyAuth);
   on('openDeath', async (d) => { await openDeath(d); show('history'); });
   on('view', (v) => VIEWS[v]?.());
   on('packs', () => {
     $('#rail [data-view=history]').hidden = !hasWidget(current(), 'classroomRun');
+    $('#rail [data-view=map]').hidden = !current()?.hasMap;
+    if (currentView() === 'map') { if (current()?.hasMap) renderMap(); else show('home'); }
     if (currentView() === 'files') renderFiles();
     if (currentView() === 'news') renderNews();
   });
@@ -83,7 +97,8 @@ document.addEventListener('contextmenu', (e) => {
 });
 
 async function boot() {
-  initChrome(signed); initHome(); initAccount(); initSettings(); initFiles(); initHistory(); initNews(); initFriends();
+  initBackground(LS.get('opaline.bg') !== '0');
+  initChrome(signed); initHome(); initAccount(); initSettings(); initFiles(); initHistory(); initNews(); initMap(); initPackMenu(); initFriends();
   wireEvents();
   await Promise.all([
     api.appInfo().then((i) => { state.info = i; $('#appVer').textContent = 'Opaline ' + i.version; }).catch(() => {}),

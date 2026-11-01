@@ -490,11 +490,15 @@ fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_
     fs::create_dir_all(&mods_dir)?;
     let jar_name = mod_jar.map(|j| crate::safe::safe_file_name(j.file_name().and_then(|n| n.to_str()).unwrap_or("")).map(str::to_string)).transpose()?;
     let mut keep: HashSet<String> = jar_name.iter().cloned().collect();
+    // « Mes mods » : jamais supprimés par le ménage ci-dessous, recopiés à la fin.
+    keep.extend(crate::extramods::names(&dirs.instance()));
+    let mut pack_jars: HashSet<String> = jar_name.iter().cloned().collect();
     let mut jobs = Vec::new();
     for m in &pack.mods {
         let dir = safe_join(&dirs.instance(), &m.dir)?;
         if m.dir == "mods" {
             keep.insert(m.filename.clone());
+            pack_jars.insert(m.filename.clone());
         }
         jobs.push(Job { url: m.url.clone(), dest: safe_join(&dir, &m.filename)?, hash: m.hash.clone(), size: None });
     }
@@ -515,6 +519,7 @@ fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_
     if let (Some(j), Some(n)) = (mod_jar, &jar_name) {
         fs::copy(j, mods_dir.join(n)).with_context(|| format!("copie de {}", j.display()))?;
     }
+    crate::extramods::sync(&dirs.instance(), &pack_jars)?;
     // Ménage dans NOTRE instance uniquement : fichiers absents du pack (jars de mods ; zips de shaders et de
     // resource packs). Les fichiers de réglages (`*.zip.txt`) et les dossiers ne sont jamais supprimés.
     for (dir, ext) in [("mods", ".jar"), ("shaderpacks", ".zip"), ("resourcepacks", ".zip")] {
@@ -608,6 +613,35 @@ mod tests {
         assert!(mods.join("dir.jar").is_dir() && !mods.join("old.jar").exists() && mods.join("classroomrun-1.jar").is_file());
         // sans installed.ok, load_installed refuse
         assert!(load_installed(&dirs).is_err());
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn extra_mods_survive_a_simulated_pack_update() {
+        let d = tmp("extras");
+        let dirs = Dirs::new(d.join("root"));
+        let mods = dirs.instance().join("mods");
+        fs::create_dir_all(&mods).unwrap();
+        fs::write(mods.join("old-pack.jar"), b"x").unwrap();
+        crate::extramods::add_bytes(&dirs, "mon-mod.jar", b"PKperso").unwrap();
+        crate::extramods::sync(&dirs.instance(), &HashSet::new()).unwrap(); // état après un lancement
+        assert!(mods.join("mon-mod.jar").is_file());
+        let pack = Pack {
+            version: "2".into(),
+            index_hash: String::new(),
+            versions: packwiz::Versions { minecraft: "26.3".into(), fabric: Some("0.20.1".into()), quilt: None, forge: None, neoforge: None },
+            mods: vec![],
+            files: vec![],
+        };
+        let client = crate::download::http_client().unwrap();
+        install_mods(&client, &dirs, &pack, &d, None, &HashSet::new(), &Arc::default()).unwrap();
+        assert!(!mods.join("old-pack.jar").exists(), "le ménage du pack reste actif");
+        assert_eq!(fs::read(mods.join("mon-mod.jar")).unwrap(), b"PKperso");
+        assert!(dirs.instance().join("opaline-extra-mods/mon-mod.jar").is_file());
+        // supprimé de mods/ à la main : recopié par l'installation
+        fs::remove_file(mods.join("mon-mod.jar")).unwrap();
+        install_mods(&client, &dirs, &pack, &d, None, &HashSet::new(), &Arc::default()).unwrap();
+        assert!(mods.join("mon-mod.jar").is_file());
         fs::remove_dir_all(&d).unwrap();
     }
 }

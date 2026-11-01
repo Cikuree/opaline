@@ -16,6 +16,9 @@ pub struct SnapMod {
     pub file: String,
     pub hash_format: String,
     pub hash: String,
+    /// Projet Modrinth (absent des instantanés anciens et des mods hors Modrinth).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -76,6 +79,7 @@ pub fn snapshot_of(pack: &Pack) -> Snapshot {
                     file: m.filename.clone(),
                     hash_format: hash_format.into(),
                     hash: hash.into(),
+                    project_id: m.project_id.clone(),
                 }
             })
             .collect(),
@@ -153,6 +157,7 @@ mod tests {
             file: file.into(),
             hash_format: "sha1".into(),
             hash: hash.into(),
+            project_id: None,
         }
     }
 

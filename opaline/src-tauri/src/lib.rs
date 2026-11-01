@@ -4,8 +4,8 @@
 use anyhow::{Context, anyhow, bail};
 use base64::Engine;
 use opaline_core::config::{Config, Dirs, LaunchVia};
+use opaline_core::shell::{Action, Prefs, Shell};
 use opaline_core::download::Progress;
-use opaline_core::perf::PerfMode;
 use opaline_core::{auth, auth_browser, friends, head, identity, official, service, skins};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -13,8 +13,13 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
+
+mod presence;
 
 type CmdResult<T> = Result<T, String>;
 
@@ -65,6 +70,11 @@ struct Inner {
     skins_synced: AtomicBool,
     /// Dernière connexion refusée par Mojang (app Azure non approuvée) : l'interface l'explique (mémoire seulement : le prochain essai tranche).
     mojang_pending: AtomicBool,
+    /// État du bureau pendant les parties (fenêtre cachée, statut Discord) et fil Discord (absent sans identifiant d'application).
+    shell: Mutex<Shell>,
+    presence: Option<std::sync::mpsc::Sender<presence::Message>>,
+    /// Chemins déposés sur la fenêtre (événement natif) : seuls ceux-là peuvent être ajoutés à Mes mods par chemin.
+    dropped: Mutex<HashSet<std::path::PathBuf>>,
 }
 
 #[derive(Clone)]
@@ -102,6 +112,23 @@ impl S {
         Ok(session.access_token().to_string())
     }
 
+    /// Exécute les actions décidées par la machine à états (statut Discord ; fenêtre dans la zone de notification).
+    fn desktop(&self, app: &AppHandle, f: impl FnOnce(&mut Shell, Prefs) -> Vec<Action>) {
+        let c = self.config();
+        let actions = f(&mut self.0.shell.lock().unwrap(), Prefs { tray: c.tray_on_game, discord: c.discord_presence });
+        for a in actions {
+            match a {
+                Action::Presence(p) => {
+                    if let Some(tx) = &self.0.presence {
+                        let _ = tx.send(p);
+                    }
+                }
+                Action::Hide => hide_to_tray(app, self.clone()),
+                Action::Show => show_main(app, None),
+            }
+        }
+    }
+
     fn sync_skins_once(&self) {
         if self.0.skins_synced.swap(true, Ordering::SeqCst) {
             return;
@@ -112,6 +139,58 @@ impl S {
             let _ = skins::sync_current(&c, &s.0.svc.skins, &token, &skins::Wardrobe::new(s.0.root.skins()));
         });
     }
+}
+
+/// Cache la fenêtre derrière une icône de la zone de notification (menu « Afficher Opaline » / « Quitter »).
+/// Si l'icône ne peut pas être créée, la fenêtre reste visible : on ne la cache jamais sans moyen de la rappeler.
+fn hide_to_tray(app: &AppHandle, s: S) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let app = &handle;
+        let built = (|| -> tauri::Result<()> {
+            let menu = Menu::with_items(app, &[&MenuItem::with_id(app, "show", "Afficher Opaline", true, None::<&str>)?, &MenuItem::with_id(app, "quit", "Quitter", true, None::<&str>)?])?;
+            let (s1, s2) = (s.clone(), s.clone());
+            let mut b = TrayIconBuilder::with_id("main")
+                .tooltip("Opaline")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(move |app, e| match e.id.as_ref() {
+                    "show" => show_main(app, Some(&s1)),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(move |tray, e| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = e {
+                        show_main(tray.app_handle(), Some(&s2));
+                    }
+                });
+            if let Some(i) = app.default_window_icon() {
+                b = b.icon(i.clone());
+            }
+            b.build(app).map(|_| ())
+        })();
+        if built.is_ok()
+            && let Some(w) = app.get_webview_window("main")
+        {
+            let _ = w.hide();
+        }
+    });
+}
+
+/// Réaffiche la fenêtre et retire l'icône. `user` : demande de l'utilisateur pendant la partie (informe la machine à états).
+fn show_main(app: &AppHandle, user: Option<&S>) {
+    if let Some(s) = user {
+        s.0.shell.lock().unwrap().user_shown();
+    }
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        handle.remove_tray_by_id("main");
+        if let Some(w) = handle.get_webview_window("main") {
+            let _ = w.unminimize();
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+    });
 }
 
 #[derive(Serialize, Clone)]
@@ -169,14 +248,50 @@ async fn app_update_install(app: AppHandle, state: State<'_, S>) -> CmdResult<()
     Ok(())
 }
 
+/// Active ou désactive « Plein écran fenêtré » dans tous les packs installés qui ne sont ni en jeu ni en installation (les autres
+/// sont traités à leur prochain lancement), en tâche de fond ; `borderless://done` à la fin. Les erreurs (hors ligne) sont ignorées.
+fn sync_borderless(app: AppHandle, s: S, on: bool) {
+    tauri::async_runtime::spawn(async move {
+        let s2 = s.clone();
+        let _ = s
+            .blocking(move |root| {
+                let busy: HashSet<String> = {
+                    let a = s2.0.activity.lock().unwrap();
+                    a.running.union(&a.installing).cloned().collect()
+                };
+                for e in service::packs(root)?.iter().filter(|e| !busy.contains(&e.id)) {
+                    let _ = service::borderless_sync(root, e, on);
+                }
+                Ok(())
+            })
+            .await;
+        let _ = app.emit("borderless://done", json!({}));
+    });
+}
+
+/// Issues par pack du « Plein écran fenêtré » : `{packId: "installed" | "provided" | "noVersion" | "incompatible"}`.
+#[tauri::command]
+async fn borderless_status(state: State<'_, S>) -> CmdResult<std::collections::BTreeMap<String, String>> {
+    state.blocking(|r| Ok(service::borderless_status(r))).await
+}
+
 #[tauri::command]
 async fn settings_get(state: State<'_, S>) -> CmdResult<service::SettingsView> {
     state.blocking(|r| Ok(service::settings_get(r))).await
 }
 
 #[tauri::command]
-async fn settings_set(state: State<'_, S>, perf_mode: Option<PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>, launch_via: Option<LaunchVia>) -> CmdResult<service::SettingsView> {
-    state.blocking(move |r| service::settings_set(r, perf_mode, memory_mb, no_remember, launch_via)).await
+async fn settings_set(app: AppHandle, state: State<'_, S>, patch: service::SettingsPatch) -> CmdResult<service::SettingsView> {
+    let discord_off = patch.discord_presence == Some(false);
+    let borderless = patch.borderless;
+    let v = state.blocking(move |r| service::settings_set(r, patch)).await?;
+    if discord_off && let Some(tx) = &state.0.presence {
+        let _ = tx.send(None); // statut effacé tout de suite, même en cours de partie
+    }
+    if let Some(on) = borderless {
+        sync_borderless(app, state.inner().clone(), on);
+    }
+    Ok(v)
 }
 
 // ---------- Authentification ----------
@@ -426,10 +541,102 @@ async fn pack_mods(state: State<'_, S>, id: String) -> CmdResult<Vec<opaline_cor
 }
 
 #[tauri::command]
+async fn backups_list(state: State<'_, S>, id: String) -> CmdResult<Vec<opaline_core::backup::BackupView>> {
+    state.blocking(move |r| Ok(opaline_core::backup::list(&r.for_pack(&id)?))).await
+}
+
+/// Restaure une sauvegarde de mondes (le `saves/` actuel est d'abord sauvegardé). Refusé pendant le jeu ou une installation du pack.
+#[tauri::command]
+async fn backup_restore(state: State<'_, S>, id: String, backup_id: String) -> CmdResult<()> {
+    {
+        let mut a = state.0.activity.lock().unwrap();
+        if a.running.contains(&id) || a.installing.contains(&id) || a.installing.contains(UPDATING) {
+            return Err("Ferme le jeu et attends la fin des installations avant de restaurer".into());
+        }
+        a.installing.insert(id.clone()); // réserve le pack : JOUER est refusé pendant la restauration
+    }
+    let id2 = id.clone();
+    let r = state.blocking(move |r| opaline_core::backup::restore(&r.for_pack(&id2)?, &backup_id, friends::now_secs())).await;
+    state.0.activity.lock().unwrap().installing.remove(&id);
+    r
+}
+
+// ---------- Mes mods ----------
+
+/// Modifie « Mes mods » d'un pack : refusé pendant le jeu ou une installation de ce pack (le pack est réservé pendant l'opération).
+async fn exclusive<T: Send + 'static>(s: &S, id: String, f: impl FnOnce(&Dirs) -> anyhow::Result<T> + Send + 'static) -> CmdResult<T> {
+    {
+        let mut a = s.0.activity.lock().unwrap();
+        if a.running.contains(&id) || a.installing.contains(&id) || a.installing.contains(UPDATING) {
+            return Err("Ferme le jeu et attends la fin des installations avant cette modification".into());
+        }
+        a.installing.insert(id.clone());
+    }
+    let r = s.blocking(f).await;
+    s.0.activity.lock().unwrap().installing.remove(&id);
+    r
+}
+
+/// Désinstalle le pack : mondes sauvegardés puis instance supprimée. Refusé pendant le jeu, une installation ou avec un monde ouvert.
+#[tauri::command]
+async fn pack_uninstall(state: State<'_, S>, id: String) -> CmdResult<()> {
+    exclusive(&state, id.clone(), move |r| service::uninstall_pack(r, &id)).await
+}
+
+#[tauri::command]
+async fn extra_mods_list(state: State<'_, S>, id: String) -> CmdResult<Vec<opaline_core::extramods::ExtraMod>> {
+    state.blocking(move |r| service::extra_mods_list(r, &id)).await
+}
+
+/// Glisser-déposer : chemin d'un `.jar` (copié dans `opaline-extra-mods/`, nom validé).
+#[tauri::command]
+async fn extra_mod_add(state: State<'_, S>, id: String, path: String) -> CmdResult<String> {
+    // Un chemin que le webview n'a pas reçu par un vrai glisser-déposer est refusé (l'interface ne peut pas lire n'importe quel fichier).
+    if !state.0.dropped.lock().unwrap().remove(std::path::Path::new(&path)) {
+        return Err("Fichier non reconnu : dépose-le sur la fenêtre d'Opaline".into());
+    }
+    exclusive(&state, id.clone(), move |r| opaline_core::extramods::add_path(&r.for_pack(&id)?, std::path::Path::new(&path))).await
+}
+
+/// Sélecteur de fichier de l'interface : contenu du jar en base64.
+#[tauri::command]
+async fn extra_mod_import(state: State<'_, S>, id: String, name: String, data_base64: String) -> CmdResult<String> {
+    exclusive(&state, id.clone(), move |r| {
+        if data_base64.len() as u64 > opaline_core::extramods::MAX_JAR_BYTES * 4 / 3 + 16 {
+            bail!("fichier trop lourd (200 Mo maximum)");
+        }
+        let bytes = base64::engine::general_purpose::STANDARD.decode(data_base64.trim()).map_err(|_| anyhow!("fichier illisible"))?;
+        opaline_core::extramods::add_bytes(&r.for_pack(&id)?, &name, &bytes)
+    })
+    .await
+}
+
+/// Retire un mod perso et les dépendances automatiques qui ne servent plus ; renvoie les fichiers retirés.
+#[tauri::command]
+async fn extra_mod_remove(state: State<'_, S>, id: String, file: String) -> CmdResult<Vec<String>> {
+    exclusive(&state, id.clone(), move |r| opaline_core::extramods::remove(&r.for_pack(&id)?, &file)).await
+}
+
+#[tauri::command]
+async fn modrinth_search(state: State<'_, S>, id: String, query: String) -> CmdResult<Vec<opaline_core::modrinth::Hit>> {
+    state.blocking(move |r| service::extra_mod_search(r, &id, &query, &opaline_core::modrinth::Http::default_api()?)).await
+}
+
+#[tauri::command]
+async fn modrinth_add(state: State<'_, S>, id: String, project_id: String) -> CmdResult<opaline_core::extramods::AddResult> {
+    exclusive(&state, id.clone(), move |r| service::extra_mod_add_modrinth(r, &id, &project_id, &opaline_core::modrinth::Http::default_api()?)).await
+}
+
+#[tauri::command]
 async fn open_folder(app: AppHandle, state: State<'_, S>, id: String, kind: String) -> CmdResult<()> {
     let path = state
         .blocking(move |r| {
             let inst = r.for_pack(&id)?.instance();
+            if kind == "backups" {
+                let dir = r.for_pack(&id)?.backups();
+                std::fs::create_dir_all(&dir)?;
+                return Ok(dir);
+            }
             if !inst.is_dir() {
                 bail!("ce pack n'est pas installé");
             }
@@ -443,6 +650,46 @@ async fn open_folder(app: AppHandle, state: State<'_, S>, id: String, kind: Stri
         })
         .await?;
     app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|_| "Impossible d'ouvrir le dossier".to_string())
+}
+
+/// Carte intégrée à la vue « Carte » : adresse résolue et sonde (joignable ? intégrable ?).
+#[tauri::command]
+async fn map_info(state: State<'_, S>, id: String) -> CmdResult<service::MapInfo> {
+    state.blocking(move |r| service::map_info(r, &id)).await
+}
+
+/// Ouvre la carte du serveur (BlueMap...) dans une fenêtre séparée vers l'URL externe du catalogue. Cette fenêtre n'a aucune capability
+/// (`capabilities/default.json` ne vise que `main`) et le gestionnaire de commandes refuse tout appel venant d'une autre fenêtre.
+#[tauri::command]
+async fn open_map(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<()> {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let (name, url) = state.blocking(move |r| service::map_target(r, &id)).await?;
+    let url: tauri::Url = url.parse().map_err(|_| "Adresse de carte invalide".to_string())?;
+    // Une seule carte à la fois ; libellé neuf à chaque ouverture (la fermeture d'une fenêtre est asynchrone).
+    for (label, w) in app.webview_windows() {
+        if label.starts_with("map-") {
+            let _ = w.close();
+        }
+    }
+    let label = format!("map-{}", N.fetch_add(1, Ordering::Relaxed));
+    WebviewWindowBuilder::new(&app, label, WebviewUrl::External(url)).title(format!("Carte – {name}")).inner_size(1100.0, 720.0).build().map(|_| ()).map_err(|_| "Impossible d'ouvrir la carte".to_string())
+}
+
+/// Copie des réglages (touches, souris, FOV, son...) d'un pack vers un autre ; refusée pendant le jeu ou une installation du pack de destination.
+#[tauri::command]
+async fn settings_copy(state: State<'_, S>, from: String, to: String, categories: Vec<String>) -> CmdResult<usize> {
+    exclusive(&state, to.clone(), move |r| opaline_core::prefs::copy_options(&r.for_pack(&from)?, &r.for_pack(&to)?, &categories, friends::now_secs())).await
+}
+
+#[tauri::command]
+async fn shaders_get(state: State<'_, S>, id: String) -> CmdResult<opaline_core::prefs::ShaderView> {
+    state.blocking(move |r| Ok(opaline_core::prefs::shaders_get(&r.for_pack(&id)?))).await
+}
+
+/// Choisit le shader du pack (`name` absent : aucun) ; refusé pendant le jeu (Iris réécrit son fichier en quittant).
+#[tauri::command]
+async fn shader_set(state: State<'_, S>, id: String, name: Option<String>) -> CmdResult<()> {
+    exclusive(&state, id.clone(), move |r| opaline_core::prefs::shader_set(&r.for_pack(&id)?, name.as_deref())).await
 }
 
 #[tauri::command]
@@ -493,7 +740,7 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
             let e = service::entry(root, &id2)?;
             let l = service::launch_pack(root, &e, &cfg, &session)?;
             *s2.0.last_server.lock().unwrap() = Some(l.server.clone()).filter(|a| !a.is_empty());
-            Ok((l, session.access_token().to_string()))
+            Ok((l, session.access_token().to_string(), e.name))
         })
         .await;
     match launched {
@@ -501,17 +748,30 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
             s.0.activity.lock().unwrap().running.remove(&id);
             Ok(refused(reason, "direct"))
         }
-        Ok((mut l, token)) => {
-            let listed = l.server_listed;
+        Ok((mut l, token, name)) => {
+            let (listed, joining) = (l.server_listed, l.joining);
+            let since = std::time::SystemTime::now();
+            let started = std::time::Instant::now();
+            s.desktop(&app, |sh, p| sh.game_started(&id, &name, friends::now_secs(), p));
             std::thread::spawn(move || {
                 let code = l.child.wait().ok().and_then(|st| st.code());
+                let _ = opaline_core::playtime::record(&s.0.root, &id, started.elapsed().as_secs(), friends::now_secs());
                 let tail = service::log_tail(&l.log, &token, &l.server, &s.0.root, 40);
+                // Code non nul : résumé lisible (latest.log + rapport de crash de cette session), sans jeton ni adresse.
+                let crash = (code != Some(0)).then(|| service::crash_view(&s.0.root, &id, code, tail.as_deref(), since, &token, &l.server).ok()).flatten();
                 s.0.activity.lock().unwrap().running.remove(&id);
-                let _ = app.emit("game://exited", json!({ "packId": id, "code": code, "logTail": tail }));
+                s.desktop(&app, |sh, p| sh.game_exited(&id, p));
+                let _ = app.emit("game://exited", json!({ "packId": id, "code": code, "logTail": tail, "crash": crash }));
             });
-            Ok(json!({ "started": true, "reason": null, "serverListed": listed, "via": "direct" }))
+            Ok(json!({ "started": true, "reason": null, "serverListed": listed, "via": "direct", "joining": joining }))
         }
     }
+}
+
+/// Ferme le Launcher Minecraft (processus du launcher seulement) ; l'interface relance ensuite `play`. Refusé si une partie tourne.
+#[tauri::command]
+async fn official_close_launcher(state: State<'_, S>) -> CmdResult<()> {
+    state.blocking(service::close_official_launcher).await
 }
 
 async fn play_official(s: S, id: String) -> Value {
@@ -536,6 +796,12 @@ async fn play_official(s: S, id: String) -> Value {
             json!({ "started": true, "reason": null, "serverListed": l.server_listed, "via": "official", "message": message })
         }
     }
+}
+
+/// Temps de jeu mesuré par Opaline (lancement direct) : `{<packId>: {totalSecs, lastPlayed}}`, `lastPlayed` en secondes Unix.
+#[tauri::command]
+async fn playtime(state: State<'_, S>) -> CmdResult<std::collections::BTreeMap<String, opaline_core::playtime::Playtime>> {
+    state.blocking(|r| Ok(opaline_core::playtime::load(r))).await
 }
 
 #[tauri::command]
@@ -625,6 +891,37 @@ async fn player_head(state: State<'_, S>, uuid: String) -> CmdResult<Value> {
         .await
 }
 
+/// Relevé périodique des serveurs des packs installés : notification quand l'un passe de hors ligne à en ligne (réglage
+/// `notifyServer`). Le premier relevé ne notifie jamais ; aucune notification pour les connexions de joueurs.
+fn watch_servers(s: S, app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut watch = service::ServerWatch::new();
+        loop {
+            // Relevé à chaque tour (même réglage coupé) pour que la réactivation ne notifie pas un état ancien.
+            let s2 = s.clone();
+            if let Ok(obs) = tauri::async_runtime::spawn_blocking(move || service::observe_servers(&s2.0.root)).await {
+                for name in service::watch_step(&mut watch, &obs) {
+                    if s.config().notify_server {
+                        let _ = app.notification().builder().title("Opaline").body(format!("{name} : le serveur est en ligne")).show();
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(90)).await;
+        }
+    });
+}
+
+/// Les commandes de l'application ne répondent qu'à la fenêtre principale (jamais à une fenêtre de carte vers un site externe).
+fn guarded(h: impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static) -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
+    move |inv| {
+        if inv.message.webview().label() != "main" {
+            inv.resolver.reject("accès refusé");
+            return true;
+        }
+        h(inv)
+    }
+}
+
 pub fn run() {
     run_with(Services::default())
 }
@@ -642,16 +939,42 @@ pub fn run_with(svc: Services) {
         last_server: Mutex::default(),
         skins_synced: AtomicBool::new(false),
         mojang_pending: AtomicBool::new(false),
+        shell: Mutex::default(),
+        presence: presence::start(),
+        dropped: Mutex::default(),
     }));
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(state.clone())
         .setup(move |app| {
+            // Premier lancement seulement : mode et mémoire d'après la RAM et le GPU (échec ignoré : les valeurs par défaut restent).
+            // Réglage d'après la RAM tout de suite (la fenêtre n'attend rien) ; le GPU (5 s au plus) affine ensuite, sans fenêtre console.
+            let ram = opaline_core::sysmem::total_ram_mb();
+            if opaline_core::autotune::first_run(&state.0.root, ram, || None).unwrap_or(false) {
+                let root = state.0.root.clone();
+                std::thread::spawn(move || {
+                    let _ = opaline_core::autotune::refine(&root, ram, opaline_core::autotune::detect_gpu_timeout(Duration::from_secs(5)));
+                });
+            }
+            let root = state.0.root.clone();
+            std::thread::spawn(move || service::clean_trash(&root)); // désinstallation interrompue
             // Le dossier de données peut être surchargé (OPALINE_HOME) : l'asset protocol y est alors autorisé à l'exécution.
             let tex = state.0.root.textures();
             std::fs::create_dir_all(&tex)?;
             app.asset_protocol_scope().allow_directory(&tex, true)?;
             // Textures du client.jar : tâche de fond, sous le verrou d'installation (pas de doublon avec une installation en cours).
+            watch_servers(state.clone(), app.handle().clone());
+            if let Some(w) = app.get_webview_window("main") {
+                let s = state.clone();
+                w.on_window_event(move |e| {
+                    if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = e {
+                        let mut d = s.0.dropped.lock().unwrap();
+                        d.clear(); // seul le dernier dépôt compte
+                        d.extend(paths.iter().cloned());
+                    }
+                });
+            }
             let (s, app) = (state.clone(), app.handle().clone());
             tauri::async_runtime::spawn(async move {
                 let _guard = s.0.install_lock.lock().await;
@@ -662,7 +985,7 @@ pub fn run_with(svc: Services) {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(guarded(tauri::generate_handler![
             app_info,
             app_update_install,
             auth_status,
@@ -676,13 +999,30 @@ pub fn run_with(svc: Services) {
             pack_changelog,
             pack_mods,
             pack_repair,
+            pack_uninstall,
             play,
+            official_close_launcher,
             server_status,
+            playtime,
             run_stats,
             run_history,
             settings_get,
+            borderless_status,
             settings_set,
             open_folder,
+            open_map,
+            settings_copy,
+            shaders_get,
+            shader_set,
+            map_info,
+            backups_list,
+            extra_mods_list,
+            extra_mod_add,
+            extra_mod_import,
+            extra_mod_remove,
+            modrinth_search,
+            modrinth_add,
+            backup_restore,
             textures_dir,
             skins_list,
             skin_import,
@@ -693,7 +1033,7 @@ pub fn run_with(svc: Services) {
             cape_set,
             friends,
             player_head
-        ])
+        ]))
         .run(tauri::generate_context!())
         .expect("erreur au démarrage d'Opaline");
 }

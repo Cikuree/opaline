@@ -5,9 +5,9 @@ use crate::catalog::{self, PackEntry, PackView};
 use crate::changelog::{self, Changelog, ModView};
 use crate::config::{self, Config, Dirs};
 use crate::download::{self, Progress};
-use crate::{friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update};
+use crate::{backup, extramods, friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update};
 use anyhow::{Context, Result, bail};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::Arc;
@@ -34,6 +34,46 @@ pub fn packs_list(root: &Dirs) -> Result<Vec<PackView>> {
             Ok(e.view(install::installed_hash(&d).as_deref(), d.install_marker().is_file()))
         })
         .collect()
+}
+
+/// Dossier temporaire de suppression d'une instance (`instances/.<id>.trash`).
+fn trash_dir(dirs: &Dirs) -> PathBuf {
+    dirs.root.join("instances").join(format!(".{}.trash", dirs.pack))
+}
+
+/// Au démarrage : supprime les `.trash` laissés par une désinstallation interrompue.
+pub fn clean_trash(root: &Dirs) {
+    for e in std::fs::read_dir(root.root.join("instances")).into_iter().flatten().flatten() {
+        let n = e.file_name().to_string_lossy().into_owned();
+        if n.starts_with('.') && n.ends_with(".trash") {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
+}
+
+/// Désinstalle un pack : sauvegarde de `saves/` et `screenshots/` (`backups/<pack>/`, conservée ; refusée si un monde est ouvert),
+/// puis suppression atomique de l'instance de ce pack seulement : renommée d'un bloc en `.trash` (échec si un fichier est
+/// verrouillé, donc jamais de suppression à moitié), puis effacée. `shared/`, `backups/` et les autres packs ne sont jamais touchés.
+/// L'appelant a déjà refusé si le jeu ou une installation de ce pack tourne ; on refuse aussi si un jeu du Launcher y tourne.
+pub fn uninstall_pack(root: &Dirs, id: &str) -> Result<()> {
+    let dirs = root.for_pack(id)?;
+    let inst = dirs.instance();
+    if !inst.is_dir() {
+        bail!("ce pack n'est pas installé");
+    }
+    if official::instance_in_use(&inst) {
+        bail!("Le pack est utilisé : ferme Minecraft");
+    }
+    let trash = trash_dir(&dirs);
+    let _ = std::fs::remove_dir_all(&trash);
+    // D'abord le renommage d'un bloc : un fichier verrouillé le fait échouer avant toute sauvegarde ou suppression.
+    std::fs::rename(&inst, &trash).map_err(|_| anyhow::anyhow!("Le pack est utilisé : ferme Minecraft"))?;
+    if let Err(e) = backup::backup_for_uninstall(&dirs, &trash, friends::now_secs()) {
+        let _ = std::fs::rename(&trash, &inst); // monde ouvert ou copie impossible : l'instance est remise en place
+        return Err(e);
+    }
+    let _ = std::fs::remove_dir_all(&trash); // échec : `clean_trash` réessaie au prochain démarrage
+    Ok(())
 }
 
 /// Installe ou met à jour le pack (revérifie tout : sert aussi de réparation). `local_pack` : dossier packwiz de dev.
@@ -69,6 +109,8 @@ fn install_inner(root: &Dirs, id: &str, progress: &Arc<Progress>, local_pack: Op
         endpoints: endpoints.clone(),
         overrides: e.overrides.clone(),
     };
+    // Avant toute écriture dans l'instance : copie des mondes (l'appelant a déjà refusé si le jeu de ce pack tourne).
+    backup::backup_saves(&dirs, friends::now_secs())?;
     let installed = install::install(&client, &params, progress)?;
     progress.set_stage("textures");
     // Cosmétique : un échec ici n'invalide pas l'installation.
@@ -88,6 +130,55 @@ pub fn changelog(root: &Dirs, id: &str) -> Result<Changelog> {
         packwiz::fetch_remote_pack_in(&download::http_client()?, &work, &e.pack).and_then(|dir| packwiz::load_pack(&dir)).map(|p| changelog::snapshot_of(&p));
     let _ = std::fs::remove_dir_all(&work);
     Ok(changelog::diff(&installed, &published?))
+}
+
+// ---------- Mes mods ----------
+
+pub fn extra_mods_list(root: &Dirs, id: &str) -> Result<Vec<extramods::ExtraMod>> {
+    Ok(extramods::list(&root.for_pack(id)?))
+}
+
+pub fn extra_mod_search(root: &Dirs, id: &str, query: &str, api: &dyn crate::modrinth::Api) -> Result<Vec<crate::modrinth::Hit>> {
+    let e = entry(root, id)?;
+    anyhow::ensure!(!query.trim().is_empty() && query.len() <= 100, "saisis un nom de mod");
+    api.search(query.trim(), &e.mc, &e.loader)
+}
+
+/// Ajoute un projet Modrinth (et ses dépendances requises) à Mes mods.
+pub fn extra_mod_add_modrinth(root: &Dirs, id: &str, project: &str, api: &dyn crate::modrinth::Api) -> Result<extramods::AddResult> {
+    let e = entry(root, id)?;
+    let dirs = root.for_pack(id)?;
+    anyhow::ensure!(dirs.install_marker().is_file(), "installe le pack avant d'ajouter des mods");
+    let client = download::http_client()?;
+    extramods::add_modrinth(&dirs, api, project, &e.mc, &e.loader, &|r, dest| extramods::download_job(&client, r, dest))
+}
+
+/// « Plein écran fenêtré » pour un pack : active (installe et configure Cubes Without Borders) ou désactive. Best effort : toute
+/// erreur (hors ligne...) est renvoyée mais ne doit jamais empêcher de lancer le jeu. Renvoie l'issue (`borderless::INSTALLED`...).
+pub fn borderless_sync(root: &Dirs, e: &PackEntry, enabled: bool) -> Result<Option<String>> {
+    let dirs = root.for_pack(&e.id)?;
+    if !dirs.install_marker().is_file() {
+        return Ok(None);
+    }
+    if !enabled {
+        crate::borderless::disable(&dirs)?;
+        return Ok(None);
+    }
+    let client = download::http_client()?;
+    let api = crate::modrinth::Http::default_api()?;
+    crate::borderless::enable(&dirs, &api, &e.mc, &e.loader, &|r, dest| extramods::download_job(&client, r, dest)).map(Some)
+}
+
+/// Issues mémorisées par pack installé : `{packId: "installed" | "provided" | "noVersion" | "incompatible"}`.
+pub fn borderless_status(root: &Dirs) -> std::collections::BTreeMap<String, String> {
+    let mut m = std::collections::BTreeMap::new();
+    for e in std::fs::read_dir(root.root.join("instances")).into_iter().flatten().flatten() {
+        let id = e.file_name().to_string_lossy().into_owned();
+        if let Some(s) = root.for_pack(&id).ok().and_then(|d| crate::borderless::state(&d)) {
+            m.insert(id, s.state);
+        }
+    }
+    m
 }
 
 pub fn pack_mods(root: &Dirs, id: &str) -> Result<Vec<ModView>> {
@@ -116,6 +207,52 @@ pub fn textures_dir(root: &Dirs) -> Option<PathBuf> {
     std::fs::read_dir(&d).ok()?.flatten().any(|e| e.path().extension().is_some_and(|x| x == "png")).then_some(d)
 }
 
+// ---------- Carte du serveur ----------
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MapInfo {
+    pub name: String,
+    pub url: String,
+    /// Le site a répondu.
+    pub reachable: bool,
+    /// Aucun en-tête n'interdit l'intégration dans un cadre (`X-Frame-Options`, `frame-ancestors`).
+    pub embeddable: bool,
+}
+
+/// Nom du pack et URL de carte à ouvrir (nom court Tailscale complété par le suffixe MagicDNS connu).
+pub fn map_target(root: &Dirs, id: &str) -> Result<(String, String)> {
+    let e = entry(root, id)?;
+    let raw = e.server.and_then(|s| s.map).context("ce serveur n'a pas de carte")?;
+    let url = catalog::resolve_map(&raw, magic_suffix().as_deref()).context("adresse de carte invalide")?;
+    Ok((e.name, url))
+}
+
+/// Le site autorise-t-il l'intégration dans un cadre ? Non si `X-Frame-Options` est présent ou si un `frame-ancestors` n'est pas `*`.
+pub fn frame_allowed(xfo: Option<&str>, csp: &[String]) -> bool {
+    if xfo.is_some_and(|v| !v.trim().is_empty()) {
+        return false;
+    }
+    // Tous les en-têtes CSP : un `frame-ancestors` autre que `*` (liste d'origines, 'self', 'none') refuse l'intégration.
+    csp.iter().flat_map(|c| c.split(';')).map(str::trim).filter_map(|d| d.strip_prefix("frame-ancestors")).all(|a| a.split_whitespace().any(|t| t == "*"))
+}
+
+/// Sonde la carte (un GET, corps ignoré) : joignable, et intégrable ou non. Sert à choisir entre le cadre et un message clair.
+pub fn map_info(root: &Dirs, id: &str) -> Result<MapInfo> {
+    let (name, url) = map_target(root, id)?;
+    // Sans redirection : on ne suit jamais un site vers un autre hôte (la redirection compte comme « répond »).
+    let client = reqwest::blocking::Client::builder().user_agent(concat!("Opaline/", env!("CARGO_PKG_VERSION"))).timeout(Duration::from_secs(10)).redirect(reqwest::redirect::Policy::none()).build()?;
+    Ok(match client.get(&url).send() {
+        Ok(r) if !r.status().is_server_error() => {
+            let csp: Vec<String> = r.headers().get_all("content-security-policy").iter().filter_map(|v| v.to_str().ok()).map(str::to_string).collect();
+            let xfo = r.headers().get("x-frame-options").and_then(|v| v.to_str().ok());
+            let embeddable = frame_allowed(xfo, &csp);
+            MapInfo { name, url, reachable: true, embeddable }
+        }
+        _ => MapInfo { name, url, reachable: false, embeddable: true },
+    })
+}
+
 // ---------- Réglages ----------
 
 #[derive(Serialize, Debug, PartialEq)]
@@ -125,12 +262,31 @@ pub struct SettingsView {
     pub memory_mb: u32,
     pub no_remember: bool,
     pub launch_via: crate::config::LaunchVia,
+    pub join_server: bool,
+    pub notify_server: bool,
+    pub discord_presence: bool,
+    pub tray_on_game: bool,
+    /// Mode et mémoire réglés automatiquement au premier lancement (et pas encore modifiés).
+    pub auto_tuned: bool,
+    pub borderless: bool,
     pub system_ram_mb: Option<u64>,
 }
 
 pub fn settings_get(root: &Dirs) -> SettingsView {
     let c = Config::load(root);
-    SettingsView { perf_mode: c.perf_mode, memory_mb: c.memory_mb, no_remember: c.no_remember, launch_via: c.launch_via, system_ram_mb: sysmem::total_ram_mb() }
+    SettingsView {
+        perf_mode: c.perf_mode,
+        memory_mb: c.memory_mb,
+        no_remember: c.no_remember,
+        launch_via: c.launch_via,
+        join_server: c.join_server,
+        notify_server: c.notify_server,
+        discord_presence: c.discord_presence,
+        tray_on_game: c.tray_on_game,
+        auto_tuned: c.auto_tuned,
+        borderless: c.borderless,
+        system_ram_mb: sysmem::total_ram_mb(),
+    }
 }
 
 /// Mémoire bornée : au moins 1 Go, au plus 75 % de la RAM physique (si connue).
@@ -139,20 +295,39 @@ pub fn clamp_memory(mb: u32, ram_mb: Option<u64>) -> u32 {
     mb.clamp(1024, max)
 }
 
-pub fn settings_set(root: &Dirs, mode: Option<perf::PerfMode>, memory_mb: Option<u32>, no_remember: Option<bool>, launch_via: Option<crate::config::LaunchVia>) -> Result<SettingsView> {
+/// Modifications demandées par l'interface : seuls les champs présents changent.
+#[derive(Deserialize, Default, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SettingsPatch {
+    pub perf_mode: Option<perf::PerfMode>,
+    pub memory_mb: Option<u32>,
+    pub no_remember: Option<bool>,
+    pub launch_via: Option<crate::config::LaunchVia>,
+    pub join_server: Option<bool>,
+    pub notify_server: Option<bool>,
+    pub discord_presence: Option<bool>,
+    pub tray_on_game: Option<bool>,
+    pub borderless: Option<bool>,
+}
+
+pub fn settings_set(root: &Dirs, p: SettingsPatch) -> Result<SettingsView> {
     let mut c = Config::load(root);
-    if let Some(m) = mode {
+    if let Some(m) = p.perf_mode {
         c.perf_mode = m;
     }
-    if let Some(m) = memory_mb {
+    if let Some(m) = p.memory_mb {
         c.memory_mb = clamp_memory(m, sysmem::total_ram_mb());
     }
-    if let Some(n) = no_remember {
-        c.no_remember = n;
+    if p.perf_mode.is_some() || p.memory_mb.is_some() {
+        c.auto_tuned = false; // choix de l'utilisateur : le message « réglé automatiquement » disparaît
     }
-    if let Some(v) = launch_via {
-        c.launch_via = v;
-    }
+    c.no_remember = p.no_remember.unwrap_or(c.no_remember);
+    c.launch_via = p.launch_via.unwrap_or(c.launch_via);
+    c.join_server = p.join_server.unwrap_or(c.join_server);
+    c.notify_server = p.notify_server.unwrap_or(c.notify_server);
+    c.discord_presence = p.discord_presence.unwrap_or(c.discord_presence);
+    c.tray_on_game = p.tray_on_game.unwrap_or(c.tray_on_game);
+    c.borderless = p.borderless.unwrap_or(c.borderless);
     c.save(root)?;
     Ok(settings_get(root))
 }
@@ -189,11 +364,13 @@ pub struct Launched {
     pub server: String,
     /// Le serveur du pack figure dans `servers.dat` (faux : pas de serveur, suffixe MagicDNS inconnu, ou écriture impossible).
     pub server_listed: bool,
+    /// Le jeu a reçu `--quickPlayMultiplayer` : il rejoint le serveur du pack au lieu de s'arrêter au menu principal.
+    pub joining: bool,
     pub log: PathBuf,
 }
 
-/// Lance le jeu jusqu'au menu principal (aucune connexion automatique, aucune vérification réseau). Si le pack a un
-/// serveur, il est d'abord ajouté à la liste Multijoueur de l'instance ; un échec de cet ajout ne bloque pas le lancement.
+/// Lance le jeu : menu principal, ou serveur du pack si `cfg.join_server` (Quick Play, aucune vérification réseau). Si le pack
+/// a un serveur, il est d'abord ajouté à la liste Multijoueur de l'instance ; un échec de cet ajout ne bloque pas le lancement.
 pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) -> Result<Launched> {
     if !e.supported() {
         bail!("ce pack n'est pas pris en charge par cette version d'Opaline");
@@ -204,7 +381,10 @@ pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) 
     let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?
         .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
     let env = mojang::Env::current(&[]);
-    let cmd = launch::build_command(&launch::LaunchInput {
+    let _ = borderless_sync(root, e, cfg.borderless); // hors ligne ou sans version compatible : on lance quand même
+    let _ = extramods::sync_for_launch(&dirs); // Mes mods : recopiés dans mods/ ; un échec ne bloque pas le lancement
+    let quick_play = cfg.join_server.then(|| e.server.as_ref().and_then(quick_play_target)).flatten();
+    let cmd = launch::build_command_with(&launch::LaunchInput {
         java: &inst.java,
         version: &inst.version,
         fabric: &inst.fabric,
@@ -212,9 +392,9 @@ pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) 
         session,
         memory_mb,
         env: &env,
-    })?;
+    }, quick_play.as_deref())?;
     let child = launch::spawn(&cmd, &dirs)?;
-    Ok(Launched { child, server, server_listed, log: dirs.instance().join("logs").join("launcher-game.log") })
+    Ok(Launched { child, server, server_listed, joining: quick_play.is_some(), log: dirs.instance().join("logs").join("launcher-game.log") })
 }
 
 pub struct OfficialLaunched {
@@ -225,8 +405,35 @@ pub struct OfficialLaunched {
     pub profile_name: String,
 }
 
-/// Message quand le Launcher officiel tourne déjà.
-pub const LAUNCHER_RUNNING: &str = "Ferme le Launcher Minecraft puis relance JOUER (il écraserait le profil Opaline)";
+/// Raison typée renvoyée par `play` quand le Launcher officiel tourne seul : l'interface propose de le fermer.
+pub const LAUNCHER_OPEN: &str = "officialLauncherOpen";
+/// Une partie lancée par le Launcher officiel tourne : rien n'est fermé.
+pub const OFFICIAL_GAME_RUNNING: &str = "Une partie est en cours dans le Launcher Minecraft : quitte le jeu d'abord";
+
+/// Si le Launcher tourne : erreur typée (`LAUNCHER_OPEN`) ou refus (`OFFICIAL_GAME_RUNNING`) ; `Ok` sinon.
+fn check_launcher(root: &Dirs, mc: &Path) -> Result<()> {
+    launcher_verdict(official::launcher_running(), || official::game_running(root, mc))
+}
+
+/// Launcher seul : proposer de le fermer ; une partie y tourne : refuser (le jeu n'est évalué que si le Launcher tourne).
+fn launcher_verdict(launcher_running: bool, game_running: impl FnOnce() -> bool) -> Result<()> {
+    if !launcher_running {
+        Ok(())
+    } else if game_running() {
+        bail!("{OFFICIAL_GAME_RUNNING}")
+    } else {
+        bail!("{LAUNCHER_OPEN}")
+    }
+}
+
+/// Ferme le Launcher Minecraft (jamais le jeu) après accord de l'utilisateur ; refusé si une partie tourne.
+pub fn close_official_launcher(root: &Dirs) -> Result<()> {
+    let mc = official::minecraft_dir().context("dossier .minecraft introuvable")?;
+    if official::game_running(root, &mc) {
+        bail!("{OFFICIAL_GAME_RUNNING}");
+    }
+    official::close_launcher()
+}
 
 /// Mode officiel : prépare la version `opaline-<pack>` et le profil du même nom dans le `.minecraft` du Launcher officiel (qui
 /// connecte le compte et lance le jeu), puis l'ouvre. `interact` : refuse si le Launcher tourne (il réécrirait
@@ -236,8 +443,8 @@ pub fn launch_official(root: &Dirs, e: &PackEntry, cfg: &Config, mc: &Path, inte
     if !e.supported() {
         bail!("ce pack n'est pas pris en charge par cette version d'Opaline");
     }
-    if interact && official::launcher_running() {
-        bail!("{LAUNCHER_RUNNING}");
+    if interact {
+        check_launcher(root, mc)?;
     }
     let profiles = official::profiles_path(mc)?;
     official::read_profiles(&profiles)?;
@@ -246,6 +453,8 @@ pub fn launch_official(root: &Dirs, e: &PackEntry, cfg: &Config, mc: &Path, inte
     let (server, server_listed) = e.server.as_ref().map(|s| list_entry(&dirs.instance(), &e.name, s)).unwrap_or_default();
     let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?
         .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
+    let _ = borderless_sync(root, e, cfg.borderless);
+    let _ = extramods::sync_for_launch(&dirs);
     let vid = official::version_id(&e.id);
     official::install_version(&dirs, mc, &inst.profile_id, &vid, &inst.fabric.libraries, inst.fabric.version_name.is_some())?;
     let profile_name = format!("Opaline · {}", e.name);
@@ -285,6 +494,12 @@ pub fn identity_set(root: &Dirs, name: &str, api: &str) -> Result<Option<Identit
     Ok(identity_get(root))
 }
 
+/// Adresse Quick Play du serveur (la même que dans la liste Multijoueur) ; `None` si le suffixe MagicDNS est inconnu.
+fn quick_play_target(s: &catalog::ServerInfo) -> Option<String> {
+    let suffix = if config::is_short_host(&s.host) { serverview::cached_magic_suffix() } else { None };
+    config::quick_play_addr(&s.host, s.port, suffix.as_deref())
+}
+
 /// Ajoute (ou met à jour) le serveur dans `servers.dat` ; renvoie son adresse (pour masquage des journaux) et si l'entrée y figure.
 /// Aucun appel à Tailscale : un nom court utilise le suffixe MagicDNS déjà connu ; inconnu, l'entrée n'est pas écrite cette fois-ci
 /// (nouvel essai au lancement suivant). Rien n'est loggé de l'adresse ; un échec n'empêche pas le lancement.
@@ -309,6 +524,64 @@ pub fn log_tail(log: &Path, token: &str, server: &str, root: &Dirs, max_lines: u
     let lines: Vec<&str> = text.lines().collect();
     let tail = lines[lines.len().saturating_sub(max_lines)..].join("\n");
     Some(sanitize_error(&launch::redact_text(&tail, token, Some(server)), root))
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CrashView {
+    pub findings: Vec<crate::crash::Finding>,
+    /// Nom du rapport de crash analysé (`crash-reports/<nom>`), s'il date de cette session.
+    pub crash_file: Option<String>,
+    /// Texte à copier : résumé + fin du journal, sans jeton, adresse ni chemin personnel.
+    pub report: String,
+}
+
+/// Fin du fichier (au plus `max` octets) : on se place avant la fin au lieu de tout lire.
+fn read_tail(p: &Path, max: usize) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(p).ok()?;
+    let len = f.metadata().ok()?.len();
+    f.seek(SeekFrom::Start(len.saturating_sub(max as u64))).ok()?;
+    let mut b = Vec::new();
+    f.take(max as u64).read_to_end(&mut b).ok()?;
+    Some(String::from_utf8_lossy(&b).into_owned())
+}
+
+/// Dernier `crash-reports/*.txt` modifié depuis `since`.
+fn latest_crash_report(instance: &Path, since: std::time::SystemTime) -> Option<(String, String)> {
+    let mut found: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(instance.join("crash-reports"))
+        .ok()?
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "txt"))
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .filter(|(t, _)| *t >= since)
+        .collect();
+    found.sort();
+    let (_, p) = found.pop()?;
+    Some((p.file_name()?.to_string_lossy().into_owned(), read_tail(&p, 512 * 1024)?))
+}
+
+/// Résumé lisible d'un plantage (code de sortie non nul) : `latest.log`, fin du journal déjà transmise et rapport de crash de cette session.
+pub fn crash_view(root: &Dirs, pack_id: &str, code: Option<i32>, log_tail: Option<&str>, since: std::time::SystemTime, token: &str, server: &str) -> Result<CrashView> {
+    let inst = root.for_pack(pack_id)?.instance();
+    let latest = read_tail(&inst.join("logs").join("latest.log"), 256 * 1024).unwrap_or_default();
+    let report = latest_crash_report(&inst, since);
+    let findings = crate::crash::analyze(&[&latest, log_tail.unwrap_or_default()], report.as_ref().map(|r| r.1.as_str()));
+    let clean = |t: &str| sanitize_error(&launch::redact_text(t, token, Some(server)), root);
+    let mut text = format!("Opaline : plantage du pack {pack_id} (code {})\n", code.map_or("inconnu".into(), |c| c.to_string()));
+    for f in &findings {
+        text += &format!("- {}\n", f.text);
+    }
+    if findings.is_empty() {
+        text += "Cause non identifiée.\n";
+    }
+    let last_lines = |t: &str| t.lines().rev().take(40).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
+    let tail = log_tail.map(str::to_string).unwrap_or_else(|| last_lines(&latest));
+    if !tail.is_empty() {
+        text += &format!("\n--- fin du journal ---\n{tail}\n");
+    }
+    let findings = findings.into_iter().map(|f| crate::crash::Finding { text: clean(&f.text), ..f }).collect();
+    Ok(CrashView { findings, crash_file: report.map(|r| r.0), report: clean(&text) })
 }
 
 /// Remplace tout mot qui est un nom d'hôte `*.ts.net` (avec ou sans port) par `<serveur>`.
@@ -385,6 +658,25 @@ pub fn run_history(root: &Dirs, id: &str, run: Option<u32>) -> Result<Option<ser
     stats_get(root, id, &run.map_or("history".to_string(), |n| format!("history/{n}")))
 }
 
+/// Dernier état connu (en ligne ou non) de chaque serveur de pack, pour détecter la transition hors ligne -> en ligne.
+pub type ServerWatch = std::collections::HashMap<String, bool>;
+
+/// Intègre un relevé `(id, nom du pack, en ligne)` et renvoie les noms des packs dont le serveur vient de passer de hors ligne à
+/// en ligne. Premier relevé d'un serveur (démarrage d'Opaline) : jamais de notification.
+pub fn watch_step(watch: &mut ServerWatch, observed: &[(String, String, bool)]) -> Vec<String> {
+    observed.iter().filter(|(id, _, now)| watch.insert(id.clone(), *now) == Some(false) && *now).map(|(_, name, _)| name.clone()).collect()
+}
+
+/// Relève (ping, Tailscale) les serveurs des packs installés. Une erreur de catalogue renvoie un relevé vide.
+pub fn observe_servers(root: &Dirs) -> Vec<(String, String, bool)> {
+    let Ok(entries) = packs(root) else { return Vec::new() };
+    entries
+        .iter()
+        .filter(|e| e.supported() && root.for_pack(&e.id).is_ok_and(|d| d.install_marker().is_file()))
+        .filter_map(|e| Some((e.id.clone(), e.name.clone(), serverview::check(e)?.0.online)))
+        .collect()
+}
+
 /// Relève les joueurs en ligne sur tous les serveurs des packs puis renvoie la liste mémorisée.
 pub fn friends_list(root: &Dirs) -> Result<Vec<friends::Friend>> {
     let mut seen = Vec::new();
@@ -418,18 +710,172 @@ mod tests {
     use super::*;
 
     #[test]
+    fn launcher_verdict_offers_close_or_refuses() {
+        assert!(launcher_verdict(false, || panic!("jeu non évalué sans Launcher")).is_ok());
+        assert_eq!(launcher_verdict(true, || false).unwrap_err().to_string(), LAUNCHER_OPEN);
+        assert_eq!(launcher_verdict(true, || true).unwrap_err().to_string(), OFFICIAL_GAME_RUNNING);
+    }
+
+    #[test]
+    fn frame_policy() {
+        let c = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(frame_allowed(None, &[]));
+        assert!(frame_allowed(None, &c(&["default-src 'self'; script-src 'self'"])));
+        assert!(!frame_allowed(Some("DENY"), &[]));
+        assert!(!frame_allowed(Some("SAMEORIGIN"), &[]));
+        assert!(!frame_allowed(None, &c(&["default-src 'self'; frame-ancestors 'none'"])));
+        assert!(!frame_allowed(None, &c(&["frame-ancestors 'self'"])));
+        assert!(frame_allowed(None, &c(&["frame-ancestors *"])));
+        assert!(!frame_allowed(None, &c(&["frame-ancestors https://opaline.example"]))); // tout sauf * refuse
+        assert!(!frame_allowed(None, &c(&["frame-ancestors *", "frame-ancestors 'none'"]))); // plusieurs en-têtes : le plus strict gagne
+    }
+
+    fn world(d: &Dirs, content: &str) {
+        std::fs::create_dir_all(d.instance().join("saves/Monde")).unwrap();
+        std::fs::write(d.instance().join("saves/Monde/level.dat"), content).unwrap();
+        std::fs::write(d.install_marker(), "ok").unwrap();
+    }
+
+    #[test]
+    fn uninstall_backs_up_saves_and_screenshots_then_removes_only_this_instance() {
+        let d = Dirs::new(std::env::temp_dir().join(format!("opaline-uninst-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&d.root);
+        let (a, b) = (d.for_pack("a").unwrap(), d.for_pack("b").unwrap());
+        world(&a, "x");
+        world(&b, "y");
+        std::fs::create_dir_all(a.instance().join("screenshots")).unwrap();
+        std::fs::write(a.instance().join("screenshots/s.png"), "png").unwrap();
+        std::fs::create_dir_all(d.libraries()).unwrap();
+        std::fs::write(d.libraries().join("lib.jar"), "j").unwrap();
+        // monde ouvert : refus (Windows : le renommage échoue d'abord), rien de supprimé, aucune sauvegarde parasite
+        let lock = std::fs::File::create(a.instance().join("saves/Monde/session.lock")).unwrap();
+        lock.lock().unwrap();
+        let e = uninstall_pack(&d, "a").unwrap_err().to_string();
+        assert!(e.contains("monde est ouvert") || e.contains("Le pack est utilisé"), "{e}");
+        assert!(a.install_marker().is_file() && backup::list(&a).is_empty());
+        drop(lock);
+        // un .trash résiduel est nettoyé
+        std::fs::create_dir_all(d.root.join("instances/.zzz.trash")).unwrap();
+        clean_trash(&d);
+        assert!(!d.root.join("instances/.zzz.trash").exists());
+        uninstall_pack(&d, "a").unwrap();
+        assert!(!a.instance().exists() && !trash_dir(&a).exists());
+        let l = backup::list(&a);
+        assert_eq!((l.len(), l[0].keep), (1, true), "copie de désinstallation conservée");
+        assert_eq!(std::fs::read_to_string(a.backups().join(&l[0].id).join("Monde/level.dat")).unwrap(), "x");
+        assert!(a.backups().join(&l[0].id).join(".screenshots/s.png").is_file());
+        assert!(b.install_marker().is_file() && d.libraries().join("lib.jar").is_file());
+        assert!(uninstall_pack(&d, "a").unwrap_err().to_string().contains("pas installé"));
+        assert!(uninstall_pack(&d, "../b").is_err());
+        // réinstallation puis plus de sauvegardes de mise à jour que la rotation n'en garde : la copie de désinstallation reste
+        for i in 0..5u64 {
+            world(&a, &format!("v{i}"));
+            std::fs::write(a.instance().join("saves/Monde/level.dat"), "z".repeat(i as usize + 2)).unwrap();
+            backup::backup_saves(&a, 1_900_000_000 + i * 100).unwrap();
+        }
+        let l = backup::list(&a);
+        assert_eq!(l.iter().filter(|x| x.keep).count(), 1);
+        assert_eq!(l.iter().filter(|x| !x.keep).count(), backup::KEEP, "la rotation ne compte pas la copie de désinstallation");
+        // la restaurer ne mélange pas les captures aux mondes
+        let keep = l.iter().find(|x| x.keep).unwrap().id.clone();
+        backup::restore(&a, &keep, 1_950_000_000).unwrap();
+        assert!(a.instance().join("saves/Monde/level.dat").is_file() && !a.instance().join("saves/.screenshots").exists());
+        std::fs::remove_dir_all(&d.root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn uninstall_is_refused_whole_when_a_file_is_locked() {
+        let d = Dirs::new(std::env::temp_dir().join(format!("opaline-uninst-lock-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&d.root);
+        let a = d.for_pack("a").unwrap();
+        world(&a, "x");
+        let open = std::fs::File::open(a.instance().join("saves/Monde/level.dat")).unwrap(); // fichier tenu ouvert (Windows : renommage impossible)
+        let e = uninstall_pack(&d, "a").unwrap_err().to_string();
+        assert!(e.contains("Le pack est utilisé"), "{e}");
+        assert!(a.instance().join("saves/Monde/level.dat").is_file() && a.install_marker().is_file());
+        drop(open);
+        uninstall_pack(&d, "a").unwrap();
+        std::fs::remove_dir_all(&d.root).unwrap();
+    }
+
+    #[test]
+    fn settings_patch_changes_only_given_fields_and_clears_auto_tuned() {
+        let d = Dirs::new(std::env::temp_dir().join(format!("opaline-patch-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&d.root);
+        let c = Config { auto_tuned: true, ..Config::default() };
+        c.save(&d).unwrap();
+        let v = settings_set(&d, serde_json::from_str(r#"{"discordPresence":false,"trayOnGame":false}"#).unwrap()).unwrap();
+        assert!(!v.discord_presence && !v.tray_on_game && v.auto_tuned && v.join_server);
+        let v = settings_set(&d, SettingsPatch { perf_mode: Some(perf::PerfMode::Low), ..Default::default() }).unwrap();
+        assert!(!v.auto_tuned && v.perf_mode == perf::PerfMode::Low && !v.discord_presence);
+        std::fs::remove_dir_all(&d.root).unwrap();
+    }
+
+    #[test]
     fn list_entry_needs_known_suffix_for_short_hosts_only() {
         if config::server_overridden() || serverview::cached_magic_suffix().is_some() {
             return;
         }
         let d = std::env::temp_dir().join(format!("opaline-list-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
-        let info = |host: &str| catalog::ServerInfo { host: host.into(), port: 25565, motd: "m".into(), stats_port: 0 };
+        let info = |host: &str| catalog::ServerInfo { host: host.into(), port: 25565, motd: "m".into(), stats_port: 0, map: None };
         let (_, listed) = list_entry(&d, "Pack", &info("home-server"));
         assert!(!listed && !d.join("servers.dat").exists(), "suffixe inconnu : rien d'écrit");
         let (addr, listed) = list_entry(&d, "Pack", &info("mon.minestrator.com"));
         assert!(listed && d.join("servers.dat").is_file());
         assert_eq!(addr, "mon.minestrator.com:25565");
+        std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn crash_view_reads_fresh_report_and_hides_secrets() {
+        let root = Dirs::new(std::env::temp_dir().join(format!("opaline-crash-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&root.root);
+        let inst = root.for_pack("p").unwrap().instance();
+        std::fs::create_dir_all(inst.join("logs")).unwrap();
+        std::fs::create_dir_all(inst.join("crash-reports")).unwrap();
+        std::fs::write(inst.join("logs/latest.log"), "	 - Mod 'Legendary Monuments' (legendarymonuments) 8.1 requires any version of lithostitched, which is missing!
+joined secret.host token SECRETTOKEN").unwrap();
+        let before = std::time::SystemTime::now() - Duration::from_secs(3600);
+        std::fs::write(inst.join("crash-reports/crash-1.txt"), "Description: x
+	Suspected Mods: Sodium (sodium)").unwrap();
+        let v = crash_view(&root, "p", Some(1), Some("fin SECRETTOKEN"), before, "SECRETTOKEN", "secret.host:25565").unwrap();
+        assert_eq!(v.crash_file.as_deref(), Some("crash-1.txt"));
+        assert!(v.findings.iter().any(|f| f.kind == "missingMod") && v.findings.iter().any(|f| f.kind == "suspect"));
+        assert!(!v.report.contains("SECRETTOKEN") && !v.report.contains("secret.host") && v.report.contains("lithostitched"), "{}", v.report);
+        // rapport antérieur à la session : ignoré
+        let after = std::time::SystemTime::now() + Duration::from_secs(60);
+        assert_eq!(crash_view(&root, "p", None, None, after, "t", "").unwrap().crash_file, None);
+        std::fs::remove_dir_all(&root.root).unwrap();
+    }
+
+    #[test]
+    fn notifies_only_on_offline_to_online_transition() {
+        let obs = |online: bool| vec![("a".to_string(), "Pack A".to_string(), online)];
+        let mut w = ServerWatch::new();
+        assert!(watch_step(&mut w, &obs(true)).is_empty(), "premier relevé en ligne : pas de notification au démarrage");
+        assert!(watch_step(&mut w, &obs(true)).is_empty());
+        assert!(watch_step(&mut w, &obs(false)).is_empty());
+        assert!(watch_step(&mut w, &obs(false)).is_empty());
+        assert_eq!(watch_step(&mut w, &obs(true)), ["Pack A"]);
+        assert!(watch_step(&mut w, &obs(true)).is_empty(), "une seule notification par transition");
+        let mut w = ServerWatch::new();
+        watch_step(&mut w, &obs(false));
+        assert_eq!(watch_step(&mut w, &obs(true)), ["Pack A"], "hors ligne au démarrage puis en ligne : notifié");
+    }
+
+    #[test]
+    fn read_tail_is_bounded() {
+        let d = std::env::temp_dir().join(format!("opaline-tail-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("x.log");
+        std::fs::write(&f, format!("{}FIN", "a".repeat(5000))).unwrap();
+        let t = read_tail(&f, 100).unwrap();
+        assert_eq!(t.len(), 100);
+        assert!(t.ends_with("aaFIN"));
+        assert_eq!(read_tail(&f, 1 << 20).unwrap().len(), 5003);
+        assert!(read_tail(&d.join("absent"), 10).is_none());
         std::fs::remove_dir_all(&d).unwrap();
     }
 

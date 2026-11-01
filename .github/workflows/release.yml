@@ -62,6 +62,8 @@ jobs:
         env:
           # ID client de l app Azure (public, pas un secret) : variable de dépôt MS_CLIENT_ID
           CLASSROOM_MS_CLIENT_ID: ${{ vars.MS_CLIENT_ID }}
+          # ID d'application Discord (public) : variable de dépôt DISCORD_APP_ID ; vide = statut Discord désactivé
+          DISCORD_APP_ID: ${{ vars.DISCORD_APP_ID }}
           NO_STRIP: 'true' # linuxdeploy : évite l'échec de strip sur les binaires récents
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
