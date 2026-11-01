@@ -1,6 +1,6 @@
 import * as api from '../api.js';
-import { state } from '../state.js';
-import { $, toast, setSw } from '../util.js';
+import { state, official } from '../state.js';
+import { $, $$, toast, setSw } from '../util.js';
 import { PERF } from '../data.js';
 
 const maxGb = () => Math.max(2, Math.floor((state.settings?.systemRamMb || 16384) / 1024));
@@ -23,7 +23,11 @@ export function renderSettings() {
   $('#perf').innerHTML = PERF.map((p) => `<button role="radio" aria-checked="${p.id === s.perfMode}" data-p="${p.id}"><h3>${p.name}</h3><span class="xs" style="color:var(--coral2);font-weight:700">${p.sub}</span><ul><li>${p.gb ? 'Mémoire ' + clamp(p.gb) + ' Go' : 'Mémoire choisie à la main'}</li></ul></button>`).join('');
   memUi(clamp(gbOf(s.memoryMb)));
   setSw($('#noRemember'), !!s.noRemember);
-  setSw($('#launchVia'), s.launchVia === 'official');
+  const via = s.launchVia === 'official' ? 'official' : 'opaline';
+  $$('#launchVia [data-v]').forEach((b) => b.setAttribute('aria-checked', b.dataset.v === via));
+  $('#lvH').textContent = official()
+    ? 'Sans connexion Microsoft dans Opaline, le jeu passe toujours par le Launcher Minecraft.'
+    : via === 'official' ? 'JOUER prépare le profil du pack dans le Launcher Minecraft, qui lance le jeu.' : 'Opaline lance le jeu directement avec ton compte.';
 }
 
 async function save(patch) {
@@ -42,5 +46,5 @@ export function initSettings() {
   $('#mem').addEventListener('change', () => save({ perfMode: 'custom', memoryMb: +$('#mem').value * 1024 }));
   $('#noRemember').addEventListener('click', (e) => save({ noRemember: e.currentTarget.getAttribute('aria-checked') !== 'true' }));
   // Sans connexion Opaline, JOUER passe de toute façon par le Launcher Minecraft : ce choix ne vaut qu'une fois connecté.
-  $('#launchVia').addEventListener('click', (e) => save({ launchVia: e.currentTarget.getAttribute('aria-checked') === 'true' ? 'opaline' : 'official' }));
+  $('#launchVia').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); if (b) save({ launchVia: b.dataset.v }); });
 }

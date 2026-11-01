@@ -203,8 +203,10 @@
           <button class="sw" role="switch" aria-checked="false" aria-labelledby="nrL" id="noRemember"></button></div>
       </article>
       <article class="card field">
-        <div class="row"><div><h2 id="lvL">Lancer via le Launcher Minecraft officiel</h2><p class="small mute" style="margin-top:2px" id="lvH">JOUER prépare le profil du pack dans le Launcher Minecraft au lieu de lancer le jeu depuis Opaline.</p></div>
-          <button class="sw" role="switch" aria-checked="false" aria-labelledby="lvL" aria-describedby="lvH" id="launchVia"></button></div>
+        <h2 id="lvL">Lancer le jeu avec</h2>
+        <div class="seg" id="launchVia" role="radiogroup" aria-labelledby="lvL" aria-describedby="lvH" style="align-self:flex-start;margin-top:10px">
+          <button role="radio" aria-checked="true" data-v="opaline">Opaline</button><button role="radio" aria-checked="false" data-v="official">Launcher Minecraft</button></div>
+        <p class="small mute" style="margin-top:8px" id="lvH"></p>
       </article>
     </div>
   </section>
