@@ -97,7 +97,7 @@ metafile = true
 
 [[files]]
 file = "mods/biome-spawn-point.pw.toml"
-hash = "4dc9ecb7ebed4f6f621ca99f46e627c1105e7a157bf381dc48481e49a7c0468d"
+hash = "83c08f0fcf1beb813ef9edecd7dedafbd6b19d6636b02fc35cbb3475e23ce7d3"
 metafile = true
 
 [[files]]
@@ -207,7 +207,7 @@ metafile = true
 
 [[files]]
 file = "mods/cobblemon-playerxp.pw.toml"
-hash = "a50005007cd6dd89b8b1880a75d1033649d91af5b5de25b50f9f70d75012352d"
+hash = "ec401104e97711ba7d7e96808e1a93839520c44cfbac8e1ed3ce97f4d5f54114"
 metafile = true
 
 [[files]]
@@ -337,7 +337,7 @@ metafile = true
 
 [[files]]
 file = "mods/dimworldborder.pw.toml"
-hash = "bb2cd465a41ad375dc2333fe5ffe9ae097f24a4d924f4ffb2507df219f7c9d4c"
+hash = "b35ed0a55022446fa8323e6339e23e4063f75ad705fc0a93ec3fa418a5b6f933"
 metafile = true
 
 [[files]]
@@ -532,7 +532,7 @@ metafile = true
 
 [[files]]
 file = "mods/gamerule-manager.pw.toml"
-hash = "fac9463af3c636d515949463f26cf179428f61de42d90ef95cd6477ab887b4f1"
+hash = "8f81ff902ae64f86a0e16b22fe9c3aa6fc2ce7c7a8a6b885a82d396b49b75f63"
 metafile = true
 
 [[files]]
@@ -657,7 +657,7 @@ metafile = true
 
 [[files]]
 file = "mods/leaves-be-gone.pw.toml"
-hash = "fe5dca9e3c5228303fb0777accac0b631597dd3ce1e60b27b6d46aa2b50b36ea"
+hash = "1a5695764e8cddb0e243b122ff536d36d60765ba744b631b9ffe098dd4303f26"
 metafile = true
 
 [[files]]
@@ -682,12 +682,12 @@ metafile = true
 
 [[files]]
 file = "mods/lithostitched.pw.toml"
-hash = "c16c0d408b39eefda69a19a6cced809378ee25fb659625b61cda4f13cb4f18a8"
+hash = "9125501fc8cb9b72e3ef08310dc9e172031c0d37ca76e4c2fb948939d8a8c23b"
 metafile = true
 
 [[files]]
 file = "mods/loot-table-modifier.pw.toml"
-hash = "66f8e333d062c01f03bc599fa52540f9a56ae253a03ea2f120a51d7d1dde970d"
+hash = "d0a290b69f54758245cfb7d133f26ad6b5745668966461dc49f270bf7a07760f"
 metafile = true
 
 [[files]]
@@ -707,7 +707,7 @@ metafile = true
 
 [[files]]
 file = "mods/mes-moogs-end-structures.pw.toml"
-hash = "02136827d47b338d4f1c897cfa1eb4d92bd0f5dfc5300875c9737390ffcc529a"
+hash = "df92961a3bca688632e15b62bef4b8261d552d65fe81e598451d6c14992c3428"
 metafile = true
 
 [[files]]
@@ -717,7 +717,7 @@ metafile = true
 
 [[files]]
 file = "mods/mns-moogs-nether-structures.pw.toml"
-hash = "bee01d4388fcc23be892c81a5eff5b7bbf50e846a6d7088397a7a818ad459a0c"
+hash = "d7817984f71c4d450c8d19e2b940222644be087b97598e90ae99ba6cd230d8b2"
 metafile = true
 
 [[files]]
@@ -732,17 +732,17 @@ metafile = true
 
 [[files]]
 file = "mods/monkeylib538.pw.toml"
-hash = "7454363857fd623a770275bdd612eb41ab0b11b2445ebcf573b9fd0859ee97b1"
+hash = "61a8a46e3c420e968fac4077cf5eab4b6107174653973db29494dd9893c19edb"
 metafile = true
 
 [[files]]
 file = "mods/moogs-structure-lib.pw.toml"
-hash = "64646bd319a1a93680b016c46454d89ea83b412e30e3c449e1960399a04468ca"
+hash = "e15549ad57aaea809a00e4e7304aead5a52491b57ed2cbc07ee9b666498f6856"
 metafile = true
 
 [[files]]
 file = "mods/moogs-voyager-structures.pw.toml"
-hash = "5c5a98c63fc8d7882eca391942741727f7c51c87fa5f48f6f91cebbd1d6e3e0f"
+hash = "4406f36533b9327755f5156f1006c8a385dbbaecbd06d6d352cca542413080ca"
 metafile = true
 
 [[files]]
@@ -762,12 +762,12 @@ metafile = true
 
 [[files]]
 file = "mods/mss-moogs-soaring-structures.pw.toml"
-hash = "3deba88dde4580fc49be3fa215a3b17e325c9c68f5b3a0185dc7639730bbb32b"
+hash = "ac1aeae0a2bab5599068b1563fcb82859a5cb095b088e4211714f5a31944cc69"
 metafile = true
 
 [[files]]
 file = "mods/mtr-moogs-temples-reimagined.pw.toml"
-hash = "1b818fad441e1474fd67189319be9db096262ca0fe119954d7a29fe218fb38c4"
+hash = "8cb3e279836c17c049f8d62bd8a8d59f68b08db82ad0d1b807d75cf01bb26eae"
 metafile = true
 
 [[files]]
@@ -807,7 +807,7 @@ metafile = true
 
 [[files]]
 file = "mods/noisium.pw.toml"
-hash = "dcc936d7bd32a86ce63fa3bf013864a4e2ed979cb126a915153ac70ce5e5671f"
+hash = "0b35eacc51808809894ef78b91dfd614e056a34708e4bd2aa6f5ebeb7993a1c0"
 metafile = true
 
 [[files]]
@@ -822,7 +822,7 @@ metafile = true
 
 [[files]]
 file = "mods/oh-the-trees-youll-grow.pw.toml"
-hash = "4e73db6d2d97760fd84b0476f11139dcdf3b906df7e006cc675320e61cceb864"
+hash = "50bcb908cc2d2220e9b69ccd05427c2cca89df411e1e8232b21ea6ab5a9e21d1"
 metafile = true
 
 [[files]]
@@ -862,7 +862,7 @@ metafile = true
 
 [[files]]
 file = "mods/player-roles.pw.toml"
-hash = "9c1f3613193a880e298896f733fc5cd56950b7f74c9b414a28cfc8d57a5f4337"
+hash = "8a5aba3664a2dc032adae930977b2d62c0c2f973e874910958880a6fcac60a5e"
 metafile = true
 
 [[files]]
@@ -1207,7 +1207,7 @@ metafile = true
 
 [[files]]
 file = "mods/wits.pw.toml"
-hash = "e7a630e261c40242ea52b16c9b120b8c9d4b0d0339bd6f097f63828e21dd082c"
+hash = "1c2a96d3f668d5bd716747eb307d7f8d898f5e14dd8f05435ca86d1373743397"
 metafile = true
 
 [[files]]

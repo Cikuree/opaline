@@ -1,6 +1,6 @@
 name = "MTR - Moog's Temples Reimagined"
 filename = "MoogsTemplesReimagined-1.21-1.0.3.jar"
-side = "server"
+side = "both"
 
 [download]
 url = "https://cdn.modrinth.com/data/UNanzCXS/versions/JfZdojv9/MoogsTemplesReimagined-1.21-1.0.3.jar"

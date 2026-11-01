@@ -1,6 +1,6 @@
 name = "Loot Table Modifier"
 filename = "loot-table-modifier-fabric-1.21.1-2.0.0+fabric+1.21.1.jar"
-side = "server"
+side = "both"
 
 [download]
 url = "https://cdn.modrinth.com/data/emvwKT0u/versions/ZJLEaEpW/loot-table-modifier-fabric-1.21.1-2.0.0%2Bfabric%2B1.21.1.jar"

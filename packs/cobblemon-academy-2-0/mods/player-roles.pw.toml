@@ -1,6 +1,6 @@
 name = "Player Roles"
 filename = "player-roles-1.6.13.jar"
-side = "server"
+side = "both"
 
 [download]
 url = "https://cdn.modrinth.com/data/Rt1mrUHm/versions/Y5EAJzwR/player-roles-1.6.13.jar"

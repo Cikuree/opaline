@@ -1,6 +1,6 @@
 name = "GameRule Manager"
 filename = "the_ruler-1.3-1.21.1-fabric.jar"
-side = "server"
+side = "both"
 
 [download]
 url = "https://cdn.modrinth.com/data/226Q16YJ/versions/pcFtHqry/the_ruler-1.3-1.21.1-fabric.jar"

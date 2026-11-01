@@ -1,6 +1,6 @@
 name = "Cobblemon: PlayerXP"
 filename = "playerxp-fabric-1.0.5+1.21.1.jar"
-side = "server"
+side = "both"
 
 [download]
 url = "https://cdn.modrinth.com/data/zlrbPCvu/versions/tS4FWPtM/playerxp-fabric-1.0.5%2B1.21.1.jar"
