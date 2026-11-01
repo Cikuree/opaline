@@ -26,7 +26,7 @@ pub fn resolve_map(u: &str, suffix: Option<&str>) -> Option<String> {
     }
     let mut url = reqwest::Url::parse(u).ok()?;
     let host = url.host_str()?.to_string();
-    if crate::config::is_short_host(&host) && host != "localhost" {
+    if crate::config::is_short_host(&host) {
         url.set_host(Some(&crate::config::choose_host(&host, suffix, None))).ok()?;
     }
     Some(url.to_string())
@@ -42,7 +42,12 @@ pub fn valid_map(u: &str) -> bool {
     if u.is_empty() || u.len() > MAP_MAX_LEN || !u.bytes().all(|b| (0x21..=0x7E).contains(&b) && b != b'\\') || rest.is_none_or(|r| r.starts_with('/')) {
         return false;
     }
-    reqwest::Url::parse(u).is_ok_and(|p| p.host_str().is_some_and(|h| !h.is_empty()) && p.username().is_empty() && p.password().is_none() && p.port() != Some(0))
+    // Hôtes locaux refusés : une carte du catalogue ne doit jamais viser la machine de l'utilisateur.
+    let local = |h: &str| {
+        let h = h.to_ascii_lowercase();
+        h == "localhost" || h.ends_with(".localhost") || h.starts_with("127.") || h == "[::1]"
+    };
+    reqwest::Url::parse(u).is_ok_and(|p| p.host_str().is_some_and(|h| !h.is_empty() && !local(h)) && p.username().is_empty() && p.password().is_none() && p.port() != Some(0))
 }
 
 /// Archive des fichiers « overrides » d'un pack (resourcepacks, datapacks, shaderpacks...) publiée à côté du zip du pack.
@@ -276,7 +281,7 @@ mod tests {
             assert!(valid_map(ok), "{ok}");
         }
         let long = format!("https://x.fr/{}", "a".repeat(300));
-        for bad in ["ftp://x.fr/", "javascript:alert(1)", "map.example.fr", "https://u:p@x.fr/", "https://u@x.fr/", "https://x.fr@evil.fr/", "https://x.fr/a b", "", &long, "https://x.fr/é", "https:///x", "file:///c:/x", "https://x.fr:0/", "https://x.fr\\@evil.fr/", "https:/x.fr/", "https://"] {
+        for bad in ["ftp://x.fr/", "javascript:alert(1)", "map.example.fr", "https://u:p@x.fr/", "https://u@x.fr/", "https://x.fr@evil.fr/", "https://x.fr/a b", "", &long, "https://x.fr/é", "https:///x", "file:///c:/x", "https://x.fr:0/", "http://localhost:8100/", "http://a.localhost/", "http://127.0.0.1:8100/", "http://127.1.2.3/", "http://[::1]:8100/", "https://x.fr\\@evil.fr/", "https:/x.fr/", "https://"] {
             assert!(!valid_map(bad), "{bad}");
         }
     }
@@ -287,7 +292,7 @@ mod tests {
         assert_eq!(resolve_map("http://home-server:8100", None).as_deref(), Some("http://home-server:8100/"));
         assert_eq!(resolve_map("https://map.example.fr/a?b=1", Some("x.ts.net")).as_deref(), Some("https://map.example.fr/a?b=1"));
         assert_eq!(resolve_map("http://10.0.0.2:8100/", Some("x.ts.net")).as_deref(), Some("http://10.0.0.2:8100/"));
-        assert_eq!(resolve_map("http://localhost:8100/", Some("x.ts.net")).as_deref(), Some("http://localhost:8100/"));
+        assert_eq!(resolve_map("http://localhost:8100/", Some("x.ts.net")), None);
         assert_eq!(resolve_map("http://u:p@home-server/", Some("x.ts.net")), None);
     }
 

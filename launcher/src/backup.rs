@@ -21,14 +21,19 @@ pub struct BackupView {
     /// ISO 8601 UTC, relu depuis le nom du dossier.
     pub created_at: String,
     pub size_bytes: u64,
+    /// Sauvegarde faite avant une désinstallation : jamais supprimée par la rotation (seulement à la main).
+    pub keep: bool,
 }
+
+/// Sous-dossier des captures d'écran dans une sauvegarde de désinstallation (jamais restauré dans `saves/`).
+const SHOTS: &str = ".screenshots";
 
 fn saves(dirs: &Dirs) -> PathBuf {
     dirs.instance().join("saves")
 }
 
 /// `20261101-123456` d'après des secondes Unix.
-fn stamp(secs: u64) -> String {
+pub(crate) fn stamp(secs: u64) -> String {
     crate::official::iso_utc(secs)[..19].replace(['-', ':'], "").replace('T', "-")
 }
 
@@ -88,6 +93,10 @@ fn fp_file(dirs: &Dirs, id: &str) -> PathBuf {
     dirs.backups().join(format!("{id}.fp"))
 }
 
+fn keep_file(dirs: &Dirs, id: &str) -> PathBuf {
+    dirs.backups().join(format!("{id}.keep"))
+}
+
 /// Une sauvegarde ne change plus une fois créée : sa taille est calculée une seule fois par session.
 fn dir_size(p: &Path) -> u64 {
     static CACHE: Mutex<Option<HashMap<PathBuf, u64>>> = Mutex::new(None);
@@ -105,7 +114,7 @@ pub fn list(dirs: &Dirs) -> Vec<BackupView> {
         .filter_map(|e| {
             let id = e.file_name().to_string_lossy().into_owned();
             let created_at = iso_of(&id).filter(|_| !id.ends_with(TMP_SUFFIX))?;
-            Some(BackupView { created_at, size_bytes: dir_size(&e.path()), id })
+            Some(BackupView { created_at, size_bytes: dir_size(&e.path()), keep: keep_file(dirs, &id).is_file(), id })
         })
         .collect();
     v.sort_by(|a, b| b.id.cmp(&a.id));
@@ -115,7 +124,7 @@ pub fn list(dirs: &Dirs) -> Vec<BackupView> {
 /// Au-delà de `KEEP` : garde les `KEEP - 1` plus récentes et la plus ancienne, retire les autres (de la plus ancienne des
 /// intermédiaires à la plus récente), jamais un id de `protect` (copie qu'on vient de créer, copie en cours de restauration).
 fn rotate(dirs: &Dirs, protect: &[&str]) {
-    let all = list(dirs);
+    let all: Vec<BackupView> = list(dirs).into_iter().filter(|b| !b.keep).collect(); // les copies de désinstallation ne tournent jamais
     let mut len = all.len();
     if len <= KEEP {
         return;
@@ -185,6 +194,46 @@ pub fn backup_saves(dirs: &Dirs, now_secs: u64) -> Result<Option<String>> {
     backup_inner(dirs, now_secs, None)
 }
 
+/// Sauvegarde de désinstallation de l'instance `from` : `saves/` et, dans le sous-dossier `.screenshots`, `screenshots/`. Toujours une copie neuve,
+/// conservée (marqueur `<id>.keep`, hors rotation). `Ok(None)` : rien à sauvegarder. Refuse si un monde est ouvert.
+pub fn backup_for_uninstall(dirs: &Dirs, from: &Path, now_secs: u64) -> Result<Option<String>> {
+    recover(dirs)?;
+    let (src, shots) = (from.join("saves"), from.join("screenshots"));
+    if !non_empty(&src) && !non_empty(&shots) {
+        return Ok(None);
+    }
+    if world_open_in(&src) {
+        bail!(OPEN_WORLD);
+    }
+    let base = stamp(now_secs);
+    let mut id = base.clone();
+    let mut n = 1;
+    while dirs.backups().join(&id).exists() {
+        id = format!("{base}-{n}");
+        n += 1;
+    }
+    let tmp = dirs.backups().join(format!("{id}{TMP_SUFFIX}"));
+    let _ = fs::remove_dir_all(&tmp);
+    let copy = || -> Result<()> {
+        fs::create_dir_all(&tmp)?;
+        if non_empty(&src) {
+            copy_tree(&src, &tmp)?;
+        }
+        if non_empty(&shots) {
+            copy_tree(&shots, &tmp.join(SHOTS))?;
+        }
+        fs::rename(&tmp, dirs.backups().join(&id))?;
+        Ok(())
+    };
+    if let Err(e) = copy() {
+        let _ = fs::remove_dir_all(&tmp);
+        return Err(e.context("sauvegarde avant désinstallation impossible : rien n'a été supprimé"));
+    }
+    fs::write(keep_file(dirs, &id), "uninstall").context("marquage de la sauvegarde impossible")?;
+    rotate(dirs, &[]);
+    Ok(Some(id))
+}
+
 fn backup_inner(dirs: &Dirs, now_secs: u64, protect: Option<&str>) -> Result<Option<String>> {
     recover(dirs)?;
     let src = saves(dirs);
@@ -238,6 +287,7 @@ pub fn restore(dirs: &Dirs, backup_id: &str, now_secs: u64) -> Result<()> {
         let _ = fs::remove_dir_all(&new);
         return Err(e.context("restauration impossible : copie de la sauvegarde"));
     }
+    let _ = fs::remove_dir_all(new.join(SHOTS)); // captures d'une sauvegarde de désinstallation : pas dans saves/
     if let Err(e) = backup_inner(dirs, now_secs, Some(backup_id)) {
         let _ = fs::remove_dir_all(&new);
         return Err(e.context("le monde actuel n'a pas pu être sauvegardé : restauration annulée"));

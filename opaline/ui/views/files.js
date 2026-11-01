@@ -17,7 +17,7 @@ async function renderBackups() {
   const p = current(); if (!p) return;
   let list = []; try { list = await api.backupsList(p.id); } catch (e) { toast(api.errMsg(e)); }
   if (current()?.id !== p.id) return;
-  const row = (b) => `<li><span><b>${esc(fmtDate(b.createdAt))}</b> <span class="mute small">· ${esc(fmtSize(b.sizeBytes))}</span></span>${confirming === b.id
+  const row = (b) => `<li><span><b>${esc(fmtDate(b.createdAt))}</b>${b.keep ? ' <span class="tag">Avant désinstallation</span>' : ''} <span class="mute small">· ${esc(fmtSize(b.sizeBytes))}</span></span>${confirming === b.id
     ? `<span class="bkc"><span class="small">Remplacer tes mondes actuels par cette sauvegarde ? Les mondes actuels seront d’abord sauvegardés.</span><button class="btn sm primary" data-ok="${esc(b.id)}">Oui, restaurer</button><button class="btn sm" data-no="1">Annuler</button></span>`
     : `<button class="btn sm" data-bk="${esc(b.id)}" ${busy() ? 'disabled' : ''}>Restaurer</button>`}</li>`;
   $('#backupsBox').innerHTML = list.length ? `<ul class="bk">${list.map(row).join('')}</ul>` : '<p class="mute small" style="margin-top:10px">Aucune sauvegarde pour l’instant.</p>';

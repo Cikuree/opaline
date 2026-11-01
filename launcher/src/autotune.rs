@@ -70,6 +70,29 @@ pub fn detect_gpu() -> Option<String> {
     None
 }
 
+/// Détection du GPU avec délai maximal : au-delà, `None` (réglage d'après la RAM seule). Le processus lancé peut finir seul.
+pub fn detect_gpu_timeout(max: std::time::Duration) -> Option<String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(detect_gpu());
+    });
+    rx.recv_timeout(max).ok().flatten()
+}
+
+/// Affine le réglage automatique avec le GPU, seulement si l'utilisateur n'y a pas touché entre-temps (`auto_tuned` toujours vrai).
+/// Renvoie vrai si le réglage a changé.
+pub fn refine(root: &Dirs, ram_mb: Option<u64>, gpu: Option<String>) -> Result<bool> {
+    let mut c = Config::load(root);
+    let (mode, mem) = choose(ram_mb, gpu.as_deref());
+    if !c.auto_tuned || (c.perf_mode, c.memory_mb) == (mode, mem) {
+        return Ok(false);
+    }
+    c.perf_mode = mode;
+    c.memory_mb = mem;
+    c.save(root)?;
+    Ok(true)
+}
+
 /// Premier lancement seulement : sans `config.json`, enregistre le mode et la mémoire choisis (`auto_tuned = true`).
 /// Renvoie vrai si un réglage a été écrit ; un `config.json` existant n'est jamais modifié.
 pub fn first_run(root: &Dirs, ram_mb: Option<u64>, gpu: impl FnOnce() -> Option<String>) -> Result<bool> {
@@ -126,6 +149,21 @@ mod tests {
         let mine = Config { perf_mode: PerfMode::Low, auto_tuned: false, ..c };
         mine.save(&d).unwrap();
         assert!(!first_run(&d, Some(32768), || panic!("GPU non recherché hors premier lancement")).unwrap());
+        assert_eq!(Config::load(&d).perf_mode, PerfMode::Low);
+        std::fs::remove_dir_all(&d.root).unwrap();
+    }
+
+    #[test]
+    fn refine_applies_the_gpu_only_while_the_choice_is_still_automatic() {
+        let d = Dirs::new(std::env::temp_dir().join(format!("opaline-refine-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&d.root);
+        assert!(first_run(&d, Some(16384), || None).unwrap());
+        assert_eq!(Config::load(&d).perf_mode, PerfMode::Quality);
+        assert!(refine(&d, Some(16384), Some("Intel(R) UHD Graphics".into())).unwrap());
+        assert_eq!(Config::load(&d).perf_mode, PerfMode::Balanced);
+        let c = Config { perf_mode: PerfMode::Low, auto_tuned: false, ..Config::load(&d) };
+        c.save(&d).unwrap();
+        assert!(!refine(&d, Some(16384), Some("NVIDIA GeForce RTX 4090".into())).unwrap());
         assert_eq!(Config::load(&d).perf_mode, PerfMode::Low);
         std::fs::remove_dir_all(&d.root).unwrap();
     }

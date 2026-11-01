@@ -45,7 +45,7 @@ assert "map" not in base["server"]
 for good_url in ["https://map.example.fr/", "http://home-server:8100", "http://home-server:8100/#world:0:0:0", "http://91.197.6.154:8100/#world:0:0:0", "https://m.example.fr/map?x=1&y=2"]:
     assert run_map(json.dumps(good_url))["map"] == good_url, good_url
 for name, bad_url in {"ftp": "ftp://x.fr/", "javascript": "javascript:alert(1)", "sans schema": "map.example.fr", "identifiants": "https://u:p@x.fr/", "user seul": "https://u@x.fr/",
-  "arobase": "https://x.fr@evil.fr/", "espace": "https://x.fr/a b", "vide": "", "trop long": "https://x.fr/" + "a" * 300, "unicode": "https://x.fr/é", "sans hote": "https:///x", "file": "file:///c:/x", "port 0": "https://x.fr:0/", "antislash": "https://x.fr\\@evil.fr/", "un slash": "https:/x.fr/", "trois slashs": "https:///x.fr"}.items():
+  "arobase": "https://x.fr@evil.fr/", "espace": "https://x.fr/a b", "vide": "", "trop long": "https://x.fr/" + "a" * 300, "unicode": "https://x.fr/é", "sans hote": "https:///x", "file": "file:///c:/x", "port 0": "https://x.fr:0/", "localhost": "http://localhost:8100/", "sous-domaine localhost": "http://a.localhost/", "127.0.0.1": "http://127.0.0.1:8100/", "127.x": "http://127.1.2.3/", "ipv6 local": "http://[::1]:8100/", "antislash": "https://x.fr\\@evil.fr/", "un slash": "https:/x.fr/", "trois slashs": "https:///x.fr"}.items():
     r = run_map(json.dumps(bad_url)); assert isinstance(r, str) and "server.map" in r, (name, r)
 r = run_map("12"); assert isinstance(r, str) and "server.map" in r, r
 print("ok map")

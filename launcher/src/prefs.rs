@@ -34,10 +34,26 @@ pub fn select(options: &str, cats: &[&str]) -> Vec<(String, String)> {
         .collect()
 }
 
+/// Garde les 3 dernières sauvegardes `options.txt.<date>.bak` (la date dans le nom trie dans l'ordre du temps).
+fn prune_bak(instance: &std::path::Path) {
+    let mut v: Vec<String> = std::fs::read_dir(instance)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("options.txt.") && n.ends_with(".bak"))
+        .collect();
+    v.sort();
+    let extra = v.len().saturating_sub(3);
+    for n in &v[..extra] {
+        let _ = std::fs::remove_file(instance.join(n));
+    }
+}
+
 /// Copie les réglages des catégories de `from` vers `to` (fusion : le reste de la destination est conservé) ; l'ancien
-/// `options.txt` de la destination est gardé dans `options.txt.bak`. Renvoie le nombre de réglages copiés.
+/// `options.txt` de la destination est gardé dans `options.txt.<date>.bak` (3 au plus). Renvoie le nombre de réglages copiés.
 /// L'appelant refuse si le jeu de la destination tourne.
-pub fn copy_options(from: &Dirs, to: &Dirs, cats: &[String]) -> Result<usize> {
+pub fn copy_options(from: &Dirs, to: &Dirs, cats: &[String], now_secs: u64) -> Result<usize> {
     if from.pack == to.pack {
         bail!("choisis deux packs différents");
     }
@@ -54,7 +70,8 @@ pub fn copy_options(from: &Dirs, to: &Dirs, cats: &[String]) -> Result<usize> {
     }
     let dest = to.instance().join("options.txt");
     if dest.is_file() {
-        std::fs::copy(&dest, to.instance().join("options.txt.bak")).context("sauvegarde d'options.txt impossible : rien n'a été modifié")?;
+        std::fs::copy(&dest, to.instance().join(format!("options.txt.{}.bak", crate::backup::stamp(now_secs)))).context("sauvegarde d'options.txt impossible : rien n'a été modifié")?;
+        prune_bak(&to.instance());
     }
     let kv: Vec<(&str, String)> = pairs.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
     perf::merge_file(&dest, ':', &kv)?;
@@ -156,13 +173,20 @@ mod tests {
         fs::write(a.instance().join("options.txt"), SRC).unwrap();
         let old = "version:4000\nkey_key.jump:key.keyboard.space\nrenderDistance:6\nparticles:2\nlang:en_us\ngamma:1.0\n";
         fs::write(b.instance().join("options.txt"), old).unwrap();
-        let n = copy_options(&a, &b, &["keys".into(), "language".into()]).unwrap();
+        let n = copy_options(&a, &b, &["keys".into(), "language".into()], 1_900_000_000).unwrap();
         assert_eq!(n, 2);
         let out = fs::read_to_string(b.instance().join("options.txt")).unwrap();
         assert_eq!(out, "version:4000\nkey_key.jump:key.keyboard.x\nrenderDistance:6\nparticles:2\nlang:fr_fr\ngamma:1.0\n");
-        assert_eq!(fs::read_to_string(b.instance().join("options.txt.bak")).unwrap(), old);
+        let first = fs::read_dir(b.instance()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().into_owned()).find(|n| n.ends_with(".bak")).unwrap();
+        assert!(first.starts_with("options.txt.") && first.len() > "options.txt..bak".len());
+        assert_eq!(fs::read_to_string(b.instance().join(&first)).unwrap(), old);
+        for i in 1..5 {
+            copy_options(&a, &b, &["keys".into()], 1_900_000_000 + i * 60).unwrap();
+        }
+        let baks = fs::read_dir(b.instance()).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().ends_with(".bak")).count();
+        assert_eq!(baks, 3, "3 sauvegardes au plus");
         // même avec toutes les catégories, les clés de performance de la destination restent
-        copy_options(&a, &b, &CATEGORIES.map(String::from)).unwrap();
+        copy_options(&a, &b, &CATEGORIES.map(String::from), 1_900_001_000).unwrap();
         let out = fs::read_to_string(b.instance().join("options.txt")).unwrap();
         assert!(out.contains("renderDistance:6") && out.contains("particles:2") && !out.contains("graphicsPreset") && out.contains("narrator:1"));
         fs::remove_dir_all(&a.root).unwrap();
@@ -203,15 +227,15 @@ mod tests {
     #[test]
     fn copy_refusals_change_nothing() {
         let (a, b) = dirs("refuse");
-        assert!(copy_options(&a, &b, &["keys".into()]).unwrap_err().to_string().contains("aucun réglage"));
+        assert!(copy_options(&a, &b, &["keys".into()], 1).unwrap_err().to_string().contains("aucun réglage"));
         fs::write(a.instance().join("options.txt"), SRC).unwrap();
-        assert!(copy_options(&a, &a, &["keys".into()]).is_err());
-        assert!(copy_options(&a, &b, &[]).is_err() && copy_options(&a, &b, &["renderDistance".into()]).is_err());
+        assert!(copy_options(&a, &a, &["keys".into()], 1).is_err());
+        assert!(copy_options(&a, &b, &[], 1).is_err() && copy_options(&a, &b, &["renderDistance".into()], 1).is_err());
         assert!(!b.instance().join("options.txt").exists());
         let c = a.for_pack("c").unwrap(); // destination non installée
-        assert!(copy_options(&a, &c, &["keys".into()]).unwrap_err().to_string().contains("pas installé"));
+        assert!(copy_options(&a, &c, &["keys".into()], 1).unwrap_err().to_string().contains("pas installé"));
         fs::write(a.instance().join("options.txt"), "version:1\n").unwrap();
-        assert!(copy_options(&a, &b, &["keys".into()]).is_err() && !b.instance().join("options.txt").exists());
+        assert!(copy_options(&a, &b, &["keys".into()], 1).is_err() && !b.instance().join("options.txt").exists());
         fs::remove_dir_all(&a.root).unwrap();
     }
 }

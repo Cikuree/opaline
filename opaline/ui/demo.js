@@ -66,7 +66,7 @@ const detail = (n) => {
   })) };
 };
 
-let backups = [[60 * 20, 412e6], [60 * 24 * 3, 398e6], [60 * 24 * 9, 377e6]].map(([m, size], i) => ({ id: '2026110' + (3 - i) + '-1803' + i + '0', createdAt: iso(m), sizeBytes: size }));
+let backups = [[60 * 20, 412e6], [60 * 24 * 3, 398e6], [60 * 24 * 9, 377e6]].map(([m, size], i) => ({ id: '2026110' + (3 - i) + '-1803' + i + '0', createdAt: iso(m), sizeBytes: size, keep: i === 2 }));
 let extras = [{ file: 'zoomify-2.14.jar', title: null, auto: false, requiredBy: [], sizeBytes: 812000, warning: null }];
 const MR = [['YL57xq9U', 'Iris Shaders', 'Shaders modernes pour Minecraft, compatibles avec Sodium.', 18400000, ['AANobbMI']], ['AANobbMI', 'Sodium', 'Moteur de rendu moderne qui accélère le jeu.', 52100000, []], ['gvQqBUqZ', 'Lithium', 'Optimisations du serveur de jeu intégré.', 41000000, []]];
 const MRT = Object.fromEntries(MR.map((m) => [m[0], m[1]]));

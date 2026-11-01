@@ -36,17 +36,44 @@ pub fn packs_list(root: &Dirs) -> Result<Vec<PackView>> {
         .collect()
 }
 
-/// Désinstalle un pack : copie des mondes (`backups/<pack>/`, refusée si un monde est ouvert), puis suppression de l'instance de ce
-/// pack seulement (mods, Mes mods, configs, mondes). `shared/`, `backups/` et les autres packs ne sont jamais touchés.
-/// L'appelant a déjà refusé si le jeu ou une installation de ce pack tourne.
+/// Dossier temporaire de suppression d'une instance (`instances/.<id>.trash`).
+fn trash_dir(dirs: &Dirs) -> PathBuf {
+    dirs.root.join("instances").join(format!(".{}.trash", dirs.pack))
+}
+
+/// Au démarrage : supprime les `.trash` laissés par une désinstallation interrompue.
+pub fn clean_trash(root: &Dirs) {
+    for e in std::fs::read_dir(root.root.join("instances")).into_iter().flatten().flatten() {
+        let n = e.file_name().to_string_lossy().into_owned();
+        if n.starts_with('.') && n.ends_with(".trash") {
+            let _ = std::fs::remove_dir_all(e.path());
+        }
+    }
+}
+
+/// Désinstalle un pack : sauvegarde de `saves/` et `screenshots/` (`backups/<pack>/`, conservée ; refusée si un monde est ouvert),
+/// puis suppression atomique de l'instance de ce pack seulement : renommée d'un bloc en `.trash` (échec si un fichier est
+/// verrouillé, donc jamais de suppression à moitié), puis effacée. `shared/`, `backups/` et les autres packs ne sont jamais touchés.
+/// L'appelant a déjà refusé si le jeu ou une installation de ce pack tourne ; on refuse aussi si un jeu du Launcher y tourne.
 pub fn uninstall_pack(root: &Dirs, id: &str) -> Result<()> {
     let dirs = root.for_pack(id)?;
     let inst = dirs.instance();
     if !inst.is_dir() {
         bail!("ce pack n'est pas installé");
     }
-    backup::backup_saves(&dirs, friends::now_secs())?; // refuse si un monde est ouvert : rien n'est alors supprimé
-    std::fs::remove_dir_all(&inst).context("suppression du pack impossible (un fichier est-il ouvert ailleurs ?)")
+    if official::instance_in_use(&inst) {
+        bail!("Le pack est utilisé : ferme Minecraft");
+    }
+    let trash = trash_dir(&dirs);
+    let _ = std::fs::remove_dir_all(&trash);
+    // D'abord le renommage d'un bloc : un fichier verrouillé le fait échouer avant toute sauvegarde ou suppression.
+    std::fs::rename(&inst, &trash).map_err(|_| anyhow::anyhow!("Le pack est utilisé : ferme Minecraft"))?;
+    if let Err(e) = backup::backup_for_uninstall(&dirs, &trash, friends::now_secs()) {
+        let _ = std::fs::rename(&trash, &inst); // monde ouvert ou copie impossible : l'instance est remise en place
+        return Err(e);
+    }
+    let _ = std::fs::remove_dir_all(&trash); // échec : `clean_trash` réessaie au prochain démarrage
+    Ok(())
 }
 
 /// Installe ou met à jour le pack (revérifie tout : sert aussi de réparation). `local_pack` : dossier packwiz de dev.
@@ -173,22 +200,25 @@ pub fn map_target(root: &Dirs, id: &str) -> Result<(String, String)> {
     Ok((e.name, url))
 }
 
-/// Le site interdit-il l'intégration dans un cadre ? `X-Frame-Options` (DENY, SAMEORIGIN) ou `frame-ancestors` sans `*` ni http(s).
-pub fn frame_allowed(xfo: Option<&str>, csp: Option<&str>) -> bool {
+/// Le site autorise-t-il l'intégration dans un cadre ? Non si `X-Frame-Options` est présent ou si un `frame-ancestors` n'est pas `*`.
+pub fn frame_allowed(xfo: Option<&str>, csp: &[String]) -> bool {
     if xfo.is_some_and(|v| !v.trim().is_empty()) {
         return false;
     }
-    let ancestors = csp.into_iter().flat_map(|c| c.split(';')).map(str::trim).find_map(|d| d.strip_prefix("frame-ancestors"));
-    ancestors.is_none_or(|a| a.split_whitespace().any(|t| t == "*" || t.starts_with("http:") || t.starts_with("https:")))
+    // Tous les en-têtes CSP : un `frame-ancestors` autre que `*` (liste d'origines, 'self', 'none') refuse l'intégration.
+    csp.iter().flat_map(|c| c.split(';')).map(str::trim).filter_map(|d| d.strip_prefix("frame-ancestors")).all(|a| a.split_whitespace().any(|t| t == "*"))
 }
 
 /// Sonde la carte (un GET, corps ignoré) : joignable, et intégrable ou non. Sert à choisir entre le cadre et un message clair.
 pub fn map_info(root: &Dirs, id: &str) -> Result<MapInfo> {
     let (name, url) = map_target(root, id)?;
-    let h = |r: &reqwest::blocking::Response, k: &str| r.headers().get(k).and_then(|v| v.to_str().ok()).map(str::to_string);
-    Ok(match short_client()?.get(&url).send() {
+    // Sans redirection : on ne suit jamais un site vers un autre hôte (la redirection compte comme « répond »).
+    let client = reqwest::blocking::Client::builder().user_agent(concat!("Opaline/", env!("CARGO_PKG_VERSION"))).timeout(Duration::from_secs(10)).redirect(reqwest::redirect::Policy::none()).build()?;
+    Ok(match client.get(&url).send() {
         Ok(r) if !r.status().is_server_error() => {
-            let embeddable = frame_allowed(h(&r, "x-frame-options").as_deref(), h(&r, "content-security-policy").as_deref());
+            let csp: Vec<String> = r.headers().get_all("content-security-policy").iter().filter_map(|v| v.to_str().ok()).map(str::to_string).collect();
+            let xfo = r.headers().get("x-frame-options").and_then(|v| v.to_str().ok());
+            let embeddable = frame_allowed(xfo, &csp);
             MapInfo { name, url, reachable: true, embeddable }
         }
         _ => MapInfo { name, url, reachable: false, embeddable: true },
@@ -349,12 +379,17 @@ pub const OFFICIAL_GAME_RUNNING: &str = "Une partie est en cours dans le Launche
 
 /// Si le Launcher tourne : erreur typée (`LAUNCHER_OPEN`) ou refus (`OFFICIAL_GAME_RUNNING`) ; `Ok` sinon.
 fn check_launcher(root: &Dirs, mc: &Path) -> Result<()> {
-    if !official::launcher_running() {
-        return Ok(());
-    }
-    match official::decide(true, official::game_running(root, mc)) {
-        official::LauncherDecision::GameRunning => bail!("{OFFICIAL_GAME_RUNNING}"),
-        _ => bail!("{LAUNCHER_OPEN}"),
+    launcher_verdict(official::launcher_running(), || official::game_running(root, mc))
+}
+
+/// Launcher seul : proposer de le fermer ; une partie y tourne : refuser (le jeu n'est évalué que si le Launcher tourne).
+fn launcher_verdict(launcher_running: bool, game_running: impl FnOnce() -> bool) -> Result<()> {
+    if !launcher_running {
+        Ok(())
+    } else if game_running() {
+        bail!("{OFFICIAL_GAME_RUNNING}")
+    } else {
+        bail!("{LAUNCHER_OPEN}")
     }
 }
 
@@ -641,41 +676,92 @@ mod tests {
     use super::*;
 
     #[test]
-    fn frame_policy() {
-        assert!(frame_allowed(None, None));
-        assert!(frame_allowed(None, Some("default-src 'self'; script-src 'self'")));
-        assert!(!frame_allowed(Some("DENY"), None));
-        assert!(!frame_allowed(Some("SAMEORIGIN"), None));
-        assert!(!frame_allowed(None, Some("default-src 'self'; frame-ancestors 'none'")));
-        assert!(!frame_allowed(None, Some("frame-ancestors 'self'")));
-        assert!(frame_allowed(None, Some("frame-ancestors *")));
-        assert!(frame_allowed(None, Some("frame-ancestors https://opaline.example")));
+    fn launcher_verdict_offers_close_or_refuses() {
+        assert!(launcher_verdict(false, || panic!("jeu non évalué sans Launcher")).is_ok());
+        assert_eq!(launcher_verdict(true, || false).unwrap_err().to_string(), LAUNCHER_OPEN);
+        assert_eq!(launcher_verdict(true, || true).unwrap_err().to_string(), OFFICIAL_GAME_RUNNING);
     }
 
     #[test]
-    fn uninstall_backs_up_saves_then_removes_only_this_instance() {
+    fn frame_policy() {
+        let c = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(frame_allowed(None, &[]));
+        assert!(frame_allowed(None, &c(&["default-src 'self'; script-src 'self'"])));
+        assert!(!frame_allowed(Some("DENY"), &[]));
+        assert!(!frame_allowed(Some("SAMEORIGIN"), &[]));
+        assert!(!frame_allowed(None, &c(&["default-src 'self'; frame-ancestors 'none'"])));
+        assert!(!frame_allowed(None, &c(&["frame-ancestors 'self'"])));
+        assert!(frame_allowed(None, &c(&["frame-ancestors *"])));
+        assert!(!frame_allowed(None, &c(&["frame-ancestors https://opaline.example"]))); // tout sauf * refuse
+        assert!(!frame_allowed(None, &c(&["frame-ancestors *", "frame-ancestors 'none'"]))); // plusieurs en-têtes : le plus strict gagne
+    }
+
+    fn world(d: &Dirs, content: &str) {
+        std::fs::create_dir_all(d.instance().join("saves/Monde")).unwrap();
+        std::fs::write(d.instance().join("saves/Monde/level.dat"), content).unwrap();
+        std::fs::write(d.install_marker(), "ok").unwrap();
+    }
+
+    #[test]
+    fn uninstall_backs_up_saves_and_screenshots_then_removes_only_this_instance() {
         let d = Dirs::new(std::env::temp_dir().join(format!("opaline-uninst-{}", std::process::id())));
         let _ = std::fs::remove_dir_all(&d.root);
         let (a, b) = (d.for_pack("a").unwrap(), d.for_pack("b").unwrap());
-        for p in [&a, &b] {
-            std::fs::create_dir_all(p.instance().join("saves/Monde")).unwrap();
-            std::fs::write(p.instance().join("saves/Monde/level.dat"), "x").unwrap();
-            std::fs::write(p.install_marker(), "ok").unwrap();
-        }
+        world(&a, "x");
+        world(&b, "y");
+        std::fs::create_dir_all(a.instance().join("screenshots")).unwrap();
+        std::fs::write(a.instance().join("screenshots/s.png"), "png").unwrap();
         std::fs::create_dir_all(d.libraries()).unwrap();
         std::fs::write(d.libraries().join("lib.jar"), "j").unwrap();
-        // monde ouvert : refus, rien de supprimé
+        // monde ouvert : refus (Windows : le renommage échoue d'abord), rien de supprimé, aucune sauvegarde parasite
         let lock = std::fs::File::create(a.instance().join("saves/Monde/session.lock")).unwrap();
         lock.lock().unwrap();
-        assert!(uninstall_pack(&d, "a").unwrap_err().to_string().contains("monde est ouvert"));
-        assert!(a.install_marker().is_file());
+        let e = uninstall_pack(&d, "a").unwrap_err().to_string();
+        assert!(e.contains("monde est ouvert") || e.contains("Le pack est utilisé"), "{e}");
+        assert!(a.install_marker().is_file() && backup::list(&a).is_empty());
         drop(lock);
+        // un .trash résiduel est nettoyé
+        std::fs::create_dir_all(d.root.join("instances/.zzz.trash")).unwrap();
+        clean_trash(&d);
+        assert!(!d.root.join("instances/.zzz.trash").exists());
         uninstall_pack(&d, "a").unwrap();
-        assert!(!a.instance().exists() && !a.install_marker().exists());
-        assert_eq!(backup::list(&a).len(), 1, "mondes sauvegardés avant suppression");
+        assert!(!a.instance().exists() && !trash_dir(&a).exists());
+        let l = backup::list(&a);
+        assert_eq!((l.len(), l[0].keep), (1, true), "copie de désinstallation conservée");
+        assert_eq!(std::fs::read_to_string(a.backups().join(&l[0].id).join("Monde/level.dat")).unwrap(), "x");
+        assert!(a.backups().join(&l[0].id).join(".screenshots/s.png").is_file());
         assert!(b.install_marker().is_file() && d.libraries().join("lib.jar").is_file());
         assert!(uninstall_pack(&d, "a").unwrap_err().to_string().contains("pas installé"));
         assert!(uninstall_pack(&d, "../b").is_err());
+        // réinstallation puis plus de sauvegardes de mise à jour que la rotation n'en garde : la copie de désinstallation reste
+        for i in 0..5u64 {
+            world(&a, &format!("v{i}"));
+            std::fs::write(a.instance().join("saves/Monde/level.dat"), "z".repeat(i as usize + 2)).unwrap();
+            backup::backup_saves(&a, 1_900_000_000 + i * 100).unwrap();
+        }
+        let l = backup::list(&a);
+        assert_eq!(l.iter().filter(|x| x.keep).count(), 1);
+        assert_eq!(l.iter().filter(|x| !x.keep).count(), backup::KEEP, "la rotation ne compte pas la copie de désinstallation");
+        // la restaurer ne mélange pas les captures aux mondes
+        let keep = l.iter().find(|x| x.keep).unwrap().id.clone();
+        backup::restore(&a, &keep, 1_950_000_000).unwrap();
+        assert!(a.instance().join("saves/Monde/level.dat").is_file() && !a.instance().join("saves/.screenshots").exists());
+        std::fs::remove_dir_all(&d.root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn uninstall_is_refused_whole_when_a_file_is_locked() {
+        let d = Dirs::new(std::env::temp_dir().join(format!("opaline-uninst-lock-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&d.root);
+        let a = d.for_pack("a").unwrap();
+        world(&a, "x");
+        let open = std::fs::File::open(a.instance().join("saves/Monde/level.dat")).unwrap(); // fichier tenu ouvert (Windows : renommage impossible)
+        let e = uninstall_pack(&d, "a").unwrap_err().to_string();
+        assert!(e.contains("Le pack est utilisé"), "{e}");
+        assert!(a.instance().join("saves/Monde/level.dat").is_file() && a.install_marker().is_file());
+        drop(open);
+        uninstall_pack(&d, "a").unwrap();
         std::fs::remove_dir_all(&d.root).unwrap();
     }
 

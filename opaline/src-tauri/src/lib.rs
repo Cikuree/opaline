@@ -255,7 +255,12 @@ async fn settings_get(state: State<'_, S>) -> CmdResult<service::SettingsView> {
 
 #[tauri::command]
 async fn settings_set(state: State<'_, S>, patch: service::SettingsPatch) -> CmdResult<service::SettingsView> {
-    state.blocking(move |r| service::settings_set(r, patch)).await
+    let discord_off = patch.discord_presence == Some(false);
+    let v = state.blocking(move |r| service::settings_set(r, patch)).await?;
+    if discord_off && let Some(tx) = &state.0.presence {
+        let _ = tx.send(None); // statut effacé tout de suite, même en cours de partie
+    }
+    Ok(v)
 }
 
 // ---------- Authentification ----------
@@ -642,7 +647,7 @@ async fn open_map(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<
 /// Copie des réglages (touches, souris, FOV, son...) d'un pack vers un autre ; refusée pendant le jeu ou une installation du pack de destination.
 #[tauri::command]
 async fn settings_copy(state: State<'_, S>, from: String, to: String, categories: Vec<String>) -> CmdResult<usize> {
-    exclusive(&state, to.clone(), move |r| opaline_core::prefs::copy_options(&r.for_pack(&from)?, &r.for_pack(&to)?, &categories)).await
+    exclusive(&state, to.clone(), move |r| opaline_core::prefs::copy_options(&r.for_pack(&from)?, &r.for_pack(&to)?, &categories, friends::now_secs())).await
 }
 
 #[tauri::command]
@@ -913,7 +918,16 @@ pub fn run_with(svc: Services) {
         .manage(state.clone())
         .setup(move |app| {
             // Premier lancement seulement : mode et mémoire d'après la RAM et le GPU (échec ignoré : les valeurs par défaut restent).
-            let _ = opaline_core::autotune::first_run(&state.0.root, opaline_core::sysmem::total_ram_mb(), opaline_core::autotune::detect_gpu);
+            // Réglage d'après la RAM tout de suite (la fenêtre n'attend rien) ; le GPU (5 s au plus) affine ensuite, sans fenêtre console.
+            let ram = opaline_core::sysmem::total_ram_mb();
+            if opaline_core::autotune::first_run(&state.0.root, ram, || None).unwrap_or(false) {
+                let root = state.0.root.clone();
+                std::thread::spawn(move || {
+                    let _ = opaline_core::autotune::refine(&root, ram, opaline_core::autotune::detect_gpu_timeout(Duration::from_secs(5)));
+                });
+            }
+            let root = state.0.root.clone();
+            std::thread::spawn(move || service::clean_trash(&root)); // désinstallation interrompue
             // Le dossier de données peut être surchargé (OPALINE_HOME) : l'asset protocol y est alors autorisé à l'exécution.
             let tex = state.0.root.textures();
             std::fs::create_dir_all(&tex)?;

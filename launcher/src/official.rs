@@ -59,25 +59,6 @@ pub fn launcher_running() -> bool {
     cfg!(target_os = "linux") && Command::new("pgrep").args(["-x", "minecraft-launcher"]).output().is_ok_and(|o| o.status.success())
 }
 
-/// Que faire quand on veut préparer le profil officiel ?
-#[derive(Debug, PartialEq, Eq)]
-pub enum LauncherDecision {
-    /// Le Launcher ne tourne pas : on prépare le profil.
-    Free,
-    /// Le Launcher tourne seul : proposer de le fermer.
-    OfferClose,
-    /// Une partie lancée par le Launcher tourne : ne rien fermer.
-    GameRunning,
-}
-
-pub fn decide(launcher_running: bool, game_running: bool) -> LauncherDecision {
-    match (launcher_running, game_running) {
-        (false, _) => LauncherDecision::Free,
-        (true, false) => LauncherDecision::OfferClose,
-        (true, true) => LauncherDecision::GameRunning,
-    }
-}
-
 /// Une ligne de commande est celle d'un Minecraft lancé depuis `.minecraft` ou depuis une instance d'Opaline (`markers`).
 pub fn is_launcher_game(cmdline: &str, markers: &[String]) -> bool {
     let norm = |s: &str| s.to_ascii_lowercase().replace('\\', "/");
@@ -125,18 +106,30 @@ pub fn game_running(root: &crate::config::Dirs, mc: &Path) -> bool {
     crate::backup::world_open_in(&mc.join("saves")) || fs::read_dir(&instances).into_iter().flatten().flatten().any(|i| crate::backup::world_open_in(&i.path().join("saves")))
 }
 
-/// Ferme le Launcher Minecraft seulement (jamais `java` / `javaw`) : fermeture douce, attente de 5 s au plus, puis forcée.
+/// Message quand le Launcher ne se ferme pas de lui-même : Opaline ne force jamais sa fermeture.
+pub const CLOSE_BY_HAND: &str = "Ferme le Launcher Minecraft à la main puis relance JOUER";
+
+/// Demande la fermeture avec `ask`, puis attend au plus `timeout` que `running` devienne faux. Jamais de fermeture forcée.
+pub fn close_with(ask: impl Fn(), running: impl Fn() -> bool, timeout: std::time::Duration, poll: std::time::Duration) -> Result<()> {
+    ask();
+    let t = std::time::Instant::now();
+    while running() && t.elapsed() < timeout {
+        std::thread::sleep(poll);
+    }
+    if running() {
+        bail!("{CLOSE_BY_HAND}");
+    }
+    Ok(())
+}
+
+/// Ferme le Launcher Minecraft seulement (jamais `java` / `javaw`) : fermeture douce (sans `/F`), 5 s d'attente, sinon erreur.
 pub fn close_launcher() -> Result<()> {
     use std::process::Command;
-    use std::time::{Duration, Instant};
-    let kill = |force: bool| {
+    let ask = || {
         if cfg!(windows) {
             for img in ["MinecraftLauncher.exe", "Minecraft.exe"] {
                 let mut c = Command::new("taskkill");
                 c.args(["/IM", img]);
-                if force {
-                    c.arg("/F");
-                }
                 #[cfg(windows)]
                 {
                     use std::os::windows::process::CommandExt;
@@ -145,22 +138,16 @@ pub fn close_launcher() -> Result<()> {
                 let _ = c.output();
             }
         } else {
-            let _ = Command::new("pkill").args([if force { "-KILL" } else { "-TERM" }, "-x", "minecraft-launcher"]).output();
+            let _ = Command::new("pkill").args(["-TERM", "-x", "minecraft-launcher"]).output();
         }
     };
-    kill(false);
-    let t = Instant::now();
-    while launcher_running() && t.elapsed() < Duration::from_secs(5) {
-        std::thread::sleep(Duration::from_millis(250));
-    }
-    if launcher_running() {
-        kill(true);
-        std::thread::sleep(Duration::from_millis(500));
-    }
-    if launcher_running() {
-        bail!("le Launcher Minecraft ne se ferme pas : ferme-le toi-même");
-    }
-    Ok(())
+    close_with(ask, launcher_running, std::time::Duration::from_secs(5), std::time::Duration::from_millis(250))
+}
+
+/// Un jeu tourne dans cette instance : processus `java` dont la ligne de commande contient son dossier, ou monde ouvert.
+pub fn instance_in_use(instance: &Path) -> bool {
+    let markers = [instance.to_string_lossy().into_owned()];
+    crate::backup::world_open_in(&instance.join("saves")) || java_cmdlines().iter().any(|c| is_launcher_game(c, &markers))
 }
 
 /// Taille d'un fichier ; `None` s'il n'existe pas. Toute autre erreur est propagée.
@@ -401,11 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn launcher_decision_and_game_detection() {
-        assert_eq!(decide(false, false), LauncherDecision::Free);
-        assert_eq!(decide(false, true), LauncherDecision::Free);
-        assert_eq!(decide(true, false), LauncherDecision::OfferClose);
-        assert_eq!(decide(true, true), LauncherDecision::GameRunning);
+    fn game_detection_and_close_policy() {
         let m = vec![".minecraft".to_string(), r"C:\Users\u\AppData\Roaming\Opaline\instances".to_string()];
         assert!(is_launcher_game(r"javaw.exe -Xmx4G net.minecraft.client.main.Main --gameDir C:\Users\u\AppData\Roaming\.minecraft", &m));
         assert!(is_launcher_game(r"javaw.exe -cp x cpw.mods.bootstraplauncher.BootstrapLauncher --gameDir C:\Users\u\AppData\Roaming\Opaline\instances\classroom-run", &m));
@@ -571,5 +554,16 @@ mod tests {
         assert!(tasklist_has(out, &["MinecraftLauncher.exe", "Minecraft.exe"]));
         assert!(tasklist_has("minecraft.exe  9", &["Minecraft.exe"]));
         assert!(!tasklist_has("MinecraftBedrock.exe 1\nnotminecraft.exe 2", &["Minecraft.exe"]));
+    }
+
+    #[test]
+    fn close_never_forces_and_asks_to_close_by_hand() {
+        use std::cell::Cell;
+        use std::time::Duration;
+        let asked = Cell::new(0);
+        let e = close_with(|| asked.set(asked.get() + 1), || true, Duration::from_millis(30), Duration::from_millis(5)).unwrap_err();
+        assert_eq!((asked.get(), e.to_string()), (1, CLOSE_BY_HAND.to_string())); // une seule demande douce, puis message
+        let up = Cell::new(true);
+        close_with(|| up.set(false), || up.get(), Duration::from_millis(30), Duration::from_millis(5)).unwrap();
     }
 }

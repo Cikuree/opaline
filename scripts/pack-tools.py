@@ -141,7 +141,9 @@ def valid_map(u):
         return False
     try:
         p = urlsplit(u)
-        return p.scheme in ("http", "https") and bool(p.hostname) and p.username is None and p.password is None and "@" not in p.netloc and p.port != 0
+        h = (p.hostname or "").lower()
+        local = h == "localhost" or h.endswith(".localhost") or h.startswith("127.") or h == "::1"  # carte locale refusee
+        return p.scheme in ("http", "https") and bool(h) and not local and p.username is None and p.password is None and "@" not in p.netloc and p.port != 0
     except ValueError:
         return False
 

@@ -1,5 +1,7 @@
 // Vue « Carte » : la carte du serveur (BlueMap...) dans un cadre isolé. Le cadre est d'une autre origine : aucune API Tauri ne lui est
 // injectée (scripts du noyau limités au cadre principal) et les commandes refusent toute origine distante. Déchargé en quittant la vue.
+// Attention : la garde « fenêtre main » du backend ne couvre PAS les cadres (un cadre appartient à la fenêtre main) ; leur protection est
+// l'absence de clé d'invocation Tauri dans une autre origine et l'absence de capability pour elle.
 import * as api from '../api.js';
 import { current, on } from '../state.js';
 import { $, toast } from '../util.js';
