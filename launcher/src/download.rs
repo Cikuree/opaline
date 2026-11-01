@@ -39,7 +39,7 @@ pub fn http_client_with(redirect: reqwest::redirect::Policy) -> Result<Client> {
         .build()?)
 }
 
-fn part_path(dest: &Path) -> PathBuf {
+pub(crate) fn part_path(dest: &Path) -> PathBuf {
     let mut s = dest.as_os_str().to_owned();
     s.push(".part");
     PathBuf::from(s)

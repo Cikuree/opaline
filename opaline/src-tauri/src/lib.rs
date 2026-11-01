@@ -127,7 +127,46 @@ async fn app_info(app: AppHandle, state: State<'_, S>) -> CmdResult<Value> {
     let version = app.package_info().version.to_string();
     let v = version.clone();
     let update = state.blocking(move |_| Ok(service::app_update(&v))).await?;
-    Ok(json!({ "version": version, "update": update.map(|u| json!({ "version": u.version, "url": u.url })) }))
+    Ok(json!({ "version": version, "update": update.map(|u| json!({ "version": u.version, "url": u.url, "auto": opaline_core::update::can_auto(&u) })) }))
+}
+
+/// Clé réservée dans `installing` pendant une mise à jour d'Opaline (aucun id de pack ne peut la prendre).
+const UPDATING: &str = "<update>";
+
+/// Télécharge l'installeur (vérifié), le lance, puis quitte Opaline. Progression : `update://progress`, échec : `update://done`.
+#[tauri::command]
+async fn app_update_install(app: AppHandle, state: State<'_, S>) -> CmdResult<()> {
+    {
+        let mut a = state.0.activity.lock().unwrap();
+        if !a.running.is_empty() {
+            return Err("Le jeu est en cours : fermez-le avant de mettre à jour Opaline".into());
+        }
+        if !a.installing.is_empty() {
+            return Err("Une installation est en cours : attendez la fin avant de mettre à jour Opaline".into());
+        }
+        a.installing.insert(UPDATING.to_string());
+    }
+    let s = state.inner().clone();
+    let version = app.package_info().version.to_string();
+    tauri::async_runtime::spawn(async move {
+        let emitter = app.clone();
+        let r = s
+            .blocking(move |root| {
+                let path = service::app_update_download(root, &version, |done, total| {
+                    let _ = emitter.emit("update://progress", json!({ "done": done, "total": total }));
+                })?;
+                opaline_core::update::apply(&path)
+            })
+            .await;
+        if r.is_ok() {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            app.exit(0); // libère l'exe (Windows) ; la nouvelle version est relancée par l'installeur ou par `apply`
+            return;
+        }
+        s.0.activity.lock().unwrap().installing.remove(UPDATING);
+        let _ = app.emit("update://done", json!({ "ok": false, "error": r.err() }));
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -321,6 +360,9 @@ async fn start_install(app: AppHandle, s: S, id: String) -> CmdResult<()> {
         let mut a = s.0.activity.lock().unwrap();
         if a.running.contains(&id) {
             return Err("Le jeu est en cours pour ce pack : fermez-le avant d'installer ou de réparer".into());
+        }
+        if a.installing.contains(UPDATING) {
+            return Err("Mise à jour d'Opaline en cours : attendez la fin".into());
         }
         if !a.installing.insert(id.clone()) {
             return Err("Une installation de ce pack est déjà en cours".into());
@@ -644,6 +686,7 @@ pub fn run_with(svc: Services) {
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
+            app_update_install,
             auth_status,
             auth_start,
             auth_cancel,

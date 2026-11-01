@@ -116,7 +116,9 @@ jobs:
           WIN="Opaline_${VERSION}_x64-setup.exe"
           LIN="Opaline_${VERSION}_amd64.AppImage"
           [ -f "dist/installers/$WIN" ] && [ -f "dist/installers/$LIN" ] || { echo "installeur manquant"; ls dist/installers; exit 1; }
-          printf '{"version":"%s","windows":"%s/%s","linux":"%s/%s"}\n' "$VERSION" "$BASE" "$WIN" "$BASE" "$LIN" > dist/launcher.json
+          WIN_SHA="$(sha256sum "dist/installers/$WIN" | cut -d' ' -f1)"
+          LIN_SHA="$(sha256sum "dist/installers/$LIN" | cut -d' ' -f1)"
+          printf '{"version":"%s","windows":"%s/%s","linux":"%s/%s","windowsSha256":"%s","linuxSha256":"%s"}\n' "$VERSION" "$BASE" "$WIN" "$BASE" "$LIN" "$WIN_SHA" "$LIN_SHA" > dist/launcher.json
           gh release create "$GITHUB_REF_NAME" "$JAR" dist/installers/* \
             dist/classroom-run-prism.zip dist/launcher.json --title "$GITHUB_REF_NAME" --generate-notes
   packs:

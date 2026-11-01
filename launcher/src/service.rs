@@ -410,6 +410,15 @@ pub fn app_update(current: &str) -> Option<update::Update> {
     update::check(&short_client().ok()?, &config::launcher_json_url(), current)
 }
 
+/// Télécharge l'installeur de la version publiée (relue ici : l'interface ne fournit ni URL ni hash).
+/// `progress(octets reçus, total si connu)`. Dossier temporaire : `<racine>/update`.
+pub fn app_update_download(root: &Dirs, current: &str, progress: impl FnMut(u64, Option<u64>)) -> Result<PathBuf> {
+    let info = update::fetch_info(&short_client()?, &config::launcher_json_url())?;
+    let u = update::pick(&info, current).context("Aucune mise à jour disponible")?;
+    anyhow::ensure!(update::can_auto(&u), "Mise à jour automatique indisponible sur cette installation : utilisez le lien de téléchargement");
+    update::download(&crate::download::http_client()?, &u, &root.root.join("update"), progress)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
