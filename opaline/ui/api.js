@@ -14,6 +14,7 @@ export const listen = (name, cb) =>
 export const errMsg = (e) => (typeof e === 'string' ? e : (e && e.message) || 'Erreur inconnue.');
 
 export const appInfo = () => call('app_info');
+export const appUpdateInstall = () => call('app_update_install');
 export const authStatus = () => call('auth_status');
 export const authStart = (mode = 'browser') => call('auth_start', { mode });
 export const authCancel = () => call('auth_cancel');

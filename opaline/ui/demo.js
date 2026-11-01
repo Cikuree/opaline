@@ -79,7 +79,12 @@ const runInstall = async (id) => {
 export async function invoke(cmd, a = {}) {
   await wait(60);
   switch (cmd) {
-    case 'app_info': return { version: '0.1.0', update: q.has('update') ? { version: '0.1.1', url: 'https://github.com/Cikuree/opaline/releases/latest' } : null };
+    case 'app_info': return { version: '0.1.0', update: q.has('update') ? { version: '0.1.1', url: 'https://github.com/Cikuree/opaline/releases/latest', auto: !q.has('manual') } : null };
+    case 'app_update_install': (async () => {
+      if (q.has('updfail')) { await wait(800); emit('update://done', { ok: false, error: 'hash invalide pour l’installeur, fichier supprimé' }); return; }
+      for (let d = 0; d <= 10; d++) { emit('update://progress', { done: d * 8e6, total: 80e6 }); await wait(250); }
+      console.info('[démo] installeur lancé : /P /R /UPDATE, Opaline quitte');
+    })(); return null;
     case 'auth_status': return authView();
     case 'auth_start': { const attempt = ++attemptN; cancelled = false; setTimeout(() => { if (cancelled) return; if (q.has('notapproved')) { pending = true; emit('auth://done', { attempt, ok: false, profile: null, error: 'Application Azure non encore approuvée par Mojang (403 sur login_with_xbox).', mojangPending: true }); return; } signedIn = true; emit('auth://done', { attempt, ok: true, profile: authView().profile, error: null, mojangPending: false }); }, q.has('notapproved') ? 1500 : 6000); return a.mode === 'device' ? { attempt, mode: 'device', userCode: 'KQ7M4XNP', verificationUri: 'https://www.microsoft.com/link', expiresIn: 900 } : { attempt, mode: 'browser', authorizeUrl: 'https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize' }; }
     case 'auth_cancel': cancelled = true; return null;

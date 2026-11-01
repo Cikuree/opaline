@@ -37,7 +37,7 @@ statsPort = 25580                  # 0 si pas d'endpoint HTTP (packs non Classro
 | `pack-<id>.zip` | le dossier `packs/<id>/` publié (avec, pour classroom-run, `mods/classroomrun.pw.toml` généré) ; à la racine du zip, un dossier `pack/` |
 | `classroomrun-X.Y.Z.jar` | le mod |
 | installeurs Opaline | Windows : `Opaline_X.Y.Z_x64-setup.exe` ; Linux : `Opaline_X.Y.Z_amd64.AppImage` |
-| `launcher.json` | `{"version": "X.Y.Z", "windows": "<url installeur>", "linux": "<url AppImage>"}` |
+| `launcher.json` | `{"version": "X.Y.Z", "windows": "<url installeur>", "linux": "<url AppImage>", "windowsSha256": "<hex>", "linuxSha256": "<hex>"}` : les sha256 sont ceux des fichiers de la release ; sans hash (anciennes releases), pas de mise à jour automatique |
 | `classroom-run-prism.zip` | instance Prism (inchangé) |
 
 Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launcher.json` (mise à jour d'Opaline).
@@ -70,7 +70,8 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 
 | Commande | Arguments | Retour |
 |---|---|---|
-| `app_info` | – | `{version, update: null \| {version, url}}` |
+| `app_info` | – | `{version, update: null \| {version, url, auto}}` ; `auto` vrai : « Mettre à jour » est proposé (hash publié ; Windows, ou Linux lancé depuis une AppImage) |
+| `app_update_install` | – | –, puis `update://progress` ; sur succès Opaline quitte (installeur NSIS `/P /R /UPDATE` sous Windows, remplacement atomique de l'AppImage puis relance sous Linux) ; sur échec `update://done`. Refusé (erreur) pendant un jeu ou une installation. L'URL doit commencer par `https://github.com/Cikuree/opaline/releases/download/` et le sha256 est vérifié |
 | `auth_status` | – | `{state: "signedOut" \| "signedIn" \| "notConfigured", profile: null \| {name, uuid}, warning: null \| string, mode: "direct" \| "official", mojangPending: bool, identity: null \| {name, uuid}}`. `mode` vaut `direct` avec une session Opaline valide et `launchVia` = `opaline`, sinon `official` (lancement via le Launcher Minecraft : voir `play`). `mojangPending` : le dernier essai de connexion a été refusé par Mojang (app Azure non approuvée, `NOT_APPROVED`), mémorisé en mémoire seulement. `identity` : pseudo Minecraft mémorisé (mode officiel seulement) |
 | `identity_set` | `{name}` | `{name, uuid}`, ou `null` si `name` est vide (oublie le pseudo). Mode officiel : le pseudo (`[A-Za-z0-9_]{3,16}`, validé avant tout appel) est résolu via `api.mojang.com/users/profiles/minecraft/<pseudo>` (204 / 404 : erreur « Aucun joueur Minecraft nommé … »), puis mémorisé dans la config ; aucune authentification |
 | `identity_skin` | – | `null` (pas de pseudo) ou `{dataUrl, model: "classic" \| "slim"}` : skin du pseudo mémorisé (sessionserver public, hôte de texture vérifié), affiché en lecture seule |
@@ -137,6 +138,8 @@ SkinView = {id, name, model, active, dataUrl}
 | `auth://done` | `{attempt: number, ok: bool, profile: null \| {name, uuid}, error: null \| string, mojangPending: bool}`, jamais émis pour une tentative annulée. `mojangPending` vrai : refus `NOT_APPROVED`, l'interface explique que Mojang n'a pas encore validé l'app et continue en mode officiel |
 | `install://progress` | `{packId, stage, done, total}`, avec les étapes toujours émises dans cet ordre : `java`, `minecraft`, `assets`, `loader`, `mods`, `textures` |
 | `install://done` | `{packId, ok: bool, error: null \| string}` |
+| `update://progress` | `{done: octets reçus, total: octets \| null}` (téléchargement de l'installeur d'Opaline) |
+| `update://done` | `{ok: false, error: string}` : émis seulement en cas d'échec (sur succès Opaline quitte) |
 | `textures://ready` | `{dir: string}` : textures disponibles (émis au démarrage dès qu'elles sont extraites, y compris avant toute installation de pack) |
 | `game://exited` | `{packId, code: number \| null, logTail: null \| string}` (log filtré : ni jeton ni adresse) |
 

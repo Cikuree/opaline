@@ -85,7 +85,7 @@ Ensuite, pour les deux : XBL -> XSTS -> `login_with_xbox` -> entitlements -> pro
   Le statut du serveur (carte d'Opaline) : ping SLP, le MOTD doit contenir le texte du pack (sinon « Serveur inattendu »).
 - Polling du device code : une erreur réseau ponctuelle ne casse pas le flux (réessai jusqu'à l'échéance).
 - `ping::ping` : Server List Ping, protocole 777 (26.3). `sysmem::total_ram_mb` : RAM physique.
-- Au démarrage : lecture de `.../releases/latest/download/launcher.json` ; version plus récente = bandeau + bouton qui ouvre l'URL de l'OS (https seulement). Erreur réseau silencieuse (`CLASSROOM_DEBUG=1` pour la trace). Pas d'auto-remplacement.
+- Au démarrage : lecture de `.../releases/latest/download/launcher.json` ; version plus récente = bandeau + bouton qui ouvre l'URL de l'OS (https seulement). Erreur réseau silencieuse (`CLASSROOM_DEBUG=1` pour la trace). Mise à jour en un clic : `update::download` (sha256 de `launcher.json` obligatoire, URL limitée aux releases de Cikuree/opaline) puis `update::apply` (installeur NSIS `/P /R /UPDATE` sous Windows, remplacement atomique de `$APPIMAGE` sous Linux) ; sans hash ou hors AppImage, seul le lien manuel reste.
 - `config::PackProfile` regroupe les éléments propres à un pack (URL, serveur) en vue du multi-pack.
 
 ## Utilisation
