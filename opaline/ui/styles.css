@@ -144,7 +144,7 @@ th{text-align:left;color:var(--mute);font-weight:600;padding:6px 10px;font-size:
 td{padding:9px 10px;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
 tbody tr.sel td,tbody tr:hover td{background:var(--panel-hi)} tbody tr[tabindex]{cursor:pointer}
 .ok{color:var(--ok);font-weight:700}
-.tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--win-deep);color:var(--mute)}
+.tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;display:inline-block;background:var(--win-deep);color:var(--mute)}
 .files{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
 .files button{background:var(--panel);border-radius:20px;padding:16px 8px;display:flex;flex-direction:column;align-items:center;gap:8px;font-weight:700;font-size:13px;transition:transform .2s var(--ease),background .2s}
 .files button:hover{background:var(--panel-hi);transform:translateY(-2px)}
@@ -338,7 +338,6 @@ body.tauri .window{max-width:none;max-height:none;border-radius:0;box-shadow:non
 .drop{margin-top:10px;border:2px dashed var(--line);border-radius:14px;padding:14px;text-align:center;color:var(--mute);font-size:13px;transition:background .2s,border-color .2s}.drop.on{background:var(--win-deep);border-color:var(--coral)}
 .xt{display:flex;flex-direction:column;gap:2px;min-width:0}.xw{color:var(--warn);font-weight:700}.mrh{display:flex;align-items:center;gap:12px;min-width:0}.mrh img{border-radius:10px;flex:none}
 .more{margin-top:8px}
-#mrQ{width:100%;background:var(--win-deep);border:1px solid var(--line);border-radius:999px;padding:9px 16px;color:inherit;font:inherit}
 
 /* Cases à cocher aux couleurs d'Opaline (même famille que les interrupteurs) */
 input[type=checkbox]{-webkit-appearance:none;appearance:none;flex:none;width:18px;height:18px;margin:0;border-radius:6px;border:1.5px solid var(--mute);background:var(--win-deep);cursor:pointer;display:inline-grid;place-content:center;transition:background .15s,border-color .15s}
