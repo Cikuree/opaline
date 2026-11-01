@@ -437,6 +437,11 @@ impl AuthManager {
         *self.warning.lock().unwrap() = Some(msg);
     }
 
+    /// Profil de la session en mémoire (pseudo, UUID), sans réseau ni rafraîchissement.
+    pub fn current_profile(&self) -> Option<(String, String)> {
+        self.inner.lock().unwrap().session.as_ref().map(|(s, _)| (s.username.clone(), s.uuid.clone()))
+    }
+
     /// Jeton d'accès en cours (pour masquer les logs), s'il y en a un.
     pub fn current_token(&self) -> Option<String> {
         self.inner.lock().unwrap().session.as_ref().map(|(s, _)| s.access_token().to_string())

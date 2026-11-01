@@ -97,7 +97,10 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 | `skin_delete` | `{id}` | – |
 | `capes_list` | – | `[{id, alias, active, url}]` |
 | `cape_set` | `{id: string \| null}` | – |
-| `friends` | – | `[{name, uuid, online, inGame, lastSeen: null \| string}]` |
+| `friends` | – | `{friends: [{name, uuid, online, inGame, lastSeen: null \| string, friend: bool, p2p: bool, packId: null \| string, packVersion: null \| string}], p2p: {state: "ok" \| "noIdentity" \| "noTailscale", listenFailed: bool}}` |
+| `friend_add` | `{name}` | `{name, uuid}` (pseudo validé puis résolu en UUID par l'API publique Mojang ; erreur si inconnu, si c'est soi-même ou au-delà de 200 amis) |
+| `friend_remove` | `{uuid}` | – |
+| `friend_invite` | `{uuid, packId}` | – (invitation P2P à un ami vu sur le tailnet à la dernière actualisation ; erreur lisible s'il est injoignable, ne t'a pas dans sa liste, ou si l'invitation précédente date de moins de 30 s) |
 | `player_head` | `{uuid}` | `{dataUrl}` (visage 8×8 + calque du chapeau, PNG, mis en cache) |
 
 **Erreurs** : une commande en échec renvoie une chaîne lisible en français, sans jeton, sans adresse de serveur, sans chemin personnel complet.
@@ -106,7 +109,19 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 
 - La liste réunit les joueurs vus en ligne sur les serveurs des packs (échantillon du ping et `/stats`), mémorisés localement avec la date de dernière visite.
 - `inGame` vaut vrai si le joueur est connecté au serveur d'un pack.
-- Il n'y a pas de service de présence : le statut personnel (En ligne / Absent / Invisible) de la maquette n'est pas réalisé en v1.
+- Le statut personnel (En ligne / Absent / Invisible) de la maquette n'est pas réalisé en v1.
+- Amis choisis : `friend_add` / `friend_remove`, stockés dans `friends_list.json` à la racine du dossier de données (écriture atomique). Une ligne par UUID : joueurs vus en ligne, amis ajoutés et pairs Opaline du tailnet sont fusionnés. `friend` : dans la liste ; `p2p` : une présence Opaline a répondu (si `friend` est faux, l'interface propose « Ajouter » sous « Sur ton Tailscale »).
+- Identité de l'utilisateur : profil de la session Opaline, sinon `mc_name` / `mc_uuid` du mode officiel. Sans identité : `p2p.state = "noIdentity"`, ni écoute ni découverte. Tailscale non connecté : `"noTailscale"` (présence inconnue). `listenFailed` : l'écoute a échoué (pare-feu Windows, port pris) ; Opaline ne modifie jamais le pare-feu.
+
+### Protocole P2P v1 (présence et invitations sur le tailnet)
+
+Le tailnet est la frontière de confiance : l'UUID annoncé n'est pas authentifié, seuls les appareils du tailnet joignent le port.
+
+- Écoute uniquement sur l'IPv4 Tailscale de ce PC (`tailscale ip -4`, plage 100.64.0.0/10 vérifiée), port **25590**, jamais `0.0.0.0` ni l'IP LAN ; démarrée seulement si Tailscale est `Running` et qu'une identité existe, arrêtée ou déplacée quand l'état change (contrôle toutes les 5 s tant qu'elle n'écoute pas, puis 15 s).
+- `GET /opaline/v1/presence` : `{app: "opaline", v: 1, uuid, name, inGame, packId: null \| string, packVersion: null \| string, appVersion}` (`packVersion` = hash de version du pack installé). Rien d'autre : ni chemin, ni IP, ni jeton. `inGame` ne vaut vrai que pour un pack lancé par Opaline (mode direct) : en mode Launcher officiel le processus n'est pas suivi, `inGame` reste faux.
+- `POST /opaline/v1/invite` avec `{fromUuid, fromName, packId}` (JSON strict, ≤ 1 Ko, pseudo / UUID / id validés) : 200 si `fromUuid` est dans la liste d'amis locale ET que l'IP source de la connexion est celle connue pour cet ami, ou, à défaut (fenêtre masquée), confirmée à la volée par sa `presence` (délai 800 ms, UUID annoncé identique ; après l'anti-spam) (événement `friends://invite`), 400 invalide, 403 inconnu, 429 si moins de 30 s depuis la dernière invitation du même expéditeur ou si 20 expéditeurs ont déjà invité dans la fenêtre de 30 s.
+- Limites : en-têtes ≤ 8 Ko, lecture 2 s au total, 8 connexions simultanées au plus, une requête par connexion (`Connection: close`), méthode ou chemin inconnu : 404, corps > 1 Ko : 413.
+- Découverte : `tailscale status --json`, pairs `Online`, requête `presence` vers leur première IPv4 Tailscale (délai 800 ms, 8 en parallèle) à chaque appel de `friends` (toutes les 15 s fenêtre visible). Adresses et noms de machine ne sont ni affichés, ni loggés, ni conservés hors mémoire.
 
 ### Mode de lancement et écran de connexion
 
@@ -135,6 +150,7 @@ SkinView = {id, name, model, active, dataUrl}
 | `install://done` | `{packId, ok: bool, error: null \| string}` |
 | `textures://ready` | `{dir: string}` : textures disponibles (émis au démarrage dès qu'elles sont extraites, y compris avant toute installation de pack) |
 | `game://exited` | `{packId, code: number \| null, logTail: null \| string}` (log filtré : ni jeton ni adresse) |
+| `friends://invite` | `{fromUuid, fromName, packId}` : invitation reçue d'un ami (protocole P2P ci-dessus) ; l'interface propose « Rejoindre » |
 
 ## 7. Fenêtre
 

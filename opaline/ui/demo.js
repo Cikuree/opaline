@@ -40,8 +40,12 @@ let skins = [
 ].map(([name, model, P], i) => ({ id: 's' + (i + 1), name, model, active: i === 0, dataUrl: skinPng(P) }));
 let capes = [['Migrator', '#b14a5a'], ['Vanilla', '#e8d9b0'], ['Mojang Studios', '#d85252'], ['Mojang Office', '#ffffff']].map(([alias, c], i) => ({ id: 'c' + i, alias, active: i === 0, url: capePng(c) }));
 
-const FRIENDS = [['LunaFox', 3, true, true, null], ['Creeper_Kid', 2, true, true, null], ['Maëlle', 1, true, false, null], ['PixelPaul', 4, false, false, 1200], ['Zéphyr', 5, false, false, 4300]]
-  .map(([name, k, online, inGame, ago]) => ({ name, uuid: 'uuid-' + k, online, inGame, lastSeen: ago ? iso(ago) : null, k }));
+// Amis simulés : en ligne, en jeu (version identique ou différente), hors ligne, et un pair Tailscale à ajouter.
+// ?nots : Tailscale non connecté (présence inconnue) ; ?invite : invitation reçue après 3 s.
+let FRIENDS = [['LunaFox', 3, true, true, null, 'classroom-run', 'a1b2'], ['Creeper_Kid', 2, true, true, null, 'survie', 'zzzz'], ['Maëlle', 1, true, false, null], ['PixelPaul', 4, false, false, 1200], ['Zéphyr', 5, false, false, 4300]]
+  .map(([name, k, online, inGame, ago, packId, packVersion]) => ({ name, uuid: 'uuid-' + k, online, inGame, lastSeen: ago ? iso(ago) : null, k, friend: true, p2p: online && !q.has('nots'), packId: packId || null, packVersion: packVersion || null }));
+if (!q.has('nots')) FRIENDS.push({ name: 'Nova_Tail', uuid: 'uuid-9', online: true, inGame: false, lastSeen: null, k: 9, friend: false, p2p: true, packId: null, packVersion: null });
+if (q.has('invite')) setTimeout(() => emit('friends://invite', { fromUuid: 'uuid-3', fromName: 'LunaFox', packId: 'survie' }), 3000);
 
 const SPL = ['PICKAXE', 'IRON_INGOT', 'DIAMOND', 'NETHER_PORTAL', 'NETHER_WART', 'BLAZE_ROD', 'ENDER_EYE', 'ENTER_END', 'KILL_DRAGON'];
 const DEATHS = [
@@ -116,7 +120,17 @@ export async function invoke(cmd, a = {}) {
     case 'skin_delete': skins = skins.filter((s) => s.id !== a.id); return null;
     case 'capes_list': return structuredClone(capes);
     case 'cape_set': capes.forEach((c) => (c.active = c.id === a.id)); return null;
-    case 'friends': return FRIENDS;
+    case 'friends': return { friends: structuredClone(FRIENDS), p2p: { state: !(signedIn || identity) ? 'noIdentity' : q.has('nots') ? 'noTailscale' : 'ok', listenFailed: q.has('listenfail') } };
+    case 'friend_add': {
+      const n = String(a.name || '').trim();
+      if (!/^[A-Za-z0-9_]{3,16}$/.test(n)) throw 'Pseudo invalide : 3 à 16 caractères, lettres, chiffres ou _';
+      if (n.toLowerCase() === 'inconnu') throw 'Aucun joueur Minecraft nommé « ' + n + ' »';
+      const f = FRIENDS.find((x) => x.name.toLowerCase() === n.toLowerCase());
+      if (f) f.friend = true; else FRIENDS.push({ name: n, uuid: 'uuid-' + (100 + FRIENDS.length), online: false, inGame: false, lastSeen: null, k: 0, friend: true, p2p: false, packId: null, packVersion: null });
+      return { name: n, uuid: (f || FRIENDS[FRIENDS.length - 1]).uuid };
+    }
+    case 'friend_remove': FRIENDS = FRIENDS.filter((x) => x.uuid !== a.uuid || x.online); FRIENDS.filter((x) => x.uuid === a.uuid).forEach((x) => (x.friend = false)); return null;
+    case 'friend_invite': if (!FRIENDS.find((x) => x.uuid === a.uuid)?.p2p) throw 'Ami injoignable sur Tailscale'; return null;
     case 'player_head': throw 'Tête indisponible en démo.';
     default: throw 'Commande inconnue : ' + cmd;
   }

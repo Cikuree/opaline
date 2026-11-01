@@ -36,6 +36,7 @@
 
 <div class="window" id="app">
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="toast inv" id="inviteToast" role="alert"><span id="inviteTx"></span><button type="button" class="btn sm" id="inviteJoin">Rejoindre</button><button type="button" class="ix" id="inviteX" aria-label="Ignorer l’invitation"><svg class="i" style="width:16px;height:16px"><use href="#i-x"/></svg></button></div>
 
   <header class="titlebar" id="titlebar" data-tauri-drag-region>
     <div class="tt" data-tauri-drag-region><svg class="logo-svg" width="18" height="18" viewBox="0 0 64 64" aria-hidden="true"><use href="#logo-o"/></svg>Opaline</div>
@@ -239,7 +240,7 @@
       <div class="me" id="meBtn"><div class="avwrap"><div class="avatar" id="meAvatar"></div><span class="dot" id="meDot" role="img" aria-label="En ligne"></span></div><span class="ingame" id="meGame" hidden>En jeu</span><div class="mtx"><b id="meName"></b><div class="xs mute" id="meSt">En ligne</div></div></div>
     </article>
     <button type="button" class="colx" id="colExpand" aria-expanded="true" aria-controls="col" aria-label="Réduire la liste des amis"><svg class="i"><use href="#i-users"/></svg><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg><span class="lbl">Réduire</span></button>
-    <article class="card onl"><h2 class="sr">Amis, <span id="onCount"></span> en ligne</h2><div id="online"></div><div id="offline"></div></article>
+    <article class="card onl"><h2 class="sr">Amis, <span id="onCount"></span> en ligne</h2><div class="fadd"><button type="button" class="fbtn" id="friendAdd" aria-expanded="false" aria-controls="addForm"><svg class="i"><use href="#i-users"/></svg><span class="tx">Ajouter un ami</span></button><form id="addForm" hidden><input id="addName" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Pseudo Minecraft" aria-label="Pseudo Minecraft de l’ami"><button class="btn sm" type="submit">OK</button></form></div><p class="fnote" id="p2pNote" hidden></p><div id="online"></div><div id="offline"></div><div id="suggest"></div></article>
   </aside>
 
   <div class="prog" id="prog" role="status"><svg class="i" style="color:var(--coral2)"><use href="#i-down"/></svg>

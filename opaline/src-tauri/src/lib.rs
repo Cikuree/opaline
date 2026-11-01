@@ -6,10 +6,11 @@ use base64::Engine;
 use opaline_core::config::{Config, Dirs, LaunchVia};
 use opaline_core::download::Progress;
 use opaline_core::perf::PerfMode;
-use opaline_core::{auth, auth_browser, friends, head, identity, official, service, skins};
+use opaline_core::{auth, auth_browser, friends, head, identity, official, p2p, service, skins, tailscale};
 use serde::Serialize;
 use serde_json::{Value, json};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -65,12 +66,71 @@ struct Inner {
     skins_synced: AtomicBool,
     /// Dernière connexion refusée par Mojang (app Azure non approuvée) : l'interface l'explique (mémoire seulement : le prochain essai tranche).
     mojang_pending: AtomicBool,
+    /// Écoute P2P sur l'IP Tailscale et son dernier état.
+    hosting: Mutex<p2p::Hosting>,
+    host_state: Mutex<p2p::HostState>,
+    /// uuid d'un ami -> IPv4 Tailscale de sa dernière présence (mémoire seulement, jamais affichée ni loggée).
+    peers: Mutex<HashMap<String, Ipv4Addr>>,
 }
 
 #[derive(Clone)]
 struct S(Arc<Inner>);
 
+/// Réponses du serveur P2P : identité et pack en cours viennent de l'état de l'application.
+struct P2pHandler {
+    s: S,
+    app: AppHandle,
+}
+
+impl p2p::Handler for P2pHandler {
+    fn presence(&self) -> Option<p2p::Presence> {
+        let (name, uuid) = self.s.my_identity()?;
+        // shortcut: en mode Launcher officiel le processus n'est pas suivi, `inGame` reste faux ; à lever si on suit le processus du Launcher.
+        let pack_id = self.s.0.activity.lock().unwrap().running.iter().min().cloned();
+        let pack_version = pack_id.as_ref().and_then(|id| self.s.0.root.for_pack(id).ok()).and_then(|d| opaline_core::install::installed_hash(&d));
+        Some(p2p::Presence { app: "opaline".into(), v: 1, uuid: friends::dashed(&uuid)?, name, in_game: pack_id.is_some(), pack_id, pack_version, app_version: self.app.package_info().version.to_string() })
+    }
+
+    fn is_friend(&self, uuid: &str) -> bool {
+        friends::list_load(&self.s.0.root).contains_key(uuid)
+    }
+
+    fn verify_source(&self, uuid: &str, from: IpAddr) -> bool {
+        // Adresse déjà connue de la dernière découverte, sinon vérifiée à la volée (fenêtre masquée : `peers` est périmé).
+        let IpAddr::V4(ip) = from else { return false };
+        let known = self.s.0.peers.lock().unwrap().get(uuid) == Some(&ip);
+        if known {
+            return true;
+        }
+        let ok = tailscale::is_tailnet_ip(ip) && p2p::verify_source(from, uuid, p2p::PORT, p2p::DISCOVERY_TIMEOUT);
+        if ok {
+            self.s.0.peers.lock().unwrap().insert(uuid.to_string(), ip);
+        }
+        ok
+    }
+
+    fn on_invite(&self, i: p2p::Invite) {
+        let _ = self.app.emit("friends://invite", json!({ "fromUuid": i.from_uuid, "fromName": i.from_name, "packId": i.pack_id }));
+    }
+}
+
 impl S {
+    /// Mon identité : profil de la session Opaline, sinon pseudo saisi en mode officiel.
+    fn my_identity(&self) -> Option<(String, String)> {
+        if auth::dev_offline() {
+            let n = self.config().nickname;
+            return Some((n.trim().to_string(), auth::offline_uuid(n.trim())));
+        }
+        self.0.auth.current_profile().or_else(|| service::identity_get(&self.0.root).map(|i| (i.name, i.uuid)))
+    }
+
+    /// Démarre, déplace ou arrête l'écoute : seulement si Tailscale est connecté et que j'ai une identité.
+    fn sync_host(&self, handler: &Arc<dyn p2p::Handler>) {
+        let ip = (self.my_identity().is_some() && tailscale::status().state == tailscale::TailscaleState::Connected).then(tailscale::own_ipv4).flatten();
+        let st = self.0.hosting.lock().unwrap().sync(ip, handler);
+        *self.0.host_state.lock().unwrap() = st;
+    }
+
     fn sanitize(&self, e: anyhow::Error) -> String {
         let token = self.0.auth.current_token();
         let server = self.0.last_server.lock().unwrap().clone();
@@ -566,9 +626,61 @@ async fn cape_set(state: State<'_, S>, id: Option<String>) -> CmdResult<()> {
     state.blocking(move |_| skins::set_cape(&auth::http_client()?, &s.0.svc.skins, &s.token()?, id.as_deref())).await
 }
 
+/// Colonne d'amis : joueurs vus sur les serveurs, amis ajoutés et pairs Opaline du tailnet (présence P2P).
+/// `p2p.state` : `ok`, `noIdentity` (pas de pseudo) ou `noTailscale` (présence inconnue) ; `p2p.listenFailed` : l'écoute a échoué.
 #[tauri::command]
-async fn friends(state: State<'_, S>) -> CmdResult<Vec<friends::Friend>> {
-    state.blocking(service::friends_list).await
+async fn friends(state: State<'_, S>) -> CmdResult<Value> {
+    let s = state.inner().clone();
+    state
+        .blocking(move |r| {
+            let seen = service::friends_list(r).unwrap_or_else(|_| friends::record(r, &[], friends::now_secs()));
+            let me = s.my_identity();
+            let (info, peers) = tailscale::snapshot(); // un seul appel à la CLI
+            let pstate = if me.is_none() { "noIdentity" } else if info.state != tailscale::TailscaleState::Connected { "noTailscale" } else { "ok" };
+            let found = if pstate == "ok" { p2p::discover(&peers, p2p::PORT, p2p::DISCOVERY_TIMEOUT) } else { Vec::new() };
+            *s.0.peers.lock().unwrap() = found.iter().map(|(ip, p)| (p.uuid.clone(), *ip)).collect();
+            let presences: Vec<p2p::Presence> = found.into_iter().map(|(_, p)| p).collect();
+            let list = friends::merge(&friends::list_load(r), seen, &presences, me.as_ref().map(|m| m.1.as_str()));
+            let failed = *s.0.host_state.lock().unwrap() == p2p::HostState::Failed;
+            Ok(json!({ "friends": list, "p2p": { "state": pstate, "listenFailed": failed && pstate == "ok" } }))
+        })
+        .await
+}
+
+#[tauri::command]
+async fn friend_add(state: State<'_, S>, name: String) -> CmdResult<Value> {
+    let s = state.inner().clone();
+    let api = s.0.svc.profile_api.clone();
+    state
+        .blocking(move |r| {
+            let me = s.my_identity().map(|m| m.1);
+            let (name, uuid) = service::friend_add(r, &name, &api, me.as_deref())?;
+            Ok(json!({ "name": name, "uuid": uuid }))
+        })
+        .await
+}
+
+#[tauri::command]
+async fn friend_remove(state: State<'_, S>, uuid: String) -> CmdResult<()> {
+    state.blocking(move |r| friends::list_remove(r, &uuid)).await
+}
+
+/// Invite un ami du tailnet (vu à la dernière présence) à rejoindre un pack.
+#[tauri::command]
+async fn friend_invite(state: State<'_, S>, uuid: String, pack_id: String) -> CmdResult<()> {
+    let s = state.inner().clone();
+    state
+        .blocking(move |_| {
+            let id = friends::dashed(&uuid).context("UUID invalide")?;
+            if !p2p::valid_pack_id(&pack_id) {
+                bail!("Pack invalide");
+            }
+            let (from_name, from_uuid) = s.my_identity().context("Saisis ton pseudo Minecraft pour inviter un ami")?;
+            let ip = s.0.peers.lock().unwrap().get(&id).copied().context("Ami injoignable sur Tailscale")?;
+            let inv = p2p::Invite { from_uuid: friends::dashed(&from_uuid).context("UUID invalide")?, from_name, pack_id };
+            p2p::send_invite(SocketAddr::new(ip.into(), p2p::PORT), &inv, Duration::from_secs(2)).map_err(|e| anyhow!(e))
+        })
+        .await
 }
 
 #[tauri::command]
@@ -599,6 +711,9 @@ pub fn run_with(svc: Services) {
         last_server: Mutex::default(),
         skins_synced: AtomicBool::new(false),
         mojang_pending: AtomicBool::new(false),
+        hosting: Mutex::default(),
+        host_state: Mutex::new(p2p::HostState::Off),
+        peers: Mutex::default(),
     }));
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -609,12 +724,22 @@ pub fn run_with(svc: Services) {
             std::fs::create_dir_all(&tex)?;
             app.asset_protocol_scope().allow_directory(&tex, true)?;
             // Textures du client.jar : tâche de fond, sous le verrou d'installation (pas de doublon avec une installation en cours).
-            let (s, app) = (state.clone(), app.handle().clone());
+            let (s, handle) = (state.clone(), app.handle().clone());
             tauri::async_runtime::spawn(async move {
                 let _guard = s.0.install_lock.lock().await;
                 let s2 = s.clone();
                 if let Ok(Ok(Some(dir))) = tauri::async_runtime::spawn_blocking(move || service::ensure_textures(&s2.0.root, &s2.0.svc.install)).await {
-                    let _ = app.emit("textures://ready", json!({ "dir": dir.to_string_lossy() }));
+                    let _ = handle.emit("textures://ready", json!({ "dir": dir.to_string_lossy() }));
+                }
+            });
+            // Écoute P2P : suit l'état de Tailscale (5 s tant qu'elle n'est pas active, sinon 30 s).
+            let handler: Arc<dyn p2p::Handler> = Arc::new(P2pHandler { s: state.clone(), app: app.handle().clone() });
+            let s = state.clone();
+            std::thread::spawn(move || {
+                loop {
+                    s.sync_host(&handler);
+                    let listening = *s.0.host_state.lock().unwrap() == p2p::HostState::Listening;
+                    std::thread::sleep(Duration::from_secs(if listening { 30 } else { 5 }));
                 }
             });
             Ok(())
@@ -648,6 +773,9 @@ pub fn run_with(svc: Services) {
             capes_list,
             cape_set,
             friends,
+            friend_add,
+            friend_remove,
+            friend_invite,
             player_head
         ])
         .run(tauri::generate_context!())

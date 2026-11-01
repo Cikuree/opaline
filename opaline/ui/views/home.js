@@ -167,22 +167,27 @@ export function renderHome() {
   $('#btnPlay').dataset.st = st;
 }
 
+/** Lance le pack (serveur ajouté à la liste Multijoueur par `play`). */
+export async function playPack(p) {
+  try {
+    const r = await api.play(p.id);
+    if (!r.started) return toast(r.reason || 'Le jeu n’a pas pu démarrer.');
+    if (r.serverListed) listed.add(p.id); else listed.delete(p.id);
+    if (r.via === 'official') return toast(r.message || 'Profil prêt dans le Launcher Minecraft : clique sur Jouer'); // pas de processus à suivre : jamais « en jeu »
+    state.inGame = true; emit('game'); renderHome(); toast('Lancement de ' + p.name + '…');
+  } catch (e) { toast(api.errMsg(e)); }
+}
+
 export function initHome() {
   blob();
   $('#home').addEventListener('click', (e) => { const b = e.target.closest('[data-d]'); if (b) emit('openDeath', recent[+b.dataset.d]); });
   $('#packs').addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (b) emit('selectPack', b.dataset.k); });
   $('#packSearch').addEventListener('input', (e) => { filter = e.target.value.trim().toLowerCase(); renderPacks(); });
   $('#btnUpd').addEventListener('click', () => { const p = current(); if (p) startInstall(p.id); });
-  $('#btnPlay').addEventListener('click', async () => {
+  $('#btnPlay').addEventListener('click', () => {
     const p = current(); if (!p) return;
     if ($('#btnPlay').dataset.st === 'no') return startInstall(p.id);
-    try {
-      const r = await api.play(p.id);
-      if (!r.started) return toast(r.reason || 'Le jeu n’a pas pu démarrer.');
-      if (r.serverListed) listed.add(p.id); else listed.delete(p.id);
-      if (r.via === 'official') return toast(r.message || 'Profil prêt dans le Launcher Minecraft : clique sur Jouer'); // pas de processus à suivre : jamais « en jeu »
-      state.inGame = true; emit('game'); renderHome(); toast('Lancement de ' + p.name + '…');
-    } catch (e) { toast(api.errMsg(e)); }
+    playPack(p);
   });
   $('#crashClose').addEventListener('click', () => ($('#crash').hidden = true));
   $('#demoTs')?.addEventListener('change', (e) => { api.demoControls.help = e.target.value; refreshServers(); });
