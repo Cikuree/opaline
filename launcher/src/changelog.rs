@@ -108,13 +108,31 @@ pub fn save_snapshot(dirs: &Dirs, s: &Snapshot) -> Result<()> {
 }
 
 /// Mods de l'instance avec vérification du hash du fichier présent.
+/// Résultat de vérification mémorisé tant que le fichier garde la même taille et la même date : sans ce cache, changer de pack
+/// dans « Fichiers & mods » relisait tous les jars (centaines de Mo pour un gros pack).
+fn verified_cached(path: &std::path::Path, hash: &str, check: impl FnOnce() -> Result<bool>) -> Result<bool> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    type Key = (std::path::PathBuf, String, u64, Option<std::time::SystemTime>);
+    static CACHE: OnceLock<Mutex<HashMap<Key, bool>>> = OnceLock::new();
+    let meta = std::fs::metadata(path)?;
+    let key = (path.to_path_buf(), hash.to_string(), meta.len(), meta.modified().ok());
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(&ok) = cache.lock().unwrap().get(&key) {
+        return Ok(ok);
+    }
+    let ok = check()?;
+    cache.lock().unwrap().insert(key, ok);
+    Ok(ok)
+}
+
 pub fn mod_views(dirs: &Dirs, s: &Snapshot) -> Vec<ModView> {
     s.mods
         .iter()
         .map(|m| {
             let verified = (|| -> Result<bool> {
                 let p = safe_join(&safe_join(&dirs.instance(), &m.dir)?, &m.file)?;
-                Hash::new(&m.hash_format, &m.hash)?.matches_file(&p)
+                verified_cached(&p, &m.hash, || Hash::new(&m.hash_format, &m.hash)?.matches_file(&p))
             })()
             .unwrap_or(false);
             ModView { name: m.name.clone(), version: m.version.clone(), side: m.side.clone(), file: m.file.clone(), verified }
