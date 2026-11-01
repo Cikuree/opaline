@@ -1,5 +1,11 @@
 # Changelog
 
+## Opaline 0.4.2 : finitions
+- **Amis** : la colonne montre les joueurs vus sur le serveur du pack (en ligne, ou dernière connexion), sans ajout manuel et sans soi-même ; repliée, elle s'ajuste à son contenu.
+- **Fenêtre** : toute la bande du haut attrape la fenêtre, alignée sur les boutons ; version d'Opaline affichée en bas à droite.
+- Croix de la recherche couleur corail, items flottants de l'accueil sans saut.
+- Pack Classroom Run : AmbientSounds (avec CreativeCore) et Presence Footsteps, côté client.
+
 ## Opaline 0.4.1 : mise à jour depuis le launcher
 - **Mise à jour en un clic** : bouton « Mettre à jour » dans la bannière ; Opaline télécharge l'installeur de la release officielle, vérifie son empreinte sha256 (publiée dans `launcher.json`), l'installe puis redémarre. Lien manuel conservé en secours.
 - Dernière version à installer à la main : les suivantes se mettent à jour depuis Opaline.
