@@ -101,8 +101,9 @@
     </div>
     <article class="card crash" id="crash" role="alert" hidden>
       <h2 id="crashT">Le jeu s&rsquo;est arrêté</h2>
-      <pre id="crashLog"></pre>
-      <div class="row"><button class="btn sm" id="crashCopy"><svg class="i" style="width:16px;height:16px"><use href="#i-copy"/></svg>Copier le journal</button><button class="btn sm" id="crashClose">Fermer</button></div>
+      <ul class="crashl" id="crashList"></ul>
+      <details class="small" style="margin-top:8px"><summary>Fin du journal</summary><pre id="crashLog"></pre></details>
+      <div class="row" style="justify-content:flex-start;margin-top:10px"><button class="btn sm primary" id="crashRepair"><svg class="i" style="width:16px;height:16px"><use href="#i-wrench"/></svg>Vérifier et réparer</button><button class="btn sm" id="crashLogs">Ouvrir les logs</button><button class="btn sm" id="crashCopy"><svg class="i" style="width:16px;height:16px"><use href="#i-copy"/></svg>Copier le rapport</button><button class="btn sm" id="crashClose">Fermer</button></div>
     </article>
     <div class="packs" id="packs" role="radiogroup" aria-label="Modpacks du groupe"></div>
     <div class="home" id="home">

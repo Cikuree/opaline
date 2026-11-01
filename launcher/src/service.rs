@@ -326,6 +326,58 @@ pub fn log_tail(log: &Path, token: &str, server: &str, root: &Dirs, max_lines: u
     Some(sanitize_error(&launch::redact_text(&tail, token, Some(server)), root))
 }
 
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CrashView {
+    pub findings: Vec<crate::crash::Finding>,
+    /// Nom du rapport de crash analysé (`crash-reports/<nom>`), s'il date de cette session.
+    pub crash_file: Option<String>,
+    /// Texte à copier : résumé + fin du journal, sans jeton, adresse ni chemin personnel.
+    pub report: String,
+}
+
+fn read_tail(p: &Path, max: usize) -> Option<String> {
+    let b = std::fs::read(p).ok()?;
+    Some(String::from_utf8_lossy(&b[b.len().saturating_sub(max)..]).into_owned())
+}
+
+/// Dernier `crash-reports/*.txt` modifié depuis `since`.
+fn latest_crash_report(instance: &Path, since: std::time::SystemTime) -> Option<(String, String)> {
+    let mut found: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(instance.join("crash-reports"))
+        .ok()?
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "txt"))
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .filter(|(t, _)| *t >= since)
+        .collect();
+    found.sort();
+    let (_, p) = found.pop()?;
+    Some((p.file_name()?.to_string_lossy().into_owned(), read_tail(&p, 512 * 1024)?))
+}
+
+/// Résumé lisible d'un plantage (code de sortie non nul) : `latest.log`, fin du journal déjà transmise et rapport de crash de cette session.
+pub fn crash_view(root: &Dirs, pack_id: &str, code: Option<i32>, log_tail: Option<&str>, since: std::time::SystemTime, token: &str, server: &str) -> Result<CrashView> {
+    let inst = root.for_pack(pack_id)?.instance();
+    let latest = read_tail(&inst.join("logs").join("latest.log"), 256 * 1024).unwrap_or_default();
+    let report = latest_crash_report(&inst, since);
+    let findings = crate::crash::analyze(&[&latest, log_tail.unwrap_or_default()], report.as_ref().map(|r| r.1.as_str()));
+    let clean = |t: &str| sanitize_error(&launch::redact_text(t, token, Some(server)), root);
+    let mut text = format!("Opaline : plantage du pack {pack_id} (code {})\n", code.map_or("inconnu".into(), |c| c.to_string()));
+    for f in &findings {
+        text += &format!("- {}\n", f.text);
+    }
+    if findings.is_empty() {
+        text += "Cause non identifiée.\n";
+    }
+    let last_lines = |t: &str| t.lines().rev().take(40).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n");
+    let tail = log_tail.map(str::to_string).unwrap_or_else(|| last_lines(&latest));
+    if !tail.is_empty() {
+        text += &format!("\n--- fin du journal ---\n{tail}\n");
+    }
+    let findings = findings.into_iter().map(|f| crate::crash::Finding { text: clean(&f.text), ..f }).collect();
+    Ok(CrashView { findings, crash_file: report.map(|r| r.0), report: clean(&text) })
+}
+
 /// Remplace tout mot qui est un nom d'hôte `*.ts.net` (avec ou sans port) par `<serveur>`.
 fn mask_tailnet_hosts(s: &str) -> String {
     s.split_inclusive(|c: char| c.is_whitespace() || "()\"',;<>".contains(c))
@@ -446,6 +498,28 @@ mod tests {
         assert!(listed && d.join("servers.dat").is_file());
         assert_eq!(addr, "mon.minestrator.com:25565");
         std::fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn crash_view_reads_fresh_report_and_hides_secrets() {
+        let root = Dirs::new(std::env::temp_dir().join(format!("opaline-crash-{}", std::process::id())));
+        let _ = std::fs::remove_dir_all(&root.root);
+        let inst = root.for_pack("p").unwrap().instance();
+        std::fs::create_dir_all(inst.join("logs")).unwrap();
+        std::fs::create_dir_all(inst.join("crash-reports")).unwrap();
+        std::fs::write(inst.join("logs/latest.log"), "	 - Mod 'Legendary Monuments' (legendarymonuments) 8.1 requires any version of lithostitched, which is missing!
+joined secret.host token SECRETTOKEN").unwrap();
+        let before = std::time::SystemTime::now() - Duration::from_secs(3600);
+        std::fs::write(inst.join("crash-reports/crash-1.txt"), "Description: x
+	Suspected Mods: Sodium (sodium)").unwrap();
+        let v = crash_view(&root, "p", Some(1), Some("fin SECRETTOKEN"), before, "SECRETTOKEN", "secret.host:25565").unwrap();
+        assert_eq!(v.crash_file.as_deref(), Some("crash-1.txt"));
+        assert!(v.findings.iter().any(|f| f.kind == "missingMod") && v.findings.iter().any(|f| f.kind == "suspect"));
+        assert!(!v.report.contains("SECRETTOKEN") && !v.report.contains("secret.host") && v.report.contains("lithostitched"), "{}", v.report);
+        // rapport antérieur à la session : ignoré
+        let after = std::time::SystemTime::now() + Duration::from_secs(60);
+        assert_eq!(crash_view(&root, "p", None, None, after, "t", "").unwrap().crash_file, None);
+        std::fs::remove_dir_all(&root.root).unwrap();
     }
 
     #[test]

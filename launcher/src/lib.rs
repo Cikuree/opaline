@@ -6,6 +6,7 @@ pub mod backup;
 pub mod catalog;
 pub mod changelog;
 pub mod config;
+pub mod crash;
 pub mod download;
 pub mod fabric;
 pub mod friends;

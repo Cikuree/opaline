@@ -317,3 +317,5 @@ body.tauri .window{max-width:none;max-height:none;border-radius:0;box-shadow:non
 
 .bk{list-style:none;margin-top:10px;display:grid;gap:8px}.bk li{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:var(--win-deep);border-radius:14px;padding:10px 14px}
 .bkc{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+.crashl{list-style:none;margin-top:10px;display:grid;gap:6px}.crashl li{background:var(--win-deep);border-radius:12px;padding:8px 12px;font-size:14px;line-height:1.4}

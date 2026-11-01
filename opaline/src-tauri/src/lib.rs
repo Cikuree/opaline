@@ -529,11 +529,14 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
         }
         Ok((mut l, token)) => {
             let (listed, joining) = (l.server_listed, l.joining);
+            let since = std::time::SystemTime::now();
             std::thread::spawn(move || {
                 let code = l.child.wait().ok().and_then(|st| st.code());
                 let tail = service::log_tail(&l.log, &token, &l.server, &s.0.root, 40);
+                // Code non nul : résumé lisible (latest.log + rapport de crash de cette session), sans jeton ni adresse.
+                let crash = (code != Some(0)).then(|| service::crash_view(&s.0.root, &id, code, tail.as_deref(), since, &token, &l.server).ok()).flatten();
                 s.0.activity.lock().unwrap().running.remove(&id);
-                let _ = app.emit("game://exited", json!({ "packId": id, "code": code, "logTail": tail }));
+                let _ = app.emit("game://exited", json!({ "packId": id, "code": code, "logTail": tail, "crash": crash }));
             });
             Ok(json!({ "started": true, "reason": null, "serverListed": listed, "via": "direct", "joining": joining }))
         }

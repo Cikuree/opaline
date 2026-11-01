@@ -1,9 +1,9 @@
 import * as api from './api.js';
 import { state, current, hasWidget, emit, on, usable } from './state.js';
-import { $, toast, copy, setProgress, LS, refreshTextures } from './util.js';
+import { $, esc, toast, copy, setProgress, LS, refreshTextures } from './util.js';
 import { STAGES, STAGE_ORDER } from './data.js';
 import { initChrome, show, currentView } from './views/chrome.js';
-import { initHome, renderHome, refreshServers, refreshStats, installPct } from './views/home.js';
+import { initHome, renderHome, refreshServers, refreshStats, installPct, startInstall } from './views/home.js';
 import { initAccount, renderAccount, renderLogin, onAuthDone, refreshAuth } from './views/account.js';
 import { initSettings, renderSettings } from './views/settings.js';
 import { initFiles, renderFiles, syncBusy } from './views/files.js';
@@ -11,6 +11,7 @@ import { initHistory, renderHistory, openDeath } from './views/history.js';
 import { initNews, renderNews } from './views/news.js';
 import { initFriends, renderMe, refreshFriends } from './views/friends.js';
 
+let crashPack = null, crashReport = '';
 const signed = usable; // connecté, ou mode officiel choisi
 
 async function loadPacks() {
@@ -54,13 +55,19 @@ function wireEvents() {
   });
   api.listen('game://exited', (p) => {
     state.inGame = false; emit('game');
-    if (p.code !== 0 && p.logTail) {
+    if (p.code !== 0 && (p.logTail || p.crash)) {
+      crashPack = p.packId;
       $('#crashT').textContent = `Le jeu s’est arrêté${p.code != null ? ` (code ${p.code})` : ''}`;
-      $('#crashLog').textContent = p.logTail; $('#crash').hidden = false; show('home');
+      const f = p.crash?.findings || [];
+      $('#crashList').innerHTML = f.length ? f.map((x) => `<li>${esc(x.text)}</li>`).join('') : '<li class="mute">Cause non identifiée : consulte la fin du journal ci-dessous.</li>';
+      crashReport = p.crash?.report || p.logTail || '';
+      $('#crashLog').textContent = p.logTail || ''; $('#crash').hidden = false; show('home');
       toast('Le jeu s’est arrêté de façon inattendue');
     }
   });
-  $('#crashCopy').addEventListener('click', () => copy($('#crashLog').textContent, 'Journal copié'));
+  $('#crashCopy').addEventListener('click', () => copy(crashReport, 'Rapport copié'));
+  $('#crashLogs').addEventListener('click', () => api.openFolder(crashPack, 'logs').catch((e) => toast(api.errMsg(e))));
+  $('#crashRepair').addEventListener('click', () => { $('#crash').hidden = true; startInstall(crashPack); });
   on('install', () => { progressUi(); syncBusy(); });
   on('game', syncBusy);
   on('selectPack', selectPack);
