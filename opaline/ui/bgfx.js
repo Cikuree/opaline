@@ -21,11 +21,11 @@ void main(){
   vec2 warp=(q-mm)*.45*exp(-d*3.5);              // la souris tire doucement le motif
   float a=fbm(q*1.6+warp+vec2(t*.05,-t*.035));
   float b=fbm(q*2.4-warp+vec2(-t*.04,t*.06)+a);
-  vec3 win=vec3(.420,.169,.204), deep=vec3(.270,.100,.135), prune=vec3(.430,.175,.300), rose=vec3(.620,.255,.290);
+  vec3 win=vec3(.440,.180,.220), deep=vec3(.345,.135,.175), prune=vec3(.500,.215,.300), rose=vec3(.660,.300,.340);
   vec3 col=mix(deep,win,smoothstep(.25,.75,a));
-  col=mix(col,prune,smoothstep(.40,.85,b)*.75);
-  col=mix(col,rose,smoothstep(.45,.95,a*b*1.8)*.6);
-  col=mix(col,vec3(.78,.33,.36),.28*exp(-d*d*40.));          // halo très léger sous le curseur
+  col=mix(col,prune,smoothstep(.40,.85,b)*.55);
+  col=mix(col,rose,smoothstep(.40,.95,a*b*1.8)*.7);
+  col=mix(col,vec3(.95,.58,.62),.34*exp(-d*d*40.));          // halo très léger sous le curseur
   col+=(h(gl_FragCoord.xy+t)-.5)/255.*3.;         // grain : pas de bandes
   gl_FragColor=vec4(col,1.);
 }`;
