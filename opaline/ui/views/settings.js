@@ -1,6 +1,7 @@
 import * as api from '../api.js';
 import { state, official } from '../state.js';
-import { $, $$, esc, toast, setSw } from '../util.js';
+import { setAnimated } from '../bgfx.js';
+import { $, $$, esc, toast, setSw, LS } from '../util.js';
 import { PERF, COPY_CATS } from '../data.js';
 
 const maxGb = () => Math.max(2, Math.floor((state.settings?.systemRamMb || 16384) / 1024));
@@ -30,6 +31,7 @@ function renderCopy() {
 export function renderSettings() {
   const s = state.settings; if (!s) return;
   renderCopy();
+  setSw($('#bgAnim'), LS.get('opaline.bg') !== '0');
   $('#autoMsg').hidden = !s.autoTuned;
   $('#perf').innerHTML = PERF.map((p) => `<button role="radio" aria-checked="${p.id === s.perfMode}" data-p="${p.id}"><h3>${p.name}</h3><span class="xs" style="color:var(--coral2);font-weight:700">${p.sub}</span><ul><li>${p.gb ? 'Mémoire ' + clamp(p.gb) + ' Go' : 'Mémoire choisie à la main'}</li></ul></button>`).join('');
   memUi(clamp(gbOf(s.memoryMb)));
@@ -52,6 +54,7 @@ async function save(patch) {
 }
 
 export function initSettings() {
+  $('#bgAnim').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-checked') !== 'true'; LS.set('opaline.bg', on ? '1' : '0'); setSw(e.currentTarget, on); setAnimated(on); });
   $('#cpGo').addEventListener('click', async () => {
     const from = $('#cpFrom').value, to = $('#cpTo').value, cats = [...document.querySelectorAll('#cpCats input:checked')].map((i) => i.value);
     if (from === to) return ($('#cpMsg').textContent = 'Choisis deux packs différents.');

@@ -303,6 +303,8 @@ body:has(.window.max){padding:0}
 .hero .acts .btn:disabled{opacity:.7}
 .spin-i{animation:spin 1s linear infinite}
 /* ---- Opaline : ajouts ---- */
+#bgfx{position:absolute;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;border-radius:inherit}
+.window{isolation:isolate}
 #availBox[hidden],#availMore[hidden],#mineT[hidden]{display:none!important}
 .mapcard{padding:0;overflow:hidden;flex:1;min-height:520px;display:flex;flex-direction:column}
 .mapcard iframe{flex:1;width:100%;border:0;border-top:1px solid var(--line);background:#000}.mapcard iframe[hidden]{display:none}

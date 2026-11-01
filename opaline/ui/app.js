@@ -10,6 +10,7 @@ import { initFiles, renderFiles, syncBusy } from './views/files.js';
 import { initHistory, renderHistory, openDeath } from './views/history.js';
 import { initNews, renderNews } from './views/news.js';
 import { initMap, renderMap } from './views/map.js';
+import { initBackground, setGamePaused } from './bgfx.js';
 import { initPackMenu } from './views/packmenu.js';
 import { initFriends, renderMe, refreshFriends } from './views/friends.js';
 
@@ -72,7 +73,7 @@ function wireEvents() {
   $('#crashLogs').addEventListener('click', () => api.openFolder(crashPack, 'logs').catch((e) => toast(api.errMsg(e))));
   $('#crashRepair').addEventListener('click', () => { $('#crash').hidden = true; startInstall(crashPack); });
   on('install', () => { progressUi(); syncBusy(); });
-  on('game', syncBusy);
+  on('game', () => { syncBusy(); setGamePaused(state.inGame); }); // fond animé en pause pendant le jeu
   on('selectPack', selectPack);
   on('reloadPacks', async () => { await loadPacks(); refreshServers(); refreshStats(); });
   on('auth', applyAuth);
@@ -90,6 +91,7 @@ function wireEvents() {
 }
 
 async function boot() {
+  initBackground(LS.get('opaline.bg') !== '0');
   initChrome(signed); initHome(); initAccount(); initSettings(); initFiles(); initHistory(); initNews(); initMap(); initPackMenu(); initFriends();
   wireEvents();
   await Promise.all([
