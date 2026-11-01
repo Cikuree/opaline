@@ -639,6 +639,12 @@ async fn open_map(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<
     WebviewWindowBuilder::new(&app, label, WebviewUrl::External(url)).title(format!("Carte – {name}")).inner_size(1100.0, 720.0).build().map(|_| ()).map_err(|_| "Impossible d'ouvrir la carte".to_string())
 }
 
+/// Copie des réglages (touches, souris, FOV, son...) d'un pack vers un autre ; refusée pendant le jeu ou une installation du pack de destination.
+#[tauri::command]
+async fn settings_copy(state: State<'_, S>, from: String, to: String, categories: Vec<String>) -> CmdResult<usize> {
+    exclusive(&state, to.clone(), move |r| opaline_core::prefs::copy_options(&r.for_pack(&from)?, &r.for_pack(&to)?, &categories)).await
+}
+
 #[tauri::command]
 async fn textures_dir(state: State<'_, S>) -> CmdResult<Value> {
     state.blocking(|r| Ok(json!({ "dir": service::textures_dir(r).map(|d| d.to_string_lossy().into_owned()) }))).await
@@ -939,6 +945,7 @@ pub fn run_with(svc: Services) {
             settings_set,
             open_folder,
             open_map,
+            settings_copy,
             map_info,
             backups_list,
             extra_mods_list,

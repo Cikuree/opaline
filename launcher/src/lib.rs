@@ -24,6 +24,7 @@ pub mod overrides;
 pub mod official;
 pub mod packwiz;
 pub mod perf;
+pub mod prefs;
 pub mod playtime;
 pub mod ping;
 pub mod safe;

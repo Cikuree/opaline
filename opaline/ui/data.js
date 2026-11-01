@@ -35,6 +35,8 @@ export const HELP = {
 export const STAGES = { java: 'Installation de Java', minecraft: 'Téléchargement de Minecraft', loader: 'Installation du chargeur', mods: 'Téléchargement des mods', overrides: 'Téléchargement des fichiers du pack', assets: 'Téléchargement des ressources', textures: 'Extraction des textures' };
 export const STAGE_ORDER = ['java', 'minecraft', 'assets', 'loader', 'mods', 'overrides', 'textures']; // ordre émis par le backend (contrat §6)
 
+/** Catégories de la copie de réglages entre packs (identifiants du contrat). */
+export const COPY_CATS = [['keys', 'Touches'], ['mouse', 'Souris et sensibilité'], ['fov', 'Champ de vision (FOV)'], ['sound', 'Son'], ['language', 'Langue'], ['accessibility', 'Accessibilité']];
 export const PERF = [
   { id: 'low', name: 'Faible', sub: 'Pour les PC modestes', gb: 3 },
   { id: 'balanced', name: 'Équilibré', sub: 'Recommandé', gb: 6 },

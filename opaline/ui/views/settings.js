@@ -1,7 +1,7 @@
 import * as api from '../api.js';
 import { state, official } from '../state.js';
-import { $, $$, toast, setSw } from '../util.js';
-import { PERF } from '../data.js';
+import { $, $$, esc, toast, setSw } from '../util.js';
+import { PERF, COPY_CATS } from '../data.js';
 
 const maxGb = () => Math.max(2, Math.floor((state.settings?.systemRamMb || 16384) / 1024));
 const gbOf = (mb) => Math.round(mb / 1024);
@@ -18,8 +18,18 @@ function memUi(gb) {
   $('#memH').textContent = `RAM détectée : ${ram} Go. Zone recommandée : ${lo} à ${hi} Go (en vert).` + (gb > max - 4 && max > 6 ? ' Attention : peu de mémoire resterait pour le système.' : gb < 4 ? ' Attention : trop peu pour Minecraft avec des mods.' : '');
 }
 
+function renderCopy() {
+  const inst = state.packs.filter((p) => p.installed), keep = (id) => ($(id).value || '');
+  const opts = (sel, other) => { const v = keep(sel); $(sel).innerHTML = inst.map((p, i) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join(''); $(sel).value = inst.some((p) => p.id === v) ? v : (inst[other]?.id || ''); };
+  opts('#cpFrom', 0); opts('#cpTo', 1);
+  if (!$('#cpCats').children.length) $('#cpCats').innerHTML = COPY_CATS.map(([k, l]) => `<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" value="${k}" checked>${l}</label>`).join('');
+  $('#cpGo').disabled = inst.length < 2;
+  if (inst.length < 2) $('#cpMsg').textContent = 'Il faut au moins deux packs installés.';
+}
+
 export function renderSettings() {
   const s = state.settings; if (!s) return;
+  renderCopy();
   $('#perf').innerHTML = PERF.map((p) => `<button role="radio" aria-checked="${p.id === s.perfMode}" data-p="${p.id}"><h3>${p.name}</h3><span class="xs" style="color:var(--coral2);font-weight:700">${p.sub}</span><ul><li>${p.gb ? 'Mémoire ' + clamp(p.gb) + ' Go' : 'Mémoire choisie à la main'}</li></ul></button>`).join('');
   memUi(clamp(gbOf(s.memoryMb)));
   setSw($('#noRemember'), !!s.noRemember);
@@ -41,6 +51,15 @@ async function save(patch) {
 }
 
 export function initSettings() {
+  $('#cpGo').addEventListener('click', async () => {
+    const from = $('#cpFrom').value, to = $('#cpTo').value, cats = [...document.querySelectorAll('#cpCats input:checked')].map((i) => i.value);
+    if (from === to) return ($('#cpMsg').textContent = 'Choisis deux packs différents.');
+    if (!cats.length) return ($('#cpMsg').textContent = 'Coche au moins une catégorie.');
+    if (state.inGame) return ($('#cpMsg').textContent = 'Ferme le jeu avant de copier des réglages.');
+    $('#cpGo').disabled = true; $('#cpMsg').textContent = '';
+    try { const n = await api.settingsCopy(from, to, cats); $('#cpMsg').textContent = `${n} réglage${n > 1 ? 's' : ''} copié${n > 1 ? 's' : ''}.`; toast('Réglages copiés'); } catch (e) { $('#cpMsg').textContent = api.errMsg(e); }
+    $('#cpGo').disabled = false;
+  });
   $('#perf').addEventListener('click', async (e) => {
     const b = e.target.closest('[data-p]'); if (!b) return;
     const p = PERF.find((x) => x.id === b.dataset.p);

@@ -239,6 +239,15 @@
         <div class="row"><div><h2 id="trL">Se réduire dans la zone de notification pendant le jeu</h2><p class="small mute" style="margin-top:2px">Pendant une partie lancée par Opaline, la fenêtre se cache derrière son icône (clic ou menu « Afficher Opaline » pour la rappeler) et revient à la fermeture du jeu.</p></div>
           <button class="sw" role="switch" aria-checked="true" aria-labelledby="trL" id="trayOnGame"></button></div>
       </article>
+      <article class="card field" style="grid-column:1/-1">
+        <h2 id="cpT">Copier mes réglages d’un pack vers un autre</h2>
+        <p class="small mute" style="margin-top:2px">Les réglages de la destination sont fusionnés (le reste est conservé) et son ancien fichier est gardé en <code>options.txt.bak</code>. Les réglages de performance ne sont jamais copiés.</p>
+        <div class="row" style="justify-content:flex-start;gap:12px;flex-wrap:wrap;margin-top:10px">
+          <label class="small">De <select id="cpFrom"></select></label><label class="small">Vers <select id="cpTo"></select></label>
+        </div>
+        <div class="row" id="cpCats" style="justify-content:flex-start;gap:6px 16px;flex-wrap:wrap;margin-top:10px" role="group" aria-labelledby="cpT"></div>
+        <div class="row" style="justify-content:flex-start;margin-top:12px"><button class="btn sm primary" id="cpGo">Copier</button><span class="small mute" id="cpMsg" role="status"></span></div>
+      </article>
     </div>
   </section>
 

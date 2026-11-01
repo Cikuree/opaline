@@ -122,6 +122,7 @@ export async function invoke(cmd, a = {}) {
     case 'settings_get': return settings;
     case 'settings_set': settings = { ...settings, ...a.patch, ...(a.patch.perfMode || a.patch.memoryMb ? { autoTuned: false } : {}) }; return settings;
     case 'playtime': return { 'classroom-run': { totalSecs: 41 * 3600 + 25 * 60, lastPlayed: Math.floor(Date.now() / 1000) - 2 * 3600 }, survie: { totalSecs: 1500, lastPlayed: Math.floor(Date.now() / 1000) - 86400 * 4 } };
+    case 'settings_copy': { if (a.from === a.to) throw 'choisis deux packs différents'; if (!a.categories.length) throw 'catégorie de réglages inconnue'; const ok = (id) => packs.find((p) => p.id === id)?.installed; if (!ok(a.from) || !ok(a.to)) throw 'le pack de destination n’est pas installé'; return 3 * a.categories.length; }
     case 'open_folder': return null;
     case 'map_info': { const p = packs.find((x) => x.id === a.id); if (!p?.hasMap) throw 'ce serveur n’a pas de carte'; await wait(300); return { name: p.name, url: 'https://bluecolored.de/bluemap/', reachable: !q.has('mapdown'), embeddable: !q.has('mapblock') }; }
     case 'open_map': { const p = packs.find((x) => x.id === a.id); if (!p?.hasMap) throw 'ce serveur n’a pas de carte'; console.info('[démo] fenêtre « Carte – ' + p.name + ' » (WebviewWindow externe, sans capability)'); return null; }
