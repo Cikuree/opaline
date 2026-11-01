@@ -1,6 +1,7 @@
 # Changelog
 
-## Opaline 0.6.0 : la grosse mise à jour
+## Opaline 0.6.1 : la grosse mise à jour
+(La 0.6.0 n'a jamais été publiée : build Linux corrigé.)
 - **Jouer** : rejoindre le serveur du pack en un clic (Quick Play), fermeture du Launcher Minecraft proposée en mode officiel, plein écran fenêtré en option (Cubes Without Borders géré par Opaline).
 - **Packs** : accueil en « Mes packs » / « À installer », installation par bouton, clic droit pour ouvrir le dossier, réparer ou désinstaller (mondes et captures sauvegardés), boutons et menu dans « Fichiers & mods », liste des mods courte avec « Tout afficher ».
 - **Mondes** : sauvegarde automatique avant installation, mise à jour, réparation et désinstallation, restauration en un clic.
