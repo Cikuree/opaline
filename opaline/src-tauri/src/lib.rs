@@ -618,6 +618,39 @@ async fn extra_mod_remove(state: State<'_, S>, id: String, file: String) -> CmdR
 }
 
 #[tauri::command]
+async fn extra_packs_list(state: State<'_, S>, id: String) -> CmdResult<Vec<opaline_core::extrapacks::ExtraPack>> {
+    state.blocking(move |r| Ok(opaline_core::extrapacks::list(&r.for_pack(&id)?))).await
+}
+
+/// Glisser-déposer : chemin d'un `.zip` (type détecté par son contenu, copié dans `opaline-extra-packs/` et l'instance).
+#[tauri::command]
+async fn extra_pack_add(state: State<'_, S>, id: String, path: String) -> CmdResult<opaline_core::extrapacks::ExtraPack> {
+    if !state.0.dropped.lock().unwrap().remove(std::path::Path::new(&path)) {
+        return Err("Fichier non reconnu : dépose-le sur la fenêtre d'Opaline".into());
+    }
+    exclusive(&state, id.clone(), move |r| opaline_core::extrapacks::add_path(&r.for_pack(&id)?, std::path::Path::new(&path))).await
+}
+
+/// Sélecteur de fichier de l'interface : contenu du zip en base64.
+#[tauri::command]
+async fn extra_pack_import(state: State<'_, S>, id: String, name: String, data_base64: String) -> CmdResult<opaline_core::extrapacks::ExtraPack> {
+    exclusive(&state, id.clone(), move |r| {
+        if data_base64.len() as u64 > opaline_core::extrapacks::MAX_BYTES * 4 / 3 + 16 {
+            bail!("fichier trop lourd (500 Mo maximum)");
+        }
+        let bytes = base64::engine::general_purpose::STANDARD.decode(data_base64.trim()).map_err(|_| anyhow!("fichier illisible"))?;
+        opaline_core::extrapacks::add_bytes(&r.for_pack(&id)?, &name, &bytes)
+    })
+    .await
+}
+
+/// Retire un resource pack ou shader perso ; un shader actif est remplacé par celui du pack ou « Aucun ».
+#[tauri::command]
+async fn extra_pack_remove(state: State<'_, S>, id: String, kind: opaline_core::extrapacks::Kind, file: String) -> CmdResult<String> {
+    exclusive(&state, id.clone(), move |r| opaline_core::extrapacks::remove(&r.for_pack(&id)?, kind, &file)).await
+}
+
+#[tauri::command]
 async fn modrinth_search(state: State<'_, S>, id: String, query: String) -> CmdResult<Vec<opaline_core::modrinth::Hit>> {
     state.blocking(move |r| service::extra_mod_search(r, &id, &query, &opaline_core::modrinth::Http::default_api()?)).await
 }
@@ -1020,6 +1053,10 @@ pub fn run_with(svc: Services) {
             extra_mod_add,
             extra_mod_import,
             extra_mod_remove,
+            extra_packs_list,
+            extra_pack_add,
+            extra_pack_import,
+            extra_pack_remove,
             modrinth_search,
             modrinth_add,
             backup_restore,

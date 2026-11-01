@@ -67,6 +67,7 @@ const detail = (n) => {
 };
 
 let backups = [[60 * 20, 412e6], [60 * 24 * 3, 398e6], [60 * 24 * 9, 377e6]].map(([m, size], i) => ({ id: '2026110' + (3 - i) + '-1803' + i + '0', createdAt: iso(m), sizeBytes: size, keep: i === 2 }));
+let xpacks = [{ file: 'Faithful-64x.zip', kind: 'resourcepack', sizeBytes: 38e6 }];
 let extras = [{ file: 'zoomify-2.14.jar', title: null, auto: false, requiredBy: [], sizeBytes: 812000, warning: null }];
 const MR = [['YL57xq9U', 'Iris Shaders', 'Shaders modernes pour Minecraft, compatibles avec Sodium.', 18400000, ['AANobbMI']], ['AANobbMI', 'Sodium', 'Moteur de rendu moderne qui accélère le jeu.', 52100000, []], ['gvQqBUqZ', 'Lithium', 'Optimisations du serveur de jeu intégré.', 41000000, []]];
 const MRT = Object.fromEntries(MR.map((m) => [m[0], m[1]]));
@@ -126,14 +127,29 @@ export async function invoke(cmd, a = {}) {
     case 'settings_set': settings = { ...settings, ...a.patch, ...(a.patch.perfMode || a.patch.memoryMb ? { autoTuned: false } : {}) }; return settings;
     case 'playtime': return { 'classroom-run': { totalSecs: 41 * 3600 + 25 * 60, lastPlayed: Math.floor(Date.now() / 1000) - 2 * 3600 }, survie: { totalSecs: 1500, lastPlayed: Math.floor(Date.now() / 1000) - 86400 * 4 } };
     case 'settings_copy': { if (a.from === a.to) throw 'choisis deux packs différents'; if (!a.categories.length) throw 'catégorie de réglages inconnue'; const ok = (id) => packs.find((p) => p.id === id)?.installed; if (!ok(a.from) || !ok(a.to)) throw 'le pack de destination n’est pas installé'; return 3 * a.categories.length; }
-    case 'shaders_get': { const p = packs.find((x) => x.id === a.id); if (!p?.installed) throw 'ce pack n’est pas installé'; return { available: a.id !== 'solo', files: ['ComplementaryReimagined_r5.5.1.zip', 'BSL_v10.zip', 'Dossier perso'], active: shaderOf[a.id] ?? null }; }
-    case 'shader_set': if (!['ComplementaryReimagined_r5.5.1.zip', 'BSL_v10.zip', 'Dossier perso', null].includes(a.name)) throw 'shader introuvable dans shaderpacks/'; shaderOf[a.id] = a.name; return null;
+    case 'shaders_get': { const p = packs.find((x) => x.id === a.id); if (!p?.installed) throw 'ce pack n’est pas installé'; return { available: a.id !== 'solo', files: ['ComplementaryReimagined_r5.5.1.zip', 'BSL_v10.zip', 'Dossier perso', ...xpacks.filter((x) => x.kind === 'shader').map((x) => x.file)], active: shaderOf[a.id] ?? null }; }
+    case 'shader_set': if (![ 'ComplementaryReimagined_r5.5.1.zip', 'BSL_v10.zip', 'Dossier perso', null, ...xpacks.filter((x) => x.kind === 'shader').map((x) => x.file)].includes(a.name)) throw 'shader introuvable dans shaderpacks/'; shaderOf[a.id] = a.name; return null;
     case 'borderless_status': return { 'classroom-run': 'installed', survie: 'noVersion', solo: 'incompatible' };
     case 'open_folder': return null;
     case 'map_info': { const p = packs.find((x) => x.id === a.id); if (!p?.hasMap) throw 'ce serveur n’a pas de carte'; await wait(300); return { name: p.name, url: 'https://bluecolored.de/bluemap/', reachable: !q.has('mapdown'), embeddable: !q.has('mapblock') }; }
     case 'open_map': { const p = packs.find((x) => x.id === a.id); if (!p?.hasMap) throw 'ce serveur n’a pas de carte'; console.info('[démo] fenêtre « Carte – ' + p.name + ' » (WebviewWindow externe, sans capability)'); return null; }
     case 'extra_mods_list': return packs.find((p) => p.id === a.id)?.installed ? structuredClone(extras) : [];
     case 'extra_mod_import': case 'extra_mod_add': { const n = a.name || String(a.path).split(/[\\/]/).pop(); if (!/\.jar$/i.test(n)) throw 'seuls les fichiers .jar au nom simple sont acceptés'; if (extras.some((x) => x.file === n)) throw '« ' + n + ' » est déjà dans Mes mods'; extras.push({ file: n, title: null, auto: false, requiredBy: [], sizeBytes: 123456, warning: /sodium/i.test(n) ? 'Même identifiant (« sodium ») que le mod « Sodium » du pack : risque de conflit.' : null }); return n; }
+    case 'extra_packs_list': return packs.find((p) => p.id === a.id)?.installed ? structuredClone(xpacks) : [];
+    case 'extra_pack_import': case 'extra_pack_add': {
+      const n = a.name || String(a.path).split(/[\\/]/).pop();
+      if (!/\.zip$/i.test(n)) throw 'seuls les fichiers .zip au nom simple sont acceptés';
+      const kind = /shader|bsl|complementary/i.test(n) ? 'shader' : /^(faux|bad)/i.test(n) ? null : 'resourcepack';
+      if (!kind) throw '« ' + n + ' » : ni resource pack ni shader (ni pack.mcmeta, ni dossier shaders/ à la racine)';
+      if (xpacks.some((x) => x.file === n && x.kind === kind)) throw '« ' + n + ' » existe déjà dans ' + (kind === 'shader' ? 'shaderpacks' : 'resourcepacks') + '/ : renomme le fichier';
+      const e = { file: n, kind, sizeBytes: 5e6 }; xpacks.push(e); return e;
+    }
+    case 'extra_pack_remove': {
+      if (!xpacks.some((x) => x.file === a.file && x.kind === a.kind)) throw 'ce fichier n’est pas dans Mes resource packs et shaders';
+      xpacks = xpacks.filter((x) => !(x.file === a.file && x.kind === a.kind));
+      if (a.kind === 'shader' && shaderOf[a.id] === a.file) shaderOf[a.id] = null; // retour à « Aucun » (le pack de démo n'a pas de shader par défaut)
+      return a.file;
+    }
     case 'extra_mod_remove': { const e = extras.find((x) => x.file === a.file); if (!e) throw 'ce mod n’est pas dans Mes mods'; extras = extras.filter((x) => x.file !== a.file); const gone = [a.file]; extras.filter((x) => x.auto && x.requiredBy.includes(e.title)).forEach((x) => { x.requiredBy = x.requiredBy.filter((r) => r !== e.title); if (!x.requiredBy.length) { extras = extras.filter((y) => y !== x); gone.push(x.file); } }); return gone; }
     case 'modrinth_search': return MR.filter((m) => m[1].toLowerCase().includes(String(a.query).toLowerCase())).map(([projectId, title, description, downloads]) => ({ projectId, title, description, downloads, iconUrl: null }));
     case 'modrinth_add': {

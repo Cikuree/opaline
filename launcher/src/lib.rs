@@ -11,6 +11,7 @@ pub mod config;
 pub mod crash;
 pub mod download;
 pub mod extramods;
+pub mod extrapacks;
 pub mod fabric;
 pub mod friends;
 pub mod head;
