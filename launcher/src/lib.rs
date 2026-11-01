@@ -17,7 +17,6 @@ pub mod loader;
 pub mod loader_versions;
 pub mod mojang;
 pub mod official;
-pub mod p2p;
 pub mod packwiz;
 pub mod perf;
 pub mod ping;

@@ -15,7 +15,6 @@ export const state = {
   inGame: false,
   install: null, // {packId, stage, done, total}
   friends: [],
-  p2p: { state: 'ok', listenFailed: false }, // présence P2P : ok | noIdentity | noTailscale
 };
 export const official = () => state.auth.state !== 'signedIn';
 /** Joueur affiché : compte connecté, sinon pseudo saisi (mode officiel), sinon rien. */

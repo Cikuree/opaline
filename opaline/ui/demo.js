@@ -40,18 +40,15 @@ let skins = [
 ].map(([name, model, P], i) => ({ id: 's' + (i + 1), name, model, active: i === 0, dataUrl: skinPng(P) }));
 let capes = [['Migrator', '#b14a5a'], ['Vanilla', '#e8d9b0'], ['Mojang Studios', '#d85252'], ['Mojang Office', '#ffffff']].map(([alias, c], i) => ({ id: 'c' + i, alias, active: i === 0, url: capePng(c) }));
 
-// Amis simulés : en ligne, en jeu (version identique ou différente), hors ligne, et un pair Tailscale à ajouter.
-// ?nots : Tailscale non connecté (présence inconnue) ; ?invite : invitation reçue après 3 s.
-let FRIENDS = [['LunaFox', 3, true, true, null, 'classroom-run', 'a1b2'], ['Creeper_Kid', 2, true, true, null, 'survie', 'zzzz'], ['Maëlle', 1, true, false, null], ['PixelPaul', 4, false, false, 1200], ['Zéphyr', 5, false, false, 4300]]
-  .map(([name, k, online, inGame, ago, packId, packVersion]) => ({ name, uuid: 'uuid-' + k, online, inGame, lastSeen: ago ? iso(ago) : null, k, friend: true, p2p: online && !q.has('nots'), packId: packId || null, packVersion: packVersion || null }));
-if (!q.has('nots')) FRIENDS.push({ name: 'Nova_Tail', uuid: 'uuid-9', online: true, inGame: false, lastSeen: null, k: 9, friend: false, p2p: true, packId: null, packVersion: null });
-if (q.has('invite')) setTimeout(() => emit('friends://invite', { fromUuid: 'uuid-3', fromName: 'LunaFox', packId: 'survie' }), 3000);
+// Joueurs vus sur le serveur du pack ; `friend` : ajouté à la liste locale.
+let FRIENDS = [['LunaFox', 3, true, true, null, true], ['Creeper_Kid', 2, true, true, null, true], ['Maelle', 1, true, false, null, false], ['PixelPaul', 4, false, false, 1200, true], ['Zéphyr', 5, false, false, 4300, true]]
+  .map(([name, k, online, inGame, ago, friend]) => ({ name, uuid: 'uuid-' + k, online, inGame, lastSeen: ago ? iso(ago) : null, k, friend }));
 
 const SPL = ['PICKAXE', 'IRON_INGOT', 'DIAMOND', 'NETHER_PORTAL', 'NETHER_WART', 'BLAZE_ROD', 'ENDER_EYE', 'ENTER_END', 'KILL_DRAGON'];
 const DEATHS = [
   { name: 'Creeper_Kid', k: 2, cause: 'minecraft:explosion', attacker: 'minecraft:creeper', pos: [-312, 64, 148], hp: [20, 20, 20, 19, 19, 19, 12, 12, 4, 0] },
   { name: 'LunaFox', k: 3, cause: 'minecraft:lava', attacker: null, pos: [88, 11, -40], hp: [20, 20, 20, 20, 18, 18, 15, 10, 2, 0] },
-  { name: 'Maëlle', k: 1, cause: 'minecraft:arrow', attacker: 'minecraft:skeleton', pos: [-17, 71, 203], hp: [20, 20, 16, 16, 12, 12, 10, 7, 3, 0] },
+  { name: 'Maelle', k: 1, cause: 'minecraft:arrow', attacker: 'minecraft:skeleton', pos: [-17, 71, 203], hp: [20, 20, 16, 16, 12, 12, 10, 7, 3, 0] },
   { name: 'OddNode', k: 0, cause: 'minecraft:fall', attacker: null, pos: [240, 118, 9], hp: [20, 20, 20, 20, 20, 20, 20, 20, 6, 0] },
   { name: 'Creeper_Kid', k: 2, cause: 'minecraft:fireball', attacker: 'minecraft:blaze', pos: [31, 74, -88], hp: [20, 19, 17, 14, 13, 10, 8, 5, 3, 0], dim: 'minecraft:the_nether' },
 ];
@@ -64,12 +61,12 @@ const detail = (n) => {
     at: iso(30 - i * 9), player: 'uuid-' + d.k, name: d.name, cause: d.cause, message: d.name + ' died', attacker: d.attacker, fatalBy: d.name,
     pos: d.pos, dimension: d.dim || 'classroomrun:run_' + n + '_overworld',
     health: [{ name: d.name, samples: d.hp.map((h, j) => [-10000 + j * 1111, h]) },
-      { name: 'Maëlle', samples: d.hp.map((h, j) => [-10000 + j * 1111, Math.min(20, h)]) }],
+      { name: 'Maelle', samples: d.hp.map((h, j) => [-10000 + j * 1111, Math.min(20, h)]) }],
   })) };
 };
 
 let started = null, attemptN = 0, cancelled = false;
-const stats = () => ({ runNumber: 20, totalTimeMs: 12 * 3600e3 + 34 * 60e3 + 56e3 + (started ? Date.now() - started : 0), running: true, deaths: 19, currentSplit: 6, currentSplitName: 'ENDER_EYE', reachedSplits: SPL.slice(0, 6), bestSplit: 'ENDER_EYE', players: ['LunaFox', 'Creeper_Kid', 'Maëlle'] });
+const stats = () => ({ runNumber: 20, totalTimeMs: 12 * 3600e3 + 34 * 60e3 + 56e3 + (started ? Date.now() - started : 0), running: true, deaths: 19, currentSplit: 6, currentSplitName: 'ENDER_EYE', reachedSplits: SPL.slice(0, 6), bestSplit: 'ENDER_EYE', players: ['LunaFox', 'Creeper_Kid', 'Maelle'] });
 started = Date.now();
 
 const runInstall = async (id) => {
@@ -120,17 +117,16 @@ export async function invoke(cmd, a = {}) {
     case 'skin_delete': skins = skins.filter((s) => s.id !== a.id); return null;
     case 'capes_list': return structuredClone(capes);
     case 'cape_set': capes.forEach((c) => (c.active = c.id === a.id)); return null;
-    case 'friends': return { friends: structuredClone(FRIENDS), p2p: { state: !(signedIn || identity) ? 'noIdentity' : q.has('nots') ? 'noTailscale' : 'ok', listenFailed: q.has('listenfail') } };
+    case 'friends': return structuredClone(FRIENDS);
     case 'friend_add': {
       const n = String(a.name || '').trim();
       if (!/^[A-Za-z0-9_]{3,16}$/.test(n)) throw 'Pseudo invalide : 3 à 16 caractères, lettres, chiffres ou _';
       if (n.toLowerCase() === 'inconnu') throw 'Aucun joueur Minecraft nommé « ' + n + ' »';
       const f = FRIENDS.find((x) => x.name.toLowerCase() === n.toLowerCase());
-      if (f) f.friend = true; else FRIENDS.push({ name: n, uuid: 'uuid-' + (100 + FRIENDS.length), online: false, inGame: false, lastSeen: null, k: 0, friend: true, p2p: false, packId: null, packVersion: null });
+      if (f) f.friend = true; else FRIENDS.push({ name: n, uuid: 'uuid-' + (100 + FRIENDS.length), online: false, inGame: false, lastSeen: null, k: 0, friend: true });
       return { name: n, uuid: (f || FRIENDS[FRIENDS.length - 1]).uuid };
     }
-    case 'friend_remove': FRIENDS = FRIENDS.filter((x) => x.uuid !== a.uuid || x.online); FRIENDS.filter((x) => x.uuid === a.uuid).forEach((x) => (x.friend = false)); return null;
-    case 'friend_invite': if (!FRIENDS.find((x) => x.uuid === a.uuid)?.p2p) throw 'Ami injoignable sur Tailscale'; return null;
+    case 'friend_remove': FRIENDS.filter((x) => x.uuid === a.uuid).forEach((x) => (x.friend = false)); return null;
     case 'player_head': throw 'Tête indisponible en démo.';
     default: throw 'Commande inconnue : ' + cmd;
   }
