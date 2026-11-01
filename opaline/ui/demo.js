@@ -114,6 +114,7 @@ export async function invoke(cmd, a = {}) {
     case 'run_history': return a.id !== 'classroom-run' ? null : a.run == null ? { runs: RUNS } : detail(a.run);
     case 'settings_get': return settings;
     case 'settings_set': settings = { ...settings, ...a }; return settings;
+    case 'playtime': return { 'classroom-run': { totalSecs: 41 * 3600 + 25 * 60, lastPlayed: Math.floor(Date.now() / 1000) - 2 * 3600 }, survie: { totalSecs: 1500, lastPlayed: Math.floor(Date.now() / 1000) - 86400 * 4 } };
     case 'open_folder': return null;
     case 'backups_list': return a.id === 'classroom-run' ? structuredClone(backups) : [];
     case 'backup_restore': if (!backups.some((b) => b.id === a.backupId)) throw 'Sauvegarde introuvable'; backups.unshift({ id: '20261104-120000', createdAt: iso(0), sizeBytes: 415e6 }); backups = backups.slice(0, 3); return null;

@@ -1,6 +1,6 @@
 import * as api from '../api.js';
 import { state, current, hasWidget, statsMissing, emit, on, who } from '../state.js';
-import { $, esc, toast, tex, hms, headHtml, hydrateHeads } from '../util.js';
+import { $, esc, toast, tex, hms, ago, headHtml, hydrateHeads } from '../util.js';
 import { SPLITS, splitByKey, HELP, STAGE_ORDER, loaderName } from '../data.js';
 import { causeInfo, loadRecent } from './history.js';
 
@@ -68,6 +68,15 @@ function renderPacks() {
   }).join('');
 }
 
+const fmtPlay = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s / 60) % 60).padStart(2, '0')}` : `${Math.max(1, Math.round(s / 60))} min`);
+/** Temps de jeu mesuré par Opaline ; mode officiel : non mesuré (le Launcher Minecraft possède le processus). */
+function playtimeText(id) {
+  if (state.auth.mode !== 'direct') return 'Temps de jeu non mesuré avec le Launcher Minecraft.';
+  const t = state.playtime[id];
+  return t ? `Joué ${fmtPlay(t.totalSecs)} · dernière session ${ago(new Date(t.lastPlayed * 1000).toISOString())}` : 'Aucune session mesurée pour l’instant.';
+}
+export async function refreshPlaytime() { try { state.playtime = await api.playtime(); } catch { /* inchangé */ } renderHome(); }
+
 function renderHero(p, st, cr) {
   const s = state.stats, inst = state.install?.packId === p.id ? state.install : null;
   $('#heroT').textContent = cr && s ? `Run #${s.runNumber}` : p.name;
@@ -81,6 +90,7 @@ function renderHero(p, st, cr) {
     : tex(p.thumbnail, 80, 'dragon sm') + tex('diamond', 48, 'eye') + tex('diamond_pickaxe', 48, 'dia');
   // Réécrire le même contenu relancerait l'animation de flottement (saut visible à chaque rafraîchissement).
   if ($('#heroArt').dataset.art !== art) { $('#heroArt').innerHTML = art; $('#heroArt').dataset.art = art; }
+  $('#heroPlay').textContent = playtimeText(p.id);
   const play = $('#btnPlay'), busy = !!state.install;
   $('.bl', play).textContent = st === 'no' ? 'INSTALLER' : st === 'unsupported' ? 'INDISPONIBLE' : state.inGame ? 'EN JEU' : 'JOUER';
   play.firstElementChild.firstElementChild.setAttribute('href', st === 'no' ? '#i-down' : '#i-play');

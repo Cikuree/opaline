@@ -22,6 +22,7 @@ pub mod overrides;
 pub mod official;
 pub mod packwiz;
 pub mod perf;
+pub mod playtime;
 pub mod ping;
 pub mod safe;
 pub mod serverview;

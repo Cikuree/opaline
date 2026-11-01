@@ -15,6 +15,7 @@ export const state = {
   inGame: false,
   install: null, // {packId, stage, done, total}
   friends: [],
+  playtime: {}, // packId -> {totalSecs, lastPlayed} (lancement direct seulement)
 };
 export const official = () => state.auth.state !== 'signedIn';
 /** Joueur affiché : compte connecté, sinon pseudo saisi (mode officiel), sinon rien. */

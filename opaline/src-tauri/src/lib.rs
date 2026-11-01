@@ -530,8 +530,10 @@ async fn play(app: AppHandle, state: State<'_, S>, id: String) -> CmdResult<Valu
         Ok((mut l, token)) => {
             let (listed, joining) = (l.server_listed, l.joining);
             let since = std::time::SystemTime::now();
+            let started = std::time::Instant::now();
             std::thread::spawn(move || {
                 let code = l.child.wait().ok().and_then(|st| st.code());
+                let _ = opaline_core::playtime::record(&s.0.root, &id, started.elapsed().as_secs(), friends::now_secs());
                 let tail = service::log_tail(&l.log, &token, &l.server, &s.0.root, 40);
                 // Code non nul : résumé lisible (latest.log + rapport de crash de cette session), sans jeton ni adresse.
                 let crash = (code != Some(0)).then(|| service::crash_view(&s.0.root, &id, code, tail.as_deref(), since, &token, &l.server).ok()).flatten();
@@ -565,6 +567,12 @@ async fn play_official(s: S, id: String) -> Value {
             json!({ "started": true, "reason": null, "serverListed": l.server_listed, "via": "official", "message": message })
         }
     }
+}
+
+/// Temps de jeu mesuré par Opaline (lancement direct) : `{<packId>: {totalSecs, lastPlayed}}`, `lastPlayed` en secondes Unix.
+#[tauri::command]
+async fn playtime(state: State<'_, S>) -> CmdResult<std::collections::BTreeMap<String, opaline_core::playtime::Playtime>> {
+    state.blocking(|r| Ok(opaline_core::playtime::load(r))).await
 }
 
 #[tauri::command]
@@ -707,6 +715,7 @@ pub fn run_with(svc: Services) {
             pack_repair,
             play,
             server_status,
+            playtime,
             run_stats,
             run_history,
             settings_get,

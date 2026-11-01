@@ -3,7 +3,7 @@ import { state, current, hasWidget, emit, on, usable } from './state.js';
 import { $, esc, toast, copy, setProgress, LS, refreshTextures } from './util.js';
 import { STAGES, STAGE_ORDER } from './data.js';
 import { initChrome, show, currentView } from './views/chrome.js';
-import { initHome, renderHome, refreshServers, refreshStats, installPct, startInstall } from './views/home.js';
+import { initHome, renderHome, refreshServers, refreshStats, installPct, startInstall, refreshPlaytime } from './views/home.js';
 import { initAccount, renderAccount, renderLogin, onAuthDone, refreshAuth } from './views/account.js';
 import { initSettings, renderSettings } from './views/settings.js';
 import { initFiles, renderFiles, syncBusy } from './views/files.js';
@@ -35,7 +35,7 @@ async function applyAuth() {
   renderLogin(); renderMe();
   if (!signed()) { show('login', false); return; }
   if (currentView() === 'login') show('home');
-  refreshFriends(); await loadPacks(); refreshServers(); refreshStats();
+  refreshFriends(); await loadPacks(); refreshServers(); refreshStats(); refreshPlaytime();
 }
 
 function progressUi() {
@@ -54,7 +54,7 @@ function wireEvents() {
     if (p.ok) { toast('Pack prêt'); await reloadTextures(); await loadPacks(); refreshServers(); refreshStats(); } else toast(p.error || 'L’installation a échoué.');
   });
   api.listen('game://exited', (p) => {
-    state.inGame = false; emit('game');
+    state.inGame = false; emit('game'); refreshPlaytime();
     if (p.code !== 0 && (p.logTail || p.crash)) {
       crashPack = p.packId;
       $('#crashT').textContent = `Le jeu s’est arrêté${p.code != null ? ` (code ${p.code})` : ''}`;
