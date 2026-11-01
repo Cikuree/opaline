@@ -34,9 +34,12 @@ svg.px{image-rendering:pixelated;shape-rendering:crispEdges;display:block}
 .badge{position:absolute;top:8px;right:8px;width:10px;height:10px;border-radius:50%;background:var(--cream);border:2px solid var(--win-deep)}
 svg.i{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 /* main */
-main{min-width:0;container:main/inline-size;display:flex;flex-direction:column;gap:16px;overflow-y:auto;padding:2px 6px 6px 2px;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
-main::-webkit-scrollbar,.col::-webkit-scrollbar{width:8px}
-main::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+main{min-width:0;container:main/inline-size;display:flex;flex-direction:column;gap:16px;overflow-y:auto;padding:2px 6px 6px 2px;}
+/* Barre de défilement fine et discrète (pas de scrollbar-width/-color : Chromium ignorerait alors ces règles) */
+main::-webkit-scrollbar,.col::-webkit-scrollbar{width:5px}
+main::-webkit-scrollbar-track,.col::-webkit-scrollbar-track{background:transparent}
+main::-webkit-scrollbar-thumb,.col::-webkit-scrollbar-thumb{background:rgba(30,8,12,.22);border-radius:5px}
+main::-webkit-scrollbar-thumb:hover,.col::-webkit-scrollbar-thumb:hover{background:rgba(30,8,12,.4)}
 .bar{flex-wrap:wrap;display:flex;align-items:center;justify-content:space-between;gap:16px}
 h1{font-size:clamp(22px,3.2cqi,30px);font-weight:800;letter-spacing:-.02em;line-height:1.15}
 h2{font-size:18px;font-weight:700;letter-spacing:-.01em}
@@ -106,7 +109,7 @@ h3{font-size:15px;font-weight:700}
 .list .t{flex:1;min-width:0;font-size:13px;line-height:1.35} .list .t b{display:block;font-size:14px}
 .run{font-size:12px;font-weight:700;color:var(--mute)}
 /* right column */
-.col{display:flex;flex-direction:column;gap:16px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+.col{display:flex;flex-direction:column;gap:16px;overflow-y:auto;}
 .me{display:flex;align-items:center;gap:12px}
 .avatar{width:44px;height:44px;border-radius:50%;background:var(--win-deep);overflow:hidden;flex:none;display:grid;place-items:center}
 .avwrap{position:relative;flex:none}
