@@ -452,6 +452,25 @@ pub fn run_history(root: &Dirs, id: &str, run: Option<u32>) -> Result<Option<ser
     stats_get(root, id, &run.map_or("history".to_string(), |n| format!("history/{n}")))
 }
 
+/// Dernier état connu (en ligne ou non) de chaque serveur de pack, pour détecter la transition hors ligne -> en ligne.
+pub type ServerWatch = std::collections::HashMap<String, bool>;
+
+/// Intègre un relevé `(id, nom du pack, en ligne)` et renvoie les noms des packs dont le serveur vient de passer de hors ligne à
+/// en ligne. Premier relevé d'un serveur (démarrage d'Opaline) : jamais de notification.
+pub fn watch_step(watch: &mut ServerWatch, observed: &[(String, String, bool)]) -> Vec<String> {
+    observed.iter().filter(|(id, _, now)| watch.insert(id.clone(), *now) == Some(false) && *now).map(|(_, name, _)| name.clone()).collect()
+}
+
+/// Relève (ping, Tailscale) les serveurs des packs installés. Une erreur de catalogue renvoie un relevé vide.
+pub fn observe_servers(root: &Dirs) -> Vec<(String, String, bool)> {
+    let Ok(entries) = packs(root) else { return Vec::new() };
+    entries
+        .iter()
+        .filter(|e| e.supported() && root.for_pack(&e.id).is_ok_and(|d| d.install_marker().is_file()))
+        .filter_map(|e| Some((e.id.clone(), e.name.clone(), serverview::check(e)?.0.online)))
+        .collect()
+}
+
 /// Relève les joueurs en ligne sur tous les serveurs des packs puis renvoie la liste mémorisée.
 pub fn friends_list(root: &Dirs) -> Result<Vec<friends::Friend>> {
     let mut seen = Vec::new();
@@ -520,6 +539,21 @@ joined secret.host token SECRETTOKEN").unwrap();
         let after = std::time::SystemTime::now() + Duration::from_secs(60);
         assert_eq!(crash_view(&root, "p", None, None, after, "t", "").unwrap().crash_file, None);
         std::fs::remove_dir_all(&root.root).unwrap();
+    }
+
+    #[test]
+    fn notifies_only_on_offline_to_online_transition() {
+        let obs = |online: bool| vec![("a".to_string(), "Pack A".to_string(), online)];
+        let mut w = ServerWatch::new();
+        assert!(watch_step(&mut w, &obs(true)).is_empty(), "premier relevé en ligne : pas de notification au démarrage");
+        assert!(watch_step(&mut w, &obs(true)).is_empty());
+        assert!(watch_step(&mut w, &obs(false)).is_empty());
+        assert!(watch_step(&mut w, &obs(false)).is_empty());
+        assert_eq!(watch_step(&mut w, &obs(true)), ["Pack A"]);
+        assert!(watch_step(&mut w, &obs(true)).is_empty(), "une seule notification par transition");
+        let mut w = ServerWatch::new();
+        watch_step(&mut w, &obs(false));
+        assert_eq!(watch_step(&mut w, &obs(true)), ["Pack A"], "hors ligne au démarrage puis en ligne : notifié");
     }
 
     #[test]

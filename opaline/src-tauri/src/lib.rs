@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
 type CmdResult<T> = Result<T, String>;
@@ -662,6 +663,26 @@ async fn player_head(state: State<'_, S>, uuid: String) -> CmdResult<Value> {
         .await
 }
 
+/// Relevé périodique des serveurs des packs installés : notification quand l'un passe de hors ligne à en ligne (réglage
+/// `notifyServer`). Le premier relevé ne notifie jamais ; aucune notification pour les connexions de joueurs.
+fn watch_servers(s: S, app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let mut watch = service::ServerWatch::new();
+        loop {
+            // Relevé à chaque tour (même réglage coupé) pour que la réactivation ne notifie pas un état ancien.
+            let s2 = s.clone();
+            if let Ok(obs) = tauri::async_runtime::spawn_blocking(move || service::observe_servers(&s2.0.root)).await {
+                for name in service::watch_step(&mut watch, &obs) {
+                    if s.config().notify_server {
+                        let _ = app.notification().builder().title("Opaline").body(format!("{name} : le serveur est en ligne")).show();
+                    }
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(90)).await;
+        }
+    });
+}
+
 pub fn run() {
     run_with(Services::default())
 }
@@ -682,6 +703,7 @@ pub fn run_with(svc: Services) {
     }));
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(state.clone())
         .setup(move |app| {
             // Le dossier de données peut être surchargé (OPALINE_HOME) : l'asset protocol y est alors autorisé à l'exécution.
@@ -689,6 +711,7 @@ pub fn run_with(svc: Services) {
             std::fs::create_dir_all(&tex)?;
             app.asset_protocol_scope().allow_directory(&tex, true)?;
             // Textures du client.jar : tâche de fond, sous le verrou d'installation (pas de doublon avec une installation en cours).
+            watch_servers(state.clone(), app.handle().clone());
             let (s, app) = (state.clone(), app.handle().clone());
             tauri::async_runtime::spawn(async move {
                 let _guard = s.0.install_lock.lock().await;
