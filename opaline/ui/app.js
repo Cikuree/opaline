@@ -99,8 +99,9 @@ document.addEventListener('contextmenu', (e) => {
 // Fondu des bords de la zone qui défile : actif seulement s'il reste du contenu caché de ce côté.
 const fadeEdges = () => {
   const m = document.getElementById('main'); if (!m) return;
-  const top = m.scrollTop > 2, bottom = m.scrollTop + m.clientHeight < m.scrollHeight - 2;
-  m.style.setProperty('--ft', top ? '28px' : '0px'); m.style.setProperty('--fb', bottom ? '36px' : '0px');
+  // fondu proportionnel à la distance restante : il s'efface en douceur à l'approche du bord au lieu de disparaître d'un coup
+  const rest = Math.max(0, m.scrollHeight - m.clientHeight - m.scrollTop);
+  m.style.setProperty('--ft', Math.min(28, m.scrollTop) + 'px'); m.style.setProperty('--fb', Math.min(36, rest) + 'px');
 };
 document.getElementById('main')?.addEventListener('scroll', fadeEdges, { passive: true });
 addEventListener('resize', fadeEdges);
