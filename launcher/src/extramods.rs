@@ -45,6 +45,9 @@ pub struct Entry {
     pub auto: bool,
     /// Projets Modrinth des mods perso qui requièrent celui-ci.
     pub required_by: Vec<String>,
+    /// Géré par Opaline (par exemple `"borderless"`) : absent de la liste « Mes mods », jamais retiré à la main.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
@@ -199,11 +202,12 @@ pub fn names(instance: &Path) -> HashSet<String> {
 
 pub fn list(dirs: &Dirs) -> Vec<ExtraMod> {
     let inst = dirs.instance();
-    let jars = jars_in(&extra_dir(&inst));
+    let mut jars = jars_in(&extra_dir(&inst));
     if jars.is_empty() {
         return Vec::new();
     }
     let (idx, pack) = (Index::load(&inst), pack_info(dirs));
+    jars.retain(|(f, _)| !idx.mods.iter().any(|e| e.file == *f && e.managed.is_some())); // mods gérés par Opaline : invisibles
     let pack_ids: HashMap<String, String> = pack.jars.iter().filter_map(|(n, p)| Some((jar_mod_id(p)?, n.clone()))).collect();
     jars.into_iter()
         .map(|(file, size_bytes)| {
@@ -263,6 +267,9 @@ pub fn remove(dirs: &Dirs, file: &str) -> Result<Vec<String>> {
         bail!("ce mod n'est pas dans Mes mods");
     }
     let mut idx = Index::load(&inst);
+    if idx.mods.iter().any(|e| e.file == file && e.managed.is_some()) {
+        bail!("ce mod est géré par Opaline (réglage « Plein écran fenêtré »)");
+    }
     if let Some(e) = idx.mods.iter().find(|e| e.file == file) {
         let by: Vec<&str> = e.required_by.iter().filter_map(|p| idx.by_project(p)).map(|p| p.title.as_str()).collect();
         if !by.is_empty() {
@@ -459,7 +466,7 @@ pub fn install_plan(dirs: &Dirs, plan: Plan, fetch: &dyn Fn(&Resolved, &Path) ->
         }
         created.push(dest.clone());
         fetch(r, &dest)?;
-        idx.mods.push(Entry { file: r.file.clone(), project_id: r.project_id.clone(), title: r.title.clone(), version: r.version.clone(), sha512: r.sha512.clone(), auto: r.project_id != root.project_id, required_by: vec![] });
+        idx.mods.push(Entry { file: r.file.clone(), project_id: r.project_id.clone(), title: r.title.clone(), version: r.version.clone(), sha512: r.sha512.clone(), auto: r.project_id != root.project_id, required_by: vec![], managed: None });
         Ok(())
     });
     if let Err(e) = result.and_then(|()| {

@@ -248,17 +248,48 @@ async fn app_update_install(app: AppHandle, state: State<'_, S>) -> CmdResult<()
     Ok(())
 }
 
+/// Active ou désactive « Plein écran fenêtré » dans tous les packs installés qui ne sont ni en jeu ni en installation (les autres
+/// sont traités à leur prochain lancement), en tâche de fond ; `borderless://done` à la fin. Les erreurs (hors ligne) sont ignorées.
+fn sync_borderless(app: AppHandle, s: S, on: bool) {
+    tauri::async_runtime::spawn(async move {
+        let s2 = s.clone();
+        let _ = s
+            .blocking(move |root| {
+                let busy: HashSet<String> = {
+                    let a = s2.0.activity.lock().unwrap();
+                    a.running.union(&a.installing).cloned().collect()
+                };
+                for e in service::packs(root)?.iter().filter(|e| !busy.contains(&e.id)) {
+                    let _ = service::borderless_sync(root, e, on);
+                }
+                Ok(())
+            })
+            .await;
+        let _ = app.emit("borderless://done", json!({}));
+    });
+}
+
+/// Issues par pack du « Plein écran fenêtré » : `{packId: "installed" | "provided" | "noVersion" | "incompatible"}`.
+#[tauri::command]
+async fn borderless_status(state: State<'_, S>) -> CmdResult<std::collections::BTreeMap<String, String>> {
+    state.blocking(|r| Ok(service::borderless_status(r))).await
+}
+
 #[tauri::command]
 async fn settings_get(state: State<'_, S>) -> CmdResult<service::SettingsView> {
     state.blocking(|r| Ok(service::settings_get(r))).await
 }
 
 #[tauri::command]
-async fn settings_set(state: State<'_, S>, patch: service::SettingsPatch) -> CmdResult<service::SettingsView> {
+async fn settings_set(app: AppHandle, state: State<'_, S>, patch: service::SettingsPatch) -> CmdResult<service::SettingsView> {
     let discord_off = patch.discord_presence == Some(false);
+    let borderless = patch.borderless;
     let v = state.blocking(move |r| service::settings_set(r, patch)).await?;
     if discord_off && let Some(tx) = &state.0.presence {
         let _ = tx.send(None); // statut effacé tout de suite, même en cours de partie
+    }
+    if let Some(on) = borderless {
+        sync_borderless(app, state.inner().clone(), on);
     }
     Ok(v)
 }
@@ -976,6 +1007,7 @@ pub fn run_with(svc: Services) {
             run_stats,
             run_history,
             settings_get,
+            borderless_status,
             settings_set,
             open_folder,
             open_map,

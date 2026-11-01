@@ -20,7 +20,7 @@ const packs = [
 const MODS = [['Fabric API', '0.131.0', 'both'], ['Classroom Run', '0.9.2', 'both'], ['Sodium', '0.7.2', 'client'], ['Lithium', '0.18.1', 'both'], ['Iris Shaders', '1.9.3', 'client', false], ['Sodium Extra', '0.7.0', 'client'], ['Mod Menu', '15.0.0', 'client'], ['Fantasy', '0.8.1', 'server'], ['ServerReplay', '1.4.0', 'server'], ['Replay Mod', '2.7.0', 'client'], ['Cloth Config', '21.0.1', 'both']]
   .map(([name, version, side, ok]) => ({ name, version, side, file: name.toLowerCase().replace(/\W+/g, '-') + '.jar', verified: ok !== false }));
 
-let settings = { perfMode: 'balanced', memoryMb: 6144, noRemember: false, launchVia: 'opaline', joinServer: true, notifyServer: true, discordPresence: true, trayOnGame: true, autoTuned: !q.has('noauto'), systemRamMb: 16384 };
+let settings = { perfMode: 'balanced', memoryMb: 6144, noRemember: false, launchVia: 'opaline', joinServer: true, notifyServer: true, discordPresence: true, trayOnGame: true, autoTuned: !q.has('noauto'), borderless: false, systemRamMb: 16384 };
 // ?signedout : écran de connexion ; ?official : mode officiel avec pseudo ; ?notapproved : la connexion échoue comme avec une app Azure non approuvée.
 const UUID = '3f9a21c4-7be0-4a11-9c3d-0b6e5f51e51d';
 let identity = q.has('official') ? { name: 'OddNode', uuid: UUID } : null, pending = false;
@@ -128,6 +128,7 @@ export async function invoke(cmd, a = {}) {
     case 'settings_copy': { if (a.from === a.to) throw 'choisis deux packs différents'; if (!a.categories.length) throw 'catégorie de réglages inconnue'; const ok = (id) => packs.find((p) => p.id === id)?.installed; if (!ok(a.from) || !ok(a.to)) throw 'le pack de destination n’est pas installé'; return 3 * a.categories.length; }
     case 'shaders_get': { const p = packs.find((x) => x.id === a.id); if (!p?.installed) throw 'ce pack n’est pas installé'; return { available: a.id !== 'solo', files: ['ComplementaryReimagined_r5.5.1.zip', 'BSL_v10.zip', 'Dossier perso'], active: shaderOf[a.id] ?? null }; }
     case 'shader_set': if (!['ComplementaryReimagined_r5.5.1.zip', 'BSL_v10.zip', 'Dossier perso', null].includes(a.name)) throw 'shader introuvable dans shaderpacks/'; shaderOf[a.id] = a.name; return null;
+    case 'borderless_status': return { 'classroom-run': 'installed', survie: 'noVersion', solo: 'incompatible' };
     case 'open_folder': return null;
     case 'map_info': { const p = packs.find((x) => x.id === a.id); if (!p?.hasMap) throw 'ce serveur n’a pas de carte'; await wait(300); return { name: p.name, url: 'https://bluecolored.de/bluemap/', reachable: !q.has('mapdown'), embeddable: !q.has('mapblock') }; }
     case 'open_map': { const p = packs.find((x) => x.id === a.id); if (!p?.hasMap) throw 'ce serveur n’a pas de carte'; console.info('[démo] fenêtre « Carte – ' + p.name + ' » (WebviewWindow externe, sans capability)'); return null; }

@@ -129,7 +129,7 @@ fn successful_login_then_config_json_has_no_secret() {
     let v: serde_json::Value = serde_json::from_str(&text).unwrap();
     let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     keys.sort();
-    assert_eq!(keys, ["auto_tuned", "discord_presence", "join_server", "launch_via", "mc_name", "mc_uuid", "memory_mb", "nickname", "no_remember", "notify_server", "perf_mode", "tray_on_game"]);
+    assert_eq!(keys, ["auto_tuned", "borderless", "discord_presence", "join_server", "launch_via", "mc_name", "mc_uuid", "memory_mb", "nickname", "no_remember", "notify_server", "perf_mode", "tray_on_game"]);
     let _ = std::fs::remove_dir_all(&dirs.root);
 }
 

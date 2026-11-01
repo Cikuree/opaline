@@ -43,6 +43,8 @@ pub struct Config {
     pub tray_on_game: bool,
     /// Mode et mémoire choisis automatiquement au premier lancement ; remis à faux dès que l'utilisateur les change.
     pub auto_tuned: bool,
+    /// « Plein écran fenêtré » : Opaline installe Cubes Without Borders dans chaque pack et le configure.
+    pub borderless: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -55,7 +57,7 @@ pub enum LaunchVia {
 
 impl Default for Config {
     fn default() -> Self {
-        Config { nickname: "Player".into(), memory_mb: 4096, perf_mode: PerfMode::Balanced, no_remember: false, mc_name: String::new(), mc_uuid: String::new(), launch_via: LaunchVia::Opaline, join_server: true, notify_server: true, discord_presence: true, tray_on_game: !cfg!(target_os = "linux"), auto_tuned: false }
+        Config { nickname: "Player".into(), memory_mb: 4096, perf_mode: PerfMode::Balanced, no_remember: false, mc_name: String::new(), mc_uuid: String::new(), launch_via: LaunchVia::Opaline, join_server: true, notify_server: true, discord_presence: true, tray_on_game: !cfg!(target_os = "linux"), auto_tuned: false, borderless: false }
     }
 }
 
@@ -297,7 +299,7 @@ mod tests {
     #[test]
     fn extras_default_on_and_missing_keys_ok() {
         let c: Config = serde_json::from_str(r#"{"nickname":"A"}"#).unwrap();
-        assert!(c.join_server && c.notify_server && c.discord_presence && c.tray_on_game == !cfg!(target_os = "linux") && !c.auto_tuned);
+        assert!(c.join_server && c.notify_server && c.discord_presence && c.tray_on_game == !cfg!(target_os = "linux") && !c.auto_tuned && !c.borderless);
     }
 
     #[test]

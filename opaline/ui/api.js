@@ -34,6 +34,7 @@ export const playtime = () => call('playtime');
 export const runStats = (id) => call('run_stats', { id });
 export const runHistory = (id, run = null) => call('run_history', { id, run });
 export const settingsGet = () => call('settings_get');
+export const borderlessStatus = () => call('borderless_status');
 export const settingsSet = (patch) => call('settings_set', { patch });
 export const mapInfo = (id) => call('map_info', { id });
 export const openMap = (id) => call('open_map', { id });

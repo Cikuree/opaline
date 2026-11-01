@@ -4,6 +4,7 @@ pub mod auth;
 pub mod auth_browser;
 pub mod autotune;
 pub mod backup;
+pub mod borderless;
 pub mod catalog;
 pub mod changelog;
 pub mod config;

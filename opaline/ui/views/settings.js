@@ -19,6 +19,14 @@ function memUi(gb) {
   $('#memH').textContent = `RAM détectée : ${ram} Go. Zone recommandée : ${lo} à ${hi} Go (en vert).` + (gb > max - 4 && max > 6 ? ' Attention : peu de mémoire resterait pour le système.' : gb < 4 ? ' Attention : trop peu pour Minecraft avec des mods.' : '');
 }
 
+const NOTE = { noVersion: 'pas de version compatible', incompatible: 'incompatible avec un mod du pack' };
+async function renderBorderlessNote(on) {
+  const n = $('#blNote'); n.hidden = true; if (!on) return;
+  let st = {}; try { st = await api.borderlessStatus(); } catch { return; }
+  const bad = state.packs.filter((p) => p.installed && NOTE[st[p.id]]).map((p) => `${p.name} (${NOTE[st[p.id]]})`);
+  if (bad.length) { n.textContent = 'Ignoré pour : ' + bad.join(', ') + '.'; n.hidden = false; }
+}
+
 function renderCopy() {
   const inst = state.packs.filter((p) => p.installed), keep = (id) => ($(id).value || '');
   const opts = (sel, other) => { const v = keep(sel); $(sel).innerHTML = inst.map((p, i) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join(''); $(sel).value = inst.some((p) => p.id === v) ? v : (inst[other]?.id || ''); };
@@ -31,7 +39,7 @@ function renderCopy() {
 export function renderSettings() {
   const s = state.settings; if (!s) return;
   renderCopy();
-  setSw($('#bgAnim'), LS.get('opaline.bg') !== '0');
+  setSw($('#bgAnim'), LS.get('opaline.bg') !== '0'); setSw($('#borderless'), !!s.borderless); renderBorderlessNote(s.borderless);
   $('#autoMsg').hidden = !s.autoTuned;
   $('#perf').innerHTML = PERF.map((p) => `<button role="radio" aria-checked="${p.id === s.perfMode}" data-p="${p.id}"><h3>${p.name}</h3><span class="xs" style="color:var(--coral2);font-weight:700">${p.sub}</span><ul><li>${p.gb ? 'Mémoire ' + clamp(p.gb) + ' Go' : 'Mémoire choisie à la main'}</li></ul></button>`).join('');
   memUi(clamp(gbOf(s.memoryMb)));
@@ -54,6 +62,8 @@ async function save(patch) {
 }
 
 export function initSettings() {
+  api.listen('borderless://done', () => renderBorderlessNote(state.settings?.borderless));
+  $('#borderless').addEventListener('click', (e) => save({ borderless: e.currentTarget.getAttribute('aria-checked') !== 'true' }));
   $('#bgAnim').addEventListener('click', (e) => { const on = e.currentTarget.getAttribute('aria-checked') !== 'true'; LS.set('opaline.bg', on ? '1' : '0'); setSw(e.currentTarget, on); setAnimated(on); });
   $('#cpGo').addEventListener('click', async () => {
     const from = $('#cpFrom').value, to = $('#cpTo').value, cats = [...document.querySelectorAll('#cpCats input:checked')].map((i) => i.value);

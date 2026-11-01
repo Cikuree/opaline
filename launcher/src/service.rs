@@ -153,6 +153,34 @@ pub fn extra_mod_add_modrinth(root: &Dirs, id: &str, project: &str, api: &dyn cr
     extramods::add_modrinth(&dirs, api, project, &e.mc, &e.loader, &|r, dest| extramods::download_job(&client, r, dest))
 }
 
+/// « Plein écran fenêtré » pour un pack : active (installe et configure Cubes Without Borders) ou désactive. Best effort : toute
+/// erreur (hors ligne...) est renvoyée mais ne doit jamais empêcher de lancer le jeu. Renvoie l'issue (`borderless::INSTALLED`...).
+pub fn borderless_sync(root: &Dirs, e: &PackEntry, enabled: bool) -> Result<Option<String>> {
+    let dirs = root.for_pack(&e.id)?;
+    if !dirs.install_marker().is_file() {
+        return Ok(None);
+    }
+    if !enabled {
+        crate::borderless::disable(&dirs)?;
+        return Ok(None);
+    }
+    let client = download::http_client()?;
+    let api = crate::modrinth::Http::default_api()?;
+    crate::borderless::enable(&dirs, &api, &e.mc, &e.loader, &|r, dest| extramods::download_job(&client, r, dest)).map(Some)
+}
+
+/// Issues mémorisées par pack installé : `{packId: "installed" | "provided" | "noVersion" | "incompatible"}`.
+pub fn borderless_status(root: &Dirs) -> std::collections::BTreeMap<String, String> {
+    let mut m = std::collections::BTreeMap::new();
+    for e in std::fs::read_dir(root.root.join("instances")).into_iter().flatten().flatten() {
+        let id = e.file_name().to_string_lossy().into_owned();
+        if let Some(s) = root.for_pack(&id).ok().and_then(|d| crate::borderless::state(&d)) {
+            m.insert(id, s.state);
+        }
+    }
+    m
+}
+
 pub fn pack_mods(root: &Dirs, id: &str) -> Result<Vec<ModView>> {
     let dirs = root.for_pack(id)?;
     Ok(changelog::mod_views(&dirs, &changelog::load_snapshot(&dirs)?))
@@ -240,6 +268,7 @@ pub struct SettingsView {
     pub tray_on_game: bool,
     /// Mode et mémoire réglés automatiquement au premier lancement (et pas encore modifiés).
     pub auto_tuned: bool,
+    pub borderless: bool,
     pub system_ram_mb: Option<u64>,
 }
 
@@ -255,6 +284,7 @@ pub fn settings_get(root: &Dirs) -> SettingsView {
         discord_presence: c.discord_presence,
         tray_on_game: c.tray_on_game,
         auto_tuned: c.auto_tuned,
+        borderless: c.borderless,
         system_ram_mb: sysmem::total_ram_mb(),
     }
 }
@@ -277,6 +307,7 @@ pub struct SettingsPatch {
     pub notify_server: Option<bool>,
     pub discord_presence: Option<bool>,
     pub tray_on_game: Option<bool>,
+    pub borderless: Option<bool>,
 }
 
 pub fn settings_set(root: &Dirs, p: SettingsPatch) -> Result<SettingsView> {
@@ -296,6 +327,7 @@ pub fn settings_set(root: &Dirs, p: SettingsPatch) -> Result<SettingsView> {
     c.notify_server = p.notify_server.unwrap_or(c.notify_server);
     c.discord_presence = p.discord_presence.unwrap_or(c.discord_presence);
     c.tray_on_game = p.tray_on_game.unwrap_or(c.tray_on_game);
+    c.borderless = p.borderless.unwrap_or(c.borderless);
     c.save(root)?;
     Ok(settings_get(root))
 }
@@ -349,6 +381,7 @@ pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) 
     let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?
         .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
     let env = mojang::Env::current(&[]);
+    let _ = borderless_sync(root, e, cfg.borderless); // hors ligne ou sans version compatible : on lance quand même
     let _ = extramods::sync_for_launch(&dirs); // Mes mods : recopiés dans mods/ ; un échec ne bloque pas le lancement
     let quick_play = cfg.join_server.then(|| e.server.as_ref().and_then(quick_play_target)).flatten();
     let cmd = launch::build_command_with(&launch::LaunchInput {
@@ -420,6 +453,7 @@ pub fn launch_official(root: &Dirs, e: &PackEntry, cfg: &Config, mc: &Path, inte
     let (server, server_listed) = e.server.as_ref().map(|s| list_entry(&dirs.instance(), &e.name, s)).unwrap_or_default();
     let memory_mb = perf::apply(&dirs.instance(), cfg.perf_mode, inst.shader_pack.as_deref(), sysmem::total_ram_mb())?
         .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
+    let _ = borderless_sync(root, e, cfg.borderless);
     let _ = extramods::sync_for_launch(&dirs);
     let vid = official::version_id(&e.id);
     official::install_version(&dirs, mc, &inst.profile_id, &vid, &inst.fabric.libraries, inst.fabric.version_name.is_some())?;
