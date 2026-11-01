@@ -1,0 +1,13 @@
+name = "shulkerboxtooltip-fabric"
+filename = "shulkerboxtooltip-fabric-5.1.8+1.21.1.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/7204/308/shulkerboxtooltip-fabric-5.1.8%2B1.21.1.jar"
+hash-format = "sha512"
+hash = "8b5cc6638430547549f732dccafd805ccee6d48f014b313b332fd9e53e98804c78d320435321c6f64ef4db990c7fb6ce6da4f83ac82575d0c6279b54d5f5578b"
+
+[update]
+[update.curseforge]
+file-id = 7204308
+project-id = 315811

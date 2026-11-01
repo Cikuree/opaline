@@ -1,0 +1,13 @@
+name = "libraryferret-fabric"
+filename = "libraryferret-fabric-1.21.1-4.0.0.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/6106/239/libraryferret-fabric-1.21.1-4.0.0.jar"
+hash-format = "sha512"
+hash = "e607e4895d240bcbe8873a5a6cbd3b2ec7537eb90e992a32f12341e706fa1d0e0eb6a042a4b75d691fd8c5c2c0bfd59dcea45ef182bb898cdd67414630ef7715"
+
+[update]
+[update.curseforge]
+file-id = 6106239
+project-id = 532730

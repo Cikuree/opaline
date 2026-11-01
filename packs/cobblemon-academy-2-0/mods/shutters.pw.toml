@@ -1,0 +1,13 @@
+name = "Shutters"
+filename = "shutter-2.1.2-fabric-1.21.1.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/NjHNA0vG/versions/gCSH5TB9/shutter-2.1.2-fabric-1.21.1.jar"
+hash-format = "sha512"
+hash = "0c5ac6bc67fedee6bd28cb248737873898115ab6490d9f3caaee5e7ee0003db22dd90a42b810a700170121ee63f0022d6cbc3f83506e1b22001590561734a883"
+
+[update]
+[update.modrinth]
+mod-id = "NjHNA0vG"
+version = "gCSH5TB9"

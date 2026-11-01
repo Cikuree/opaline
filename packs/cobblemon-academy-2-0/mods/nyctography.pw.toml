@@ -1,0 +1,13 @@
+name = "Nyctography"
+filename = "nyctography-fabric-1.21.1-21.1.6.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/ViRnT7xw/versions/L8OrZKsS/nyctography-fabric-1.21.1-21.1.6.jar"
+hash-format = "sha512"
+hash = "c791154e384424c928a3e0999e644bd707663b8ee29f7221f5cc9f3383c7930ebbc2411dcb141695672f7f564bd59794f20553b5c2ae6bfb0896c7670111c653"
+
+[update]
+[update.modrinth]
+mod-id = "ViRnT7xw"
+version = "L8OrZKsS"

@@ -1,0 +1,13 @@
+name = "Cobblemon Trials Edition"
+filename = "CobblemonTrialsEdition-fabric-2.2.0.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/oH4pigcS/versions/64CBNZtt/CobblemonTrialsEdition-fabric-2.2.0.jar"
+hash-format = "sha512"
+hash = "345e8fbd2b982120beeb00928887929fc5c8baf0ee0970a691cfdb8a0407b3469acda4b0fb496e4d653b9808706097d1a8da82b60565bdf979c3ba1d0dc77767"
+
+[update]
+[update.modrinth]
+mod-id = "oH4pigcS"
+version = "64CBNZtt"

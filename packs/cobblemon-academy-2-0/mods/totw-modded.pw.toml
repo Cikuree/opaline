@@ -1,0 +1,13 @@
+name = "Towers of the Wild Modded"
+filename = "totw_modded-fabric-1.21-1.0.8.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/54eqfZSC/versions/MsYnwYAU/totw_modded-fabric-1.21-1.0.8.jar"
+hash-format = "sha512"
+hash = "dbc953179c6a3e2ee7430ef9113e4369c030d39b9af43d6d3d21cc435fb2c13106c1c62c162f206e0854cddb451a456d13346809f15b4e45816a5f66b8612688"
+
+[update]
+[update.modrinth]
+mod-id = "54eqfZSC"
+version = "MsYnwYAU"

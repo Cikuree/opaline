@@ -1,0 +1,13 @@
+name = "DimWorldBorder"
+filename = "dimworldborder-fabric-1.21.1-1.0.5.jar"
+side = "server"
+
+[download]
+url = "https://cdn.modrinth.com/data/KNfZi3IU/versions/GlnxFh14/dimworldborder-fabric-1.21.1-1.0.5.jar"
+hash-format = "sha512"
+hash = "36f43c1f9ebb3f91c88b16068938f550761266d899da0e2c664521835c6e4da511c5cb982c82757a890f6c0f5a7919c0133301ad9be18075747818623464f55f"
+
+[update]
+[update.modrinth]
+mod-id = "KNfZi3IU"
+version = "GlnxFh14"

@@ -1,0 +1,13 @@
+name = "Redirected"
+filename = "redirected-fabric-1.0.0-1.21.1.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/hhnR8xqU/versions/9G5lyDuT/redirected-fabric-1.0.0-1.21.1.jar"
+hash-format = "sha512"
+hash = "bfb3f510403ce8eb8f28e1ef08bb82f3a4001128be288356336d79be1d4ca25f0f49a4e14f6e5b46325021ce3d804d23471b1dbb5c2f59dee2267469781053ce"
+
+[update]
+[update.modrinth]
+mod-id = "hhnR8xqU"
+version = "9G5lyDuT"

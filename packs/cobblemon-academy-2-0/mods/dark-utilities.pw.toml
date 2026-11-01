@@ -1,0 +1,13 @@
+name = "Dark Utilities"
+filename = "darkutils-fabric-1.21.1-21.1.1.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/CkqTAIaP/versions/17SqiDCk/darkutils-fabric-1.21.1-21.1.1.jar"
+hash-format = "sha512"
+hash = "6d9017f57a3ffd174be7ecea067a3eab51e9166b97da2865fc3ed17730ced2f2065ce00830c2eb8d625126613e6cb982b52c4326ae19b17bd30afc09e89293d5"
+
+[update]
+[update.modrinth]
+mod-id = "CkqTAIaP"
+version = "17SqiDCk"

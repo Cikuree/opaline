@@ -1,0 +1,13 @@
+name = "Cobblemon Academy 2.0"
+version = "0.1.0"
+description = "cobblemon de fou"
+pack-format = "packwiz:1.1.0"
+
+[index]
+file = "index.toml"
+hash-format = "sha256"
+hash = "99cb0f1af49df8d2050ae85a7b3e5bf3b5b2603de395341c0fdfa72f2c21c634"
+
+[versions]
+fabric = "0.18.6"
+minecraft = "1.21.1"

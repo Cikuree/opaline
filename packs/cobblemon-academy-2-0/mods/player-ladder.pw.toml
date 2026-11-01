@@ -1,0 +1,13 @@
+name = "Player Ladder"
+filename = "playerladder-fabric-1.21-0.7.1.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/YCcTxyDM/versions/odOUurFE/playerladder-fabric-1.21-0.7.1.jar"
+hash-format = "sha512"
+hash = "cd5a2b04d3aca873d249b43db4653b860b8b70c714e0525ea30679890ae11803907655c81180d654f9dca290c6118e63f411eac5ed17b16c8fbc9bace4945426"
+
+[update]
+[update.modrinth]
+mod-id = "YCcTxyDM"
+version = "odOUurFE"

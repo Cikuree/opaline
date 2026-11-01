@@ -1,0 +1,13 @@
+name = "Radical Gyms & Structures [Cobblemon]"
+filename = "Radical Gyms  Structures - RGS.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/3sLJoaQH/versions/TWiuaa3o/Radical%20Gyms%20%20Structures%20-%20RGS.jar"
+hash-format = "sha512"
+hash = "232c9aab803ef56ee6d997c0a105fd96c4ecb0a55c7df43ea509fbf7b8c42e5f31a6b9e20192d0c91f96fb6512d50224999f6e26f9d6650f55b1d404282f6ade"
+
+[update]
+[update.modrinth]
+mod-id = "3sLJoaQH"
+version = "TWiuaa3o"

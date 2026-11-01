@@ -1,0 +1,13 @@
+name = "Cobblemon Economy"
+filename = "cobblemon-economy-0.0.18.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/zfVCrbFk/versions/3xp4vMCk/cobblemon-economy-0.0.18.jar"
+hash-format = "sha512"
+hash = "cd002183b4873e8a580e4220f9779d8adae9e8efd92e9f7cbf1fb5ecdb958ed1afa3188ec257ec878483cca298a86dc07b170eabc395801f7c43eb5dd1744365"
+
+[update]
+[update.modrinth]
+mod-id = "zfVCrbFk"
+version = "3xp4vMCk"

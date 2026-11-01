@@ -1,0 +1,13 @@
+name = "Lootrmon: Lootr & Cobblemon Gilded Chest Compatibility"
+filename = "lootrmon-fabric-1.21.1-0.0.0.3.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/ywwXJDli/versions/nquNxBhW/lootrmon-fabric-1.21.1-0.0.0.3.jar"
+hash-format = "sha512"
+hash = "bacfc3d4f40881f650096c1aa3d10658bf6555cef6179f0222ad6999f5c9517c29d22a127b4d0bec1128c9a6c0369ab167057799653c1275fd93f4068b52f115"
+
+[update]
+[update.modrinth]
+mod-id = "ywwXJDli"
+version = "nquNxBhW"

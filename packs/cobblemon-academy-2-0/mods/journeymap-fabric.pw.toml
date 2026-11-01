@@ -1,0 +1,13 @@
+name = "journeymap-fabric"
+filename = "journeymap-fabric-1.21.1-6.0.0-beta.47.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/6550/376/journeymap-fabric-1.21.1-6.0.0-beta.47.jar"
+hash-format = "sha512"
+hash = "52f2f14a169bd21c68c6121795a1ff5f0fcd23a7902491e0a4b407ee7d677c4d3ba55b4147d69edb3cdc5650dd70fd3d8100b4378b5728774ebf1e1afdff4641"
+
+[update]
+[update.curseforge]
+file-id = 6550376
+project-id = 32274

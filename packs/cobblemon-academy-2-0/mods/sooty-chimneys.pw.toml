@@ -1,0 +1,13 @@
+name = "Sooty Chimneys"
+filename = "sootychimneys-fabric-1.3.2.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/b3w1XM9H/versions/kgcDOLyD/sootychimneys-fabric-1.3.2.jar"
+hash-format = "sha512"
+hash = "a016b88e942a53640d799e331ed412639ecb567104099000d8345a6d7ae742f7691eac0e5eea0d7993c47d1c7df4adae93ac4d363d1c1d6615e90758a3c3e74d"
+
+[update]
+[update.modrinth]
+mod-id = "b3w1XM9H"
+version = "kgcDOLyD"

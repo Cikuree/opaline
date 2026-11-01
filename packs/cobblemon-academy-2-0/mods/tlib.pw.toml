@@ -1,0 +1,13 @@
+name = "TLib"
+filename = "tlib-1.3.0-1.21.1.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/sBn7rVvc/versions/u0ZoNxgc/tlib-1.3.0-1.21.1.jar"
+hash-format = "sha512"
+hash = "be06f1fc6cea4e63edf956016682ecea0b25c5d95e4785b564e7eac84468a643f615e0910fa96633e277eeb2cfbf90aeac6a20c2cbcc87ddd7c9759dfca97893"
+
+[update]
+[update.modrinth]
+mod-id = "sBn7rVvc"
+version = "u0ZoNxgc"

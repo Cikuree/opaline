@@ -1,0 +1,13 @@
+name = "sophisticatedstorage"
+filename = "sophisticatedstorage-1.21.1-1.3.7.6.127.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/6844/431/sophisticatedstorage-1.21.1-1.3.7.6.127.jar"
+hash-format = "sha512"
+hash = "38816984051876bbde45ca7bcd9f29abddb5df612c4901281d67a092b4959938f7505c794f5c4541d42946b432ab1f6a59e567cb2eba6e8e8117f3b12560f455"
+
+[update]
+[update.curseforge]
+file-id = 6844431
+project-id = 979326

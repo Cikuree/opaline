@@ -1,0 +1,13 @@
+name = "GameRule Manager"
+filename = "the_ruler-1.3-1.21.1-fabric.jar"
+side = "server"
+
+[download]
+url = "https://cdn.modrinth.com/data/226Q16YJ/versions/pcFtHqry/the_ruler-1.3-1.21.1-fabric.jar"
+hash-format = "sha512"
+hash = "8f5c6fa0ec5d854c57af19d5fa8b03a554f608fbd026b57cb4aab5d0dc2bedbaf0f129bc963468ae5ff335271a0731cedf74c6bdc401003ff2fa5d442abae84f"
+
+[update]
+[update.modrinth]
+mod-id = "226Q16YJ"
+version = "pcFtHqry"

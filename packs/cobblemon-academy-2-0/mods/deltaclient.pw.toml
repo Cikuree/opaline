@@ -1,0 +1,13 @@
+name = "DeltaClient"
+filename = "DeltaClient-5.6.3.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/8944/423/DeltaClient-5.6.3.jar"
+hash-format = "sha512"
+hash = "61083ea2450919548143c10835c333391cd7b67961d1208f28e00e84d0a217c1d9d67c9c5f76190e7716230849974679c7c7e1e2afa00295594d9a28ff7b4b6c"
+
+[update]
+[update.curseforge]
+file-id = 8944423
+project-id = 1659187

@@ -1,0 +1,13 @@
+name = "Cobblemon - More Sparkles"
+filename = "MoreSparkles-1.1.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/UCtNrukh/versions/ahVm4QAY/MoreSparkles-1.1.jar"
+hash-format = "sha512"
+hash = "5c5909e0ba8bee39b023786b5f3c80d74170dd317b53ed9911a8e1aac4275312369d8fee599233430d8a1e7805646b2755eb00f5c076580f4c107fae4e312040"
+
+[update]
+[update.modrinth]
+mod-id = "UCtNrukh"
+version = "ahVm4QAY"

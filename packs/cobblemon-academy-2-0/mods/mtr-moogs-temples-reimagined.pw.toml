@@ -1,0 +1,13 @@
+name = "MTR - Moog's Temples Reimagined"
+filename = "MoogsTemplesReimagined-1.21-1.0.3.jar"
+side = "server"
+
+[download]
+url = "https://cdn.modrinth.com/data/UNanzCXS/versions/JfZdojv9/MoogsTemplesReimagined-1.21-1.0.3.jar"
+hash-format = "sha512"
+hash = "4a328ea73a754732027f2f000e343f3f5753a281633f8bb48dabc99d18e64726841020c6ea8037e1125c96da415d78b82edb0280419bd08fef0acd1576253133"
+
+[update]
+[update.modrinth]
+mod-id = "UNanzCXS"
+version = "JfZdojv9"

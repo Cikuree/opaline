@@ -1,0 +1,13 @@
+name = "gpumemleakfix-fabric"
+filename = "gpumemleakfix-fabric-1.21-1.8.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/5513/550/gpumemleakfix-fabric-1.21-1.8.jar"
+hash-format = "sha512"
+hash = "2d4f77b795fa9ac6ddc01ce49003a4a5c47e1e1a486f7bd0a9b3a221d4c50944fa705e05920a1582efd9d2ff380bebd381e422cef8dc91a1fd91b899d7117c93"
+
+[update]
+[update.curseforge]
+file-id = 5513550
+project-id = 882495

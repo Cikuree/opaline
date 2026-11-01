@@ -1,0 +1,13 @@
+name = "Cobblemon PokeNav"
+filename = "cobblenav-fabric-2.4.1.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/bI8Nt3uA/versions/BV5KiAcY/cobblenav-fabric-2.4.1.jar"
+hash-format = "sha512"
+hash = "59a36ea6f2f21bd6668f128b359cb0c448711502195559d69ccb77e50dcf2ac2535cfacee332722f5a63a5b15a493cf3f525a46b9e7c264fdb445737dfdf9d36"
+
+[update]
+[update.modrinth]
+mod-id = "bI8Nt3uA"
+version = "BV5KiAcY"

@@ -1,0 +1,13 @@
+name = "Stohun's Vanity Collection"
+filename = "stohuns_vanity_collection-1.0.0.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/efWNOYII/versions/qNXKP5uB/stohuns_vanity_collection-1.0.0.jar"
+hash-format = "sha512"
+hash = "5fae3e4705a44a4987b525258bfc3ad93ee39a61e5ffcb5fd69d3a38c3ab0ccc96449395f240bf9546a0bf33491aae1bfd4c4be4c6ad711b491c62daafdcc364"
+
+[update]
+[update.modrinth]
+mod-id = "efWNOYII"
+version = "qNXKP5uB"

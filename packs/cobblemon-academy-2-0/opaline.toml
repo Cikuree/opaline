@@ -1,0 +1,9 @@
+name = "Cobblemon Academy 2.0"
+description = "cobblemon de fou"
+thumbnail = "ender_pearl"
+widgets = []
+
+[overrides]
+url = "https://github.com/Cikuree/opaline/releases/download/packs/overrides-cobblemon-academy-2-0-981d90e4.zip"
+sha256 = "981d90e49d6d79639f3430abd3381ba6af985bd85304f7b8cba1859c17d265ac"
+size = 198686544

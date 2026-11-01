@@ -1,0 +1,13 @@
+name = "xercapaint"
+filename = "xercapaint-1.21.1-1.1.0.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/8297/947/xercapaint-1.21.1-1.1.0.jar"
+hash-format = "sha512"
+hash = "4c48b09f3de355b24fb7309466e6a017ddd0ded3f4acd6100b5d3f11dc9d6109d68d19927e830d351b1b106d95201b87df932b5d66b520b1bda639419cd1b6d5"
+
+[update]
+[update.curseforge]
+file-id = 8297947
+project-id = 1583936

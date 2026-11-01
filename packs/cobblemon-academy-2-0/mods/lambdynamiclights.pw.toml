@@ -1,0 +1,13 @@
+name = "lambdynamiclights"
+filename = "lambdynamiclights-4.1.5+1.21.1.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/6818/841/lambdynamiclights-4.1.5%2B1.21.1.jar"
+hash-format = "sha512"
+hash = "82f4c9d16762bd1f83955a92d8218915dbe5d49245b714d64cc058d9665f2ea5857b264f6fd817e70165a97876509961ebc39d386a23c42545af4b60d2d777bd"
+
+[update]
+[update.curseforge]
+file-id = 6818841
+project-id = 393442

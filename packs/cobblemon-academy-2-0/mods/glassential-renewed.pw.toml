@@ -1,0 +1,13 @@
+name = "Glassential Renewed"
+filename = "Glassential-renewed-fabric-1.21.1-3.2.5.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/kc9FSsYx/versions/a58QqcrL/Glassential-renewed-fabric-1.21.1-3.2.5.jar"
+hash-format = "sha512"
+hash = "d53226eb766cb7572a56526e453d0c4a6f3015673573514fde2b8fdf2e07dd4360e109216cdb48d53d1eda2da92543f0e5e6725457f684171ab7047deb12b093"
+
+[update]
+[update.modrinth]
+mod-id = "kc9FSsYx"
+version = "a58QqcrL"

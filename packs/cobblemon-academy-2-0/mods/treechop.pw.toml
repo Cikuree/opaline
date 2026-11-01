@@ -1,0 +1,13 @@
+name = "TreeChop"
+filename = "TreeChop-1.21.1-fabric-0.19.3a.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/6258/834/TreeChop-1.21.1-fabric-0.19.3a.jar"
+hash-format = "sha512"
+hash = "2ea0b30daf161636594ef40f92f319d99e9e0d8648ceb33710379dd521dd4609f1571b949ba912da3dbbf79bafe23e7b24a325bf6bfc31670be5ba40618201b1"
+
+[update]
+[update.curseforge]
+file-id = 6258834
+project-id = 421377

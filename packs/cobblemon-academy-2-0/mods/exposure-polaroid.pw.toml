@@ -1,0 +1,13 @@
+name = "Exposure: Polaroid"
+filename = "exposure_polaroid-fabric-1.21.1-1.1.2.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/WEWiqYkW/versions/g3Zse8bW/exposure_polaroid-fabric-1.21.1-1.1.2.jar"
+hash-format = "sha512"
+hash = "6a22beb852c6068c5de1b57c71ab232fd664ca03111f6a3cb8668ce6c0641b3e696679c1f248e44ceec030261ab7d993c7ae2fbc9a8d61f6d14f058f81fe0d40"
+
+[update]
+[update.modrinth]
+mod-id = "WEWiqYkW"
+version = "g3Zse8bW"

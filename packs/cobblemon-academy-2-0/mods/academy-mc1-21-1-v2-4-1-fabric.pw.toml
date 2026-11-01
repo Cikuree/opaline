@@ -1,0 +1,13 @@
+name = "Academy-mc1.21.1-v2.4.1-fabric"
+filename = "Academy-mc1.21.1-v2.4.1-fabric-2.4.1.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/8938/473/Academy-mc1.21.1-v2.4.1-fabric-2.4.1.jar"
+hash-format = "sha512"
+hash = "1a9bdd118e084356158de87133d8c5f5d593f8d541aef3ff4c0ecff993f3e1e91d69a4160f0e0effa05a4dfcb8d910d1049c141615cd2ca5f76ecffd42befdfd"
+
+[update]
+[update.curseforge]
+file-id = 8938473
+project-id = 1330130

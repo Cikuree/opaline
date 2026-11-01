@@ -1,0 +1,13 @@
+name = "Safari Cobblemon"
+filename = "safari-dimension-0.0.14.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/WgQdV8B8/versions/hbNIDpie/safari-dimension-0.0.14.jar"
+hash-format = "sha512"
+hash = "9740bcc05dfca4cb508ca70186662cdf7c1ec3efb09a387998470e292f0472de94fca9bc900560c08541b11982739413283104d0d25ff284f3c5c09b42175227"
+
+[update]
+[update.modrinth]
+mod-id = "WgQdV8B8"
+version = "hbNIDpie"

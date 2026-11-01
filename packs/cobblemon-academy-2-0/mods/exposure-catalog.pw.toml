@@ -1,0 +1,13 @@
+name = "Exposure Catalog"
+filename = "exposure_catalog-fabric-1.1.1.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/PWcQ3kcp/versions/mNhlYD22/exposure_catalog-fabric-1.1.1.jar"
+hash-format = "sha512"
+hash = "85215991824d24db5ffe086fa17c167a0f7839ad26ff4054d3b46e674e4853bf5800af51e947c1407a0e526f7bbee23c49f9432d59ce80813e58a35234b7d26b"
+
+[update]
+[update.modrinth]
+mod-id = "PWcQ3kcp"
+version = "mNhlYD22"

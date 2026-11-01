@@ -1,0 +1,13 @@
+name = "Cobblemon: PlayerXP"
+filename = "playerxp-fabric-1.0.5+1.21.1.jar"
+side = "server"
+
+[download]
+url = "https://cdn.modrinth.com/data/zlrbPCvu/versions/tS4FWPtM/playerxp-fabric-1.0.5%2B1.21.1.jar"
+hash-format = "sha512"
+hash = "ec08d9407a00d30139305ec3416c508e50eaaafabc3e428780a4a3cc4531f0a1f1100f1076a1536e3b4716e5b18e3ddb3e105d62ea2392b73939b50eb1de1a6c"
+
+[update]
+[update.modrinth]
+mod-id = "zlrbPCvu"
+version = "tS4FWPtM"

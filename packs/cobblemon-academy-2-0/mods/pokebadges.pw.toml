@@ -1,0 +1,13 @@
+name = "PokeBadges [Cobblemon & Pixelmon Addon]"
+filename = "pokebadges-fabric-1.4.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/XoK0D7K2/versions/u0gXBpM8/pokebadges-fabric-1.4.jar"
+hash-format = "sha512"
+hash = "adf0be6c76b10af5d64f8362ab82c6f09c3bf189dfc69f98627c9442e3fb6bb4524b6aa3de92a694df87f01d780c0c0730a4147403e39846d5ad1c8ca168db48"
+
+[update]
+[update.modrinth]
+mod-id = "XoK0D7K2"
+version = "u0gXBpM8"

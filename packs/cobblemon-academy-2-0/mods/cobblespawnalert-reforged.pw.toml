@@ -1,0 +1,13 @@
+name = "CobbleSpawnAlert Reforged"
+filename = "CobbleSpawnAlertReforged-2.9.0.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/meUPQ1KX/versions/XD0insvd/CobbleSpawnAlertReforged-2.9.0.jar"
+hash-format = "sha512"
+hash = "ed9c7fe666ffbd995b814d08057179a818f622b190c424220fe13c02b2e352e925f23fa0a53d95c6deaeff5e9d69cd8bf2524110b36d14393f727e1d28770699"
+
+[update]
+[update.modrinth]
+mod-id = "meUPQ1KX"
+version = "XD0insvd"

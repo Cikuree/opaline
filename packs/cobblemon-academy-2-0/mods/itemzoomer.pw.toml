@@ -1,0 +1,13 @@
+name = "Item Zoomer"
+filename = "itemzoomer-1.1.0-1.21.1.jar"
+side = "client"
+
+[download]
+url = "https://cdn.modrinth.com/data/OgBgQ2NP/versions/L4LCHU6S/itemzoomer-1.1.0-1.21.1.jar"
+hash-format = "sha512"
+hash = "40dc286f4a95542df7058c5d25bfaed330df993262b4b915ac24e506715f99af51c5861061bb6fca018a414072917794c8863992960e12850b7055526e4c74ec"
+
+[update]
+[update.modrinth]
+mod-id = "OgBgQ2NP"
+version = "L4LCHU6S"

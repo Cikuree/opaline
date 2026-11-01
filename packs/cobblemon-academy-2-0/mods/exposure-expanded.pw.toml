@@ -1,0 +1,13 @@
+name = "Exposure: Expanded"
+filename = "exposure_expanded-fabric-1.0.1.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/61XQmq6p/versions/fNzxueoV/exposure_expanded-fabric-1.0.1.jar"
+hash-format = "sha512"
+hash = "a8e8eacd8d9834a15eca5b926951eb9682f72b53b2f85c738ca483962181ed4ba46acd58f53f92ae5b980d0b62f90dbe7b9370ed0d0c65c6e6cf6e99a3763106"
+
+[update]
+[update.modrinth]
+mod-id = "61XQmq6p"
+version = "fNzxueoV"

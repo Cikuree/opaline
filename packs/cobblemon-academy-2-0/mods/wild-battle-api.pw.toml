@@ -1,0 +1,13 @@
+name = "Wild Battle API"
+filename = "wild_battle_api-fabric-1.1.2.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/v7VZE8kh/versions/GoEGm1Ea/wild_battle_api-fabric-1.1.2.jar"
+hash-format = "sha512"
+hash = "1154c26f932ff8a2db09c6698a182e0ca0aa290a8a319c873e6f118ef482c20dd130c41426a63f36787d785fe9574bd52517f0053160f977b13faa49852ef56e"
+
+[update]
+[update.modrinth]
+mod-id = "v7VZE8kh"
+version = "GoEGm1Ea"
