@@ -1,6 +1,16 @@
 hash-format = "sha256"
 
 [[files]]
+file = "mods/ambientsounds.pw.toml"
+hash = "220a55f27ae0b5dbcf111bc720ff9b0e3c1255b095dcc80ec77f25bc7bc0d07d"
+metafile = true
+
+[[files]]
+file = "mods/creativecore.pw.toml"
+hash = "0b533fee46dfa69d7d557668ddd7be024eee8653b138c34847371d711bec7cd4"
+metafile = true
+
+[[files]]
 file = "mods/fabric-api.pw.toml"
 hash = "cb2e20a2792a2f96a7cc9603a50278fabe50877a886a7dd589e3dbec44589c4d"
 metafile = true
@@ -8,6 +18,11 @@ metafile = true
 [[files]]
 file = "mods/iris.pw.toml"
 hash = "3af2426b8d83a5fcda1ff6de2035d53bcff532653c196f2ea6d7647995e45131"
+metafile = true
+
+[[files]]
+file = "mods/presence-footsteps.pw.toml"
+hash = "279d7c9d5c8f3c2ba00181c7be8b4de3d6f51174301cb9eff632db1cb34a5477"
 metafile = true
 
 [[files]]
