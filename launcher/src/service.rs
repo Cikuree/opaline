@@ -747,13 +747,17 @@ mod tests {
         std::fs::write(a.instance().join("screenshots/s.png"), "png").unwrap();
         std::fs::create_dir_all(d.libraries()).unwrap();
         std::fs::write(d.libraries().join("lib.jar"), "j").unwrap();
-        // monde ouvert : refus (Windows : le renommage échoue d'abord), rien de supprimé, aucune sauvegarde parasite
-        let lock = std::fs::File::create(a.instance().join("saves/Monde/session.lock")).unwrap();
-        lock.lock().unwrap();
-        let e = uninstall_pack(&d, "a").unwrap_err().to_string();
-        assert!(e.contains("monde est ouvert") || e.contains("Le pack est utilisé"), "{e}");
-        assert!(a.install_marker().is_file() && backup::list(&a).is_empty());
-        drop(lock);
+        // monde ouvert : refus (Windows : le renommage échoue d'abord), rien de supprimé, aucune sauvegarde parasite.
+        // Windows seulement : sous Unix, le verrou de Minecraft (fcntl, autre processus) n'est pas simulable dans ce processus.
+        #[cfg(windows)]
+        {
+            let lock = std::fs::File::create(a.instance().join("saves/Monde/session.lock")).unwrap();
+            lock.lock().unwrap();
+            let e = uninstall_pack(&d, "a").unwrap_err().to_string();
+            assert!(e.contains("monde est ouvert") || e.contains("Le pack est utilisé"), "{e}");
+            assert!(a.install_marker().is_file() && backup::list(&a).is_empty());
+            drop(lock);
+        }
         // un .trash résiduel est nettoyé
         std::fs::create_dir_all(d.root.join("instances/.zzz.trash")).unwrap();
         clean_trash(&d);
