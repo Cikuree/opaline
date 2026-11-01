@@ -14,6 +14,7 @@
 *{box-sizing:border-box;margin:0}
 html,body{height:100%}
 /* Bande au-dessus de la fenêtre : déplaçable elle aussi, pour attraper tout le haut. */
+.appver{position:absolute;right:calc(var(--pad) + 4px);bottom:max(2px,calc(var(--pad) / 2 - 7px));font-size:11px;line-height:14px;color:var(--mute);opacity:.7;pointer-events:none;user-select:none}
 .dragtop{position:fixed;top:0;left:0;right:0;height:var(--edge);z-index:1}
 body:has(.window.max) .dragtop{display:none}
 body{--edge:clamp(0px,1.6vw,24px);background:var(--outer);font-family:var(--font);color:var(--ink);display:flex;padding:var(--edge);-webkit-font-smoothing:antialiased}

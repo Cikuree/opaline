@@ -80,7 +80,7 @@ async function boot() {
   initChrome(signed); initHome(); initAccount(); initSettings(); initFiles(); initHistory(); initNews(); initFriends();
   wireEvents();
   await Promise.all([
-    api.appInfo().then((i) => (state.info = i)).catch(() => {}),
+    api.appInfo().then((i) => { state.info = i; $('#appVer').textContent = 'Opaline ' + i.version; }).catch(() => {}),
     api.settingsGet().then((s) => (state.settings = s)).catch((e) => toast(api.errMsg(e))),
     api.authStatus().then((a) => (state.auth = a)).catch((e) => toast(api.errMsg(e))),
     loadTextures(),
