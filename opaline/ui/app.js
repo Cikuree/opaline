@@ -10,6 +10,7 @@ import { initFiles, renderFiles, syncBusy } from './views/files.js';
 import { initHistory, renderHistory, openDeath } from './views/history.js';
 import { initNews, renderNews } from './views/news.js';
 import { initMap, renderMap } from './views/map.js';
+import { initPackMenu } from './views/packmenu.js';
 import { initFriends, renderMe, refreshFriends } from './views/friends.js';
 
 let crashPack = null, crashReport = '';
@@ -89,7 +90,7 @@ function wireEvents() {
 }
 
 async function boot() {
-  initChrome(signed); initHome(); initAccount(); initSettings(); initFiles(); initHistory(); initNews(); initMap(); initFriends();
+  initChrome(signed); initHome(); initAccount(); initSettings(); initFiles(); initHistory(); initNews(); initMap(); initPackMenu(); initFriends();
   wireEvents();
   await Promise.all([
     api.appInfo().then((i) => { state.info = i; $('#appVer').textContent = 'Opaline ' + i.version; }).catch(() => {}),

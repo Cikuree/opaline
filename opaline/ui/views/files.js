@@ -3,6 +3,7 @@ import { state, current, emit } from '../state.js';
 import { $, $$, esc, toast, tex } from '../util.js';
 import { MODTEX, loaderName } from '../data.js';
 import { statusOf, startInstall, changelogHtml } from './home.js';
+import { repairPack, askUninstall, openMenu, closeMenu } from './packmenu.js';
 import { renderExtras, initExtras, syncExtrasBusy } from './extras.js';
 
 const LIMIT = 10;
@@ -26,6 +27,8 @@ const busy = () => !!state.install || state.inGame; // pas d'installation/répar
 export function syncBusy() {
   const p = current(); if (!p) return;
   $('#btnRepair').disabled = !p.installed || !p.supported || busy();
+  $('#btnUninst').disabled = !p.installed || busy();
+  $('#fileBurger').disabled = !p.installed;
   $$('#backupsBox [data-bk]').forEach((b) => (b.disabled = busy()));
   $('#shSel').disabled = busy();
   syncExtrasBusy();
@@ -89,8 +92,11 @@ export function initFiles() {
     try { await api.openFolder(current().id, b.dataset.f); } catch (er) { toast(api.errMsg(er)); }
   });
   $('#packCard').addEventListener('click', (e) => { if (e.target.closest('[data-act]')) startInstall(current().id); });
-  $('#btnRepair').addEventListener('click', async () => {
-    const p = current(); if (busy()) return toast('Ferme le jeu avant de réparer.'); state.install = { packId: p.id, stage: 'java', done: 0, total: 1 }; emit('install');
-    try { await api.packRepair(p.id); } catch (e) { state.install = null; emit('install'); toast(api.errMsg(e)); }
+  $('#btnRepair').addEventListener('click', () => { const p = current(); if (p) repairPack(p.id); });
+  $('#btnUninst').addEventListener('click', (e) => { const p = current(); if (p) askUninstall(p.id, e.currentTarget); });
+  $('#fileBurger').addEventListener('click', (e) => {
+    const b = e.currentTarget, p = current(); if (!p) return;
+    if (b.getAttribute('aria-expanded') === 'true') return closeMenu();
+    b.setAttribute('aria-expanded', 'true'); const r = b.getBoundingClientRect(); openMenu(p.id, r.right - 200, r.bottom + 6, b);
   });
 }
