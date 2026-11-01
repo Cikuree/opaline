@@ -464,6 +464,11 @@ pub fn installed_hash(dirs: &Dirs) -> Option<String> {
     serde_json::from_slice::<Marker>(&fs::read(dirs.install_marker()).ok()?).ok()?.index_hash
 }
 
+/// Shader du pack installé d'après `installed.ok`.
+pub fn installed_shader_pack(dirs: &Dirs) -> Option<String> {
+    serde_json::from_slice::<Marker>(&fs::read(dirs.install_marker()).ok()?).ok()?.shader_pack
+}
+
 pub fn load_installed(dirs: &Dirs) -> Result<Installed> {
     let have: Marker =
         serde_json::from_slice(&fs::read(dirs.install_marker()).with_context(|| "installation absente ou incomplète : lancez l'installation".to_string())?)
@@ -520,6 +525,9 @@ fn install_mods(client: &Client, dirs: &Dirs, pack: &Pack, pack_dir: &Path, mod_
         fs::copy(j, mods_dir.join(n)).with_context(|| format!("copie de {}", j.display()))?;
     }
     crate::extramods::sync(&dirs.instance(), &pack_jars)?;
+    crate::extrapacks::sync(&dirs.instance())?;
+    let mut keep_paths = keep_paths.clone();
+    keep_paths.extend(crate::extrapacks::keep_paths(&dirs.instance())); // « Mes resource packs et shaders » : jamais supprimés
     // Ménage dans NOTRE instance uniquement : fichiers absents du pack (jars de mods ; zips de shaders et de
     // resource packs). Les fichiers de réglages (`*.zip.txt`) et les dossiers ne sont jamais supprimés.
     for (dir, ext) in [("mods", ".jar"), ("shaderpacks", ".zip"), ("resourcepacks", ".zip")] {
@@ -642,6 +650,36 @@ mod tests {
         fs::remove_file(mods.join("mon-mod.jar")).unwrap();
         install_mods(&client, &dirs, &pack, &d, None, &HashSet::new(), &Arc::default()).unwrap();
         assert!(mods.join("mon-mod.jar").is_file());
+        fs::remove_dir_all(&d).unwrap();
+    }
+
+    #[test]
+    fn extra_packs_survive_a_simulated_pack_update() {
+        let d = tmp("extrapacks");
+        let dirs = Dirs::new(d.join("root"));
+        let inst = dirs.instance();
+        let zip = |names: &[&str]| {
+            let mut w = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+            for n in names {
+                w.start_file(*n, zip::write::SimpleFileOptions::default()).unwrap();
+            }
+            w.finish().unwrap().into_inner()
+        };
+        crate::extrapacks::add_bytes(&dirs, "mon-rp.zip", &zip(&["pack.mcmeta"])).unwrap();
+        crate::extrapacks::add_bytes(&dirs, "mon-shader.zip", &zip(&["shaders/a.fsh"])).unwrap();
+        fs::write(inst.join("resourcepacks/ancien-pack.zip"), b"x").unwrap();
+        let pack = Pack {
+            version: "2".into(),
+            index_hash: String::new(),
+            versions: packwiz::Versions { minecraft: "26.3".into(), fabric: Some("0.20.1".into()), quilt: None, forge: None, neoforge: None },
+            mods: vec![],
+            files: vec![],
+        };
+        let client = crate::download::http_client().unwrap();
+        fs::remove_file(inst.join("shaderpacks/mon-shader.zip")).unwrap();
+        install_mods(&client, &dirs, &pack, &d, None, &HashSet::new(), &Arc::default()).unwrap();
+        assert!(!inst.join("resourcepacks/ancien-pack.zip").exists(), "le ménage du pack reste actif");
+        assert!(inst.join("resourcepacks/mon-rp.zip").is_file() && inst.join("shaderpacks/mon-shader.zip").is_file());
         fs::remove_dir_all(&d).unwrap();
     }
 }

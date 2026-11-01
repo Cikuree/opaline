@@ -5,7 +5,7 @@ use crate::catalog::{self, PackEntry, PackView};
 use crate::changelog::{self, Changelog, ModView};
 use crate::config::{self, Config, Dirs};
 use crate::download::{self, Progress};
-use crate::{backup, extramods, friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update};
+use crate::{backup, extramods, extrapacks, friends, identity, install, launch, mojang, official, packwiz, perf, servers, serverview, stats, sysmem, textures, update};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -383,6 +383,7 @@ pub fn launch_pack(root: &Dirs, e: &PackEntry, cfg: &Config, session: &Session) 
     let env = mojang::Env::current(&[]);
     let _ = borderless_sync(root, e, cfg.borderless); // hors ligne ou sans version compatible : on lance quand même
     let _ = extramods::sync_for_launch(&dirs); // Mes mods : recopiés dans mods/ ; un échec ne bloque pas le lancement
+    let _ = extrapacks::sync_for_launch(&dirs);
     let quick_play = cfg.join_server.then(|| e.server.as_ref().and_then(quick_play_target)).flatten();
     let cmd = launch::build_command_with(&launch::LaunchInput {
         java: &inst.java,
@@ -455,6 +456,7 @@ pub fn launch_official(root: &Dirs, e: &PackEntry, cfg: &Config, mc: &Path, inte
         .unwrap_or(clamp_memory(cfg.memory_mb, sysmem::total_ram_mb()));
     let _ = borderless_sync(root, e, cfg.borderless);
     let _ = extramods::sync_for_launch(&dirs);
+    let _ = extrapacks::sync_for_launch(&dirs);
     let vid = official::version_id(&e.id);
     official::install_version(&dirs, mc, &inst.profile_id, &vid, &inst.fabric.libraries, inst.fabric.version_name.is_some())?;
     let profile_name = format!("Opaline · {}", e.name);

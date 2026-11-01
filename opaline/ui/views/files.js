@@ -74,7 +74,7 @@ export function initFiles() {
     const p = current(); if (!p) return;
     try { await api.shaderSet(p.id, e.target.value || null); $('#shMsg').textContent = e.target.value ? 'Shader appliqué au prochain lancement.' : 'Shaders désactivés au prochain lancement.'; } catch (er) { toast(api.errMsg(er)); renderShaders(); }
   });
-  initExtras();
+  initExtras(renderShaders);
   $('#modsBox').addEventListener('click', (e) => { if (e.target.closest('#modsMore')) { showAll = !showAll; renderFiles(); } });
   $('#backupsOpen').addEventListener('click', async () => { try { await api.openFolder(current().id, 'backups'); } catch (er) { toast(api.errMsg(er)); } });
   $('#backupsBox').addEventListener('click', async (e) => {
