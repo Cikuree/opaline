@@ -41,8 +41,6 @@ export const skinDelete = (id) => call('skin_delete', { id });
 export const capesList = () => call('capes_list');
 export const capeSet = (id) => call('cape_set', { id });
 export const friends = () => call('friends');
-export const friendAdd = (name) => call('friend_add', { name });
-export const friendRemove = (uuid) => call('friend_remove', { uuid });
 export const playerHead = (uuid) => call('player_head', { uuid });
 
 let texDir = null;

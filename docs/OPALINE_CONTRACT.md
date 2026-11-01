@@ -98,9 +98,7 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 | `skin_delete` | `{id}` | – |
 | `capes_list` | – | `[{id, alias, active, url}]` |
 | `cape_set` | `{id: string \| null}` | – |
-| `friends` | – | `[{name, uuid, online, inGame, lastSeen: null \| string, friend: bool}]` |
-| `friend_add` | `{name}` | `{name, uuid}` (pseudo validé puis résolu en UUID par l'API publique Mojang ; erreur si inconnu, si c'est soi-même ou au-delà de 200 amis) |
-| `friend_remove` | `{uuid}` | – |
+| `friends` | – | `[{name, uuid, online, inGame, lastSeen: null \| string}]` (en ligne d'abord ; l'interface retire le joueur lui-même, même UUID ou même pseudo) |
 | `player_head` | `{uuid}` | `{dataUrl}` (visage 8×8 + calque du chapeau, PNG, mis en cache) |
 
 **Erreurs** : une commande en échec renvoie une chaîne lisible en français, sans jeton, sans adresse de serveur, sans chemin personnel complet.
@@ -110,7 +108,6 @@ Opaline lit `https://github.com/Cikuree/opaline/releases/latest/download/launche
 - La liste réunit les joueurs vus en ligne sur les serveurs des packs (échantillon du ping et `/stats`), mémorisés localement avec la date de dernière visite.
 - `inGame` vaut vrai si le joueur est connecté au serveur d'un pack.
 - Le statut personnel (En ligne / Absent / Invisible) de la maquette n'est pas réalisé en v1.
-- Amis choisis : `friend_add` / `friend_remove`, stockés dans `friends_list.json` à la racine du dossier de données (écriture atomique). Une ligne par UUID : joueurs vus en ligne et amis ajoutés sont fusionnés. `friend` : dans la liste ; si faux (joueur seulement vu sur le serveur), l’interface propose « Ajouter ». Un ami jamais vu est hors ligne, sans date.
 - « En ligne » = vu connecté sur le serveur d’un pack au dernier relevé ; aucune présence pair à pair, aucun port ouvert.
 
 ### Mode de lancement et écran de connexion

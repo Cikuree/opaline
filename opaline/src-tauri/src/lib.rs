@@ -608,32 +608,10 @@ async fn cape_set(state: State<'_, S>, id: Option<String>) -> CmdResult<()> {
     state.blocking(move |_| skins::set_cape(&auth::http_client()?, &s.0.svc.skins, &s.token()?, id.as_deref())).await
 }
 
-/// Colonne d'amis : joueurs vus sur le serveur du pack et amis ajoutés par pseudo, fusionnés par UUID.
+/// Colonne d'amis : joueurs vus sur les serveurs des packs, en ligne d'abord.
 #[tauri::command]
-async fn friends(state: State<'_, S>) -> CmdResult<Vec<friends::FriendView>> {
-    state
-        .blocking(|r| {
-            let seen = service::friends_list(r).unwrap_or_else(|_| friends::record(r, &[], friends::now_secs()));
-            Ok(friends::merge(&friends::list_load(r), seen))
-        })
-        .await
-}
-
-#[tauri::command]
-async fn friend_add(state: State<'_, S>, name: String) -> CmdResult<Value> {
-    let api = state.0.svc.profile_api.clone();
-    state
-        .blocking(move |r| {
-            let me = service::identity_get(r).map(|i| i.uuid); // mode officiel seulement : le profil d'une session Opaline n'est pas exclu
-            let (name, uuid) = service::friend_add(r, &name, &api, me.as_deref())?;
-            Ok(json!({ "name": name, "uuid": uuid }))
-        })
-        .await
-}
-
-#[tauri::command]
-async fn friend_remove(state: State<'_, S>, uuid: String) -> CmdResult<()> {
-    state.blocking(move |r| friends::list_remove(r, &uuid)).await
+async fn friends(state: State<'_, S>) -> CmdResult<Vec<friends::Friend>> {
+    state.blocking(|r| Ok(service::friends_list(r).unwrap_or_else(|_| friends::record(r, &[], friends::now_secs())))).await
 }
 
 #[tauri::command]
@@ -714,8 +692,6 @@ pub fn run_with(svc: Services) {
             capes_list,
             cape_set,
             friends,
-            friend_add,
-            friend_remove,
             player_head
         ])
         .run(tauri::generate_context!())

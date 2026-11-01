@@ -40,7 +40,7 @@ let skins = [
 ].map(([name, model, P], i) => ({ id: 's' + (i + 1), name, model, active: i === 0, dataUrl: skinPng(P) }));
 let capes = [['Migrator', '#b14a5a'], ['Vanilla', '#e8d9b0'], ['Mojang Studios', '#d85252'], ['Mojang Office', '#ffffff']].map(([alias, c], i) => ({ id: 'c' + i, alias, active: i === 0, url: capePng(c) }));
 
-// Joueurs vus sur le serveur du pack ; `friend` : ajouté à la liste locale.
+// Joueurs vus sur le serveur du pack.
 let FRIENDS = [['LunaFox', 3, true, true, null, true], ['Creeper_Kid', 2, true, true, null, true], ['Maelle', 1, true, false, null, false], ['PixelPaul', 4, false, false, 1200, true], ['Zéphyr', 5, false, false, 4300, true]]
   .map(([name, k, online, inGame, ago, friend]) => ({ name, uuid: 'uuid-' + k, online, inGame, lastSeen: ago ? iso(ago) : null, k, friend }));
 
@@ -123,15 +123,6 @@ export async function invoke(cmd, a = {}) {
     case 'capes_list': return structuredClone(capes);
     case 'cape_set': capes.forEach((c) => (c.active = c.id === a.id)); return null;
     case 'friends': return structuredClone(FRIENDS);
-    case 'friend_add': {
-      const n = String(a.name || '').trim();
-      if (!/^[A-Za-z0-9_]{3,16}$/.test(n)) throw 'Pseudo invalide : 3 à 16 caractères, lettres, chiffres ou _';
-      if (n.toLowerCase() === 'inconnu') throw 'Aucun joueur Minecraft nommé « ' + n + ' »';
-      const f = FRIENDS.find((x) => x.name.toLowerCase() === n.toLowerCase());
-      if (f) f.friend = true; else FRIENDS.push({ name: n, uuid: 'uuid-' + (100 + FRIENDS.length), online: false, inGame: false, lastSeen: null, k: 0, friend: true });
-      return { name: n, uuid: (f || FRIENDS[FRIENDS.length - 1]).uuid };
-    }
-    case 'friend_remove': FRIENDS.filter((x) => x.uuid === a.uuid).forEach((x) => (x.friend = false)); return null;
     case 'player_head': throw 'Tête indisponible en démo.';
     default: throw 'Commande inconnue : ' + cmd;
   }

@@ -280,7 +280,7 @@ body:has(.window.max){padding:0}
   .col .tx,.col .mtx,.col .colx .lbl{opacity:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;transition:opacity .18s}
   .window.colmini .col .tx,.window.colmini .col .mtx,.window.colmini .col .colx .lbl{opacity:0;pointer-events:none}
   .col #online,.col #offline{display:flex;flex-direction:column;gap:14px;margin-top:14px!important}
-  .col #online:empty,.col #offline:empty,.window.colmini .col .fadd,.window.colmini .col p.tx,.window.colmini .col #online:has(> p.tx:only-child){display:none}
+  .col #online:empty,.col #offline:empty,.window.colmini .col p.tx,.window.colmini .col #online:has(> p.tx:only-child){display:none}
   .col .pl{display:flex;flex-direction:row;align-items:center;gap:12px;padding:0 16px;height:40px;width:100%;border-radius:0}
   .col .avatar{width:40px;height:40px}
   .col .me .avatar{width:44px;height:44px}
@@ -314,14 +314,3 @@ img.px{image-rendering:pixelated;display:block}
 /* fenêtre native Tauri : le cadre rose de la maquette n'a pas de sens, la fenêtre remplit l'écran */
 body.tauri{padding:0;background:var(--win)}
 body.tauri .window{max-width:none;max-height:none;border-radius:0;box-shadow:none}
-/* amis : ajout et retrait */
-.fadd{padding:0 16px;margin-top:10px}
-.fbtn{display:flex;align-items:center;gap:10px;width:100%;min-height:36px;padding:0 4px;border-radius:12px;font-size:13px;font-weight:700;color:var(--cream)}
-.fbtn:hover{background:rgba(255,255,255,.07)} .fbtn .i{width:18px;height:18px;flex:none}
-#addForm{display:flex;gap:6px;margin-top:6px} #addForm[hidden]{display:none}
-#addForm input{min-width:0;flex:1;height:36px;padding:0 14px;border:0;border-radius:999px;background:var(--win-deep);color:var(--ink);outline:0}
-#addForm input:focus{box-shadow:0 0 0 2px var(--coral)} #addForm .btn{height:36px;padding:0 14px}
-.plact{display:flex;flex-wrap:wrap;gap:4px 6px;padding:6px 12px 0 68px}
-.plact button{padding:3px 10px;border-radius:999px;background:var(--cream);color:var(--on-coral);font-size:11px;font-weight:700}
-.plact button.ghost{background:rgba(255,255,255,.12);color:var(--cream)} .plact button:hover{filter:brightness(1.1)}
-.window.colmini .plact,.window.colmini #addForm{display:none}
