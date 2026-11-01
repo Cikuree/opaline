@@ -906,6 +906,8 @@ pub fn run_with(svc: Services) {
         .plugin(tauri_plugin_notification::init())
         .manage(state.clone())
         .setup(move |app| {
+            // Premier lancement seulement : mode et mémoire d'après la RAM et le GPU (échec ignoré : les valeurs par défaut restent).
+            let _ = opaline_core::autotune::first_run(&state.0.root, opaline_core::sysmem::total_ram_mb(), opaline_core::autotune::detect_gpu);
             // Le dossier de données peut être surchargé (OPALINE_HOME) : l'asset protocol y est alors autorisé à l'exécution.
             let tex = state.0.root.textures();
             std::fs::create_dir_all(&tex)?;

@@ -2,6 +2,7 @@
 //! Aucune interface graphique : le backend Tauri (`opaline/src-tauri`) appelle `service`.
 pub mod auth;
 pub mod auth_browser;
+pub mod autotune;
 pub mod backup;
 pub mod catalog;
 pub mod changelog;
