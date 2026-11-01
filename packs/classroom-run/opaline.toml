@@ -8,3 +8,4 @@ host = "home-server"
 port = 25565
 motd = "Classroom Run"
 statsPort = 25580
+map = "http://home-server:8100"
