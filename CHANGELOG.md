@@ -1,5 +1,9 @@
 # Changelog
 
+## Opaline 0.6.8
+- Accueil : le temps total s'affiche en heures et minutes (« 12 h 34 »).
+- Accueil : la ligne de temps de jeu ne colle plus aux boutons en fenêtre réduite.
+
 ## Opaline 0.6.7 et mod 0.4.5
 - Mod : clip de mort. À la mort de l'équipe, chacun revoit la dernière minute autour du mort (caméra en orbite, timeline, vitesse x1/x0.5) ; la nouvelle run se prépare quand tout le monde a cliqué « Prêt » (au plus 3 min). Touche R pour rouvrir le clip.
 - Mod : le jour se lève à chaque nouvelle run.

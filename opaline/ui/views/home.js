@@ -60,7 +60,8 @@ function blob() {
     <circle cx="150" cy="150" r="84" fill="#1d0b11"/>
     <g text-anchor="middle"><text x="150" y="138" font-size="12" font-weight="600" fill="#f3cfd2">Temps total</text><text id="statVal" x="150" y="172" font-size="34" font-weight="800" fill="#fff" letter-spacing="-1">—</text></g></g>`;
 }
-const fmtHours = (ms) => { const h = ms / 3600e3; return h >= 1 ? Math.floor(h).toLocaleString('fr-FR').replace(/\s/g, ' ') + ' h' : Math.round(ms / 60e3) + ' min'; };
+// Heures et minutes (« 1 h 05 ») ; moins d'une heure : minutes seules
+const fmtHours = (ms) => { const m = Math.floor(ms / 60e3); return m >= 60 ? Math.floor(m / 60).toLocaleString('fr-FR').replace(/\s/g, ' ') + ' h ' + String(m % 60).padStart(2, '0') : m + ' min'; };
 
 let showAvail = false; // liste « À installer » dépliée
 
@@ -147,6 +148,7 @@ function renderSplits(s) {
   $('#splits').innerHTML = SPLITS.map((x, i) => { const c = done.has(x.k) ? 'done' : i === cur ? 'cur' : 'next'; return `<li class="split ${c}" ${c === 'cur' ? 'aria-current="step"' : ''}>${tex(x.tex, 48)}<b>${x.label}</b><span>${c === 'cur' ? 'en cours' : c === 'done' ? 'atteint' : '—'}</span></li>`; }).join('');
   const ms = s ? s.totalTimeMs : 0;
   $('#statVal').textContent = s ? fmtHours(ms) : '—';
+  $('#statVal').setAttribute('font-size', $('#statVal').textContent.length > 8 ? 26 : 34); // « 1 234 h 05 » tient dans le disque
   $('#statSvg').setAttribute('aria-label', s ? `Temps total : ${fmtHours(ms).replace(' ', ' ')}` : 'Temps total indisponible');
 }
 

@@ -425,3 +425,4 @@ main{margin-bottom:calc(-1 * var(--pad));padding-bottom:calc(var(--pad) + 6px)}
 .hst b small{font-size:12px;font-weight:600;color:var(--mute)}
 .hst.hdeath b{color:var(--coral)}
 #dthDetail{position:sticky;top:12px}
+#heroPlay{margin:-4px 0 16px}
