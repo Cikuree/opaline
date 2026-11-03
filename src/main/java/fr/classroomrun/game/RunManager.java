@@ -193,9 +193,9 @@ public final class RunManager {
 	private void start() {
 		this.stats.newRun();
 		this.team.resetVitals();
-		setDay();
 		this.worlds = RunWorlds.open(this.server, ThreadLocalRandom.current().nextLong());
 		this.classroom = Classroom.build(this.server, this.worlds.overworld());
+		setDay();
 		refreshBoard();
 		save();
 		this.journal.onRunPrepared(this.stats.runNumber, false);
@@ -258,6 +258,9 @@ public final class RunManager {
 
 	/** Morning on the run worlds' clock (shared by the dimensions using it), like {@code /time set day}. */
 	private void setDay() {
+		if (this.worlds == null) {
+			return; // run worlds not open yet
+		}
 		this.worlds.overworld().dimensionType().defaultClock()
 				.ifPresent(clock -> this.server.clockManager().moveToTimeMarker(clock, ClockTimeMarkers.DAY));
 	}
@@ -354,6 +357,7 @@ public final class RunManager {
 		}
 		this.stats.newRun();
 		this.team.resetVitals();
+		setDay();
 		for (ServerPlayer player : List.copyOf(this.server.getPlayerList().getPlayers())) {
 			reviveGhost(player);
 			resetPlayer(player);
