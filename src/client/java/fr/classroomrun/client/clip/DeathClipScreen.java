@@ -10,7 +10,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
 
 /**
- * Playback of the death clip: orbit camera around the victim, play/pause, seekable timeline, x1 / x0.5 and « Prêt ».
+ * Playback of the death clip: orbit camera around the victim, play/pause, seekable timeline, x1 / x2 / x0.5 and « Prêt ».
  * Without a stage (other dimension) only the message and « Prêt » are shown. Escape hides the screen but keeps the clip.
  */
 public final class DeathClipScreen extends Screen {
@@ -18,8 +18,11 @@ public final class DeathClipScreen extends Screen {
 	private static final Component PAUSE = Component.literal("Pause");
 	private static final Component REPLAY = Component.literal("Rejouer");
 	private static final Component READY = Component.literal("Prêt");
-	private static final Component SPEED_1 = Component.literal("x1");
-	private static final Component SPEED_HALF = Component.literal("x0.5");
+	/** Speeds cycled by the speed button. */
+	private static final float[] SPEEDS = { 1f, 2f, 0.5f };
+	private static final Component[] SPEED_LABELS = { Component.literal("x1"), Component.literal("x2"), Component.literal("x0.5") };
+	/** Left mouse button: 1 in 26.3 ({@code AbstractWidget.isValidClickButton}), no longer GLFW's 0. */
+	private static final int LEFT = 1;
 	private static final Component UNAVAILABLE = Component.literal("Clip indisponible ici");
 	private static final Component DEATH_LABEL = Component.literal("Mort");
 	private static final int WHITE = 0xFFFFFFFF;
@@ -77,14 +80,24 @@ public final class DeathClipScreen extends Screen {
 			refreshPlayLabel();
 		}).bounds(margin, y, playW, 20).build());
 		this.playLabel = -1;
-		addRenderableWidget(Button.builder(this.timeline.speed() == 1f ? SPEED_1 : SPEED_HALF, b -> {
-			this.timeline.setSpeed(this.timeline.speed() == 1f ? 0.5f : 1f);
-			b.setMessage(this.timeline.speed() == 1f ? SPEED_1 : SPEED_HALF);
+		addRenderableWidget(Button.builder(SPEED_LABELS[speedIndex()], b -> {
+			int next = (speedIndex() + 1) % SPEEDS.length;
+			this.timeline.setSpeed(SPEEDS[next]);
+			b.setMessage(SPEED_LABELS[next]);
 		}).bounds(margin + playW + gap, y, speedW, 20).build());
 		this.trackX0 = margin + playW + speedW + 2 * gap + 4;
 		this.trackX1 = this.width - margin - readyW - gap - 4;
 		this.trackY = y + 10;
 		refreshPlayLabel();
+	}
+
+	private int speedIndex() {
+		for (int i = 0; i < SPEEDS.length; i++) {
+			if (SPEEDS[i] == this.timeline.speed()) {
+				return i;
+			}
+		}
+		return 0;
 	}
 
 	private void refreshPlayLabel() {
@@ -169,7 +182,7 @@ public final class DeathClipScreen extends Screen {
 		if (super.mouseClicked(event, doubleClick)) {
 			return true;
 		}
-		if (event.button() == 0 && onTrack(event.x(), event.y())) {
+		if (event.button() == LEFT && onTrack(event.x(), event.y())) {
 			this.seeking = true;
 			seek(event.x());
 			return true;
@@ -186,7 +199,7 @@ public final class DeathClipScreen extends Screen {
 		if (super.mouseDragged(event, dx, dy)) {
 			return true;
 		}
-		if (this.stage != null && event.button() == 0 && event.y() < this.height - BAR_H) {
+		if (this.stage != null && event.button() == LEFT && event.y() < this.height - BAR_H) {
 			this.stage.orbit().rotate(dx, dy);
 			return true;
 		}
