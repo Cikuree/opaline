@@ -1,5 +1,6 @@
 package fr.classroomrun.client.hud;
 
+import fr.classroomrun.client.clip.ClipClient;
 import fr.classroomrun.net.DeathPayload;
 
 /** Single client-side holder of the mod state; read by the HUD, written by the network handlers. */
@@ -16,5 +17,6 @@ public final class ClientState {
 		RUN.reset();
 		FEED.clear();
 		lastDeath = null;
+		ClipClient.clear();
 	}
 }

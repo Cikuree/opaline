@@ -20,6 +20,10 @@ public final class ModConfig {
 	public String httpBind = "0.0.0.0";
 	/** Delay between the collective death and the reset, so clients can show the death recap. 0 = same tick. */
 	public int deathResetDelayTicks = 120;
+	/** Record and replay the last minute before a collective death; the reset then waits for « Prêt » (else {@code deathResetDelayTicks}). */
+	public boolean clipEnabled = true;
+	/** Max wait for the death clip before the reset is forced, in ticks (3600 = 3 minutes). */
+	public int clipMaxWaitTicks = 3600;
 
 	public static ModConfig load(Path file, Logger log) {
 		ModConfig config = new ModConfig();

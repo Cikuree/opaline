@@ -32,6 +32,9 @@ public final class HistoryJson {
 				o.addProperty("deaths", s.deaths());
 				o.addProperty("bestSplit", s.bestSplit()); // null => JSON null
 				o.addProperty("finished", s.finished());
+				JsonArray victims = new JsonArray();
+				s.victims().forEach(victims::add);
+				o.add("victims", victims);
 				runs.add(o);
 			}
 			JsonObject root = new JsonObject();

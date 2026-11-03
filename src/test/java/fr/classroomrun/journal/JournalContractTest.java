@@ -89,13 +89,14 @@ class JournalContractTest {
 
 	@Test
 	void indexJsonHasExactKeysAndTypes() {
-		var runs = List.of(new RunSummary(20, "2026-10-30T18:00:00Z", 3_600_000, 1, "ENDER_EYE", false),
-				new RunSummary(19, "2026-10-30T17:00:00Z", 0, 0, null, true));
+		var runs = List.of(new RunSummary(20, "2026-10-30T18:00:00Z", 3_600_000, 1, "ENDER_EYE", false, List.of()),
+				new RunSummary(19, "2026-10-30T17:00:00Z", 0, 0, null, true, List.of()));
 		JsonObject root = JsonParser.parseString(HistoryJson.index(runs, HistoryPayload.MAX_JSON)).getAsJsonObject();
 		assertEquals(Set.of("runs"), keys(root));
 		for (JsonElement e : root.getAsJsonArray("runs")) {
 			JsonObject r = e.getAsJsonObject();
-			assertEquals(Set.of("run", "startedAt", "durationMs", "deaths", "bestSplit", "finished"), keys(r));
+			assertEquals(Set.of("run", "startedAt", "durationMs", "deaths", "bestSplit", "finished", "victims"), keys(r));
+			assertTrue(r.get("victims").isJsonArray());
 			assertTrue(r.get("run").getAsJsonPrimitive().isNumber());
 			assertTrue(r.get("startedAt").getAsJsonPrimitive().isString());
 			assertTrue(r.get("durationMs").getAsJsonPrimitive().isNumber());
@@ -147,7 +148,7 @@ class JournalContractTest {
 		assertEquals(262_144, HistoryPayload.MAX_JSON);
 		List<RunSummary> runs = new ArrayList<>();
 		for (int i = 500; i >= 1; i--) {
-			runs.add(new RunSummary(i, "2026-10-30T18:00:00Z", 1, 1, "ENDER_EYE", false));
+			runs.add(new RunSummary(i, "2026-10-30T18:00:00Z", 1, 1, "ENDER_EYE", false, List.of()));
 		}
 		assertTrue(HistoryJson.index(runs, HistoryPayload.MAX_JSON).length() <= HistoryPayload.MAX_JSON);
 		List<JsonObject> deaths = new ArrayList<>();

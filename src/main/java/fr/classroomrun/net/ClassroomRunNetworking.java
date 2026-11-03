@@ -20,5 +20,8 @@ public final class ClassroomRunNetworking {
 		PayloadTypeRegistry.clientboundPlay().register(DeathPayload.TYPE, DeathPayload.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(HistoryPayload.TYPE, HistoryPayload.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(HistoryRequestPayload.TYPE, HistoryRequestPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(DeathClipPayload.TYPE, DeathClipPayload.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(ReadyStatePayload.TYPE, ReadyStatePayload.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(ClipReadyPayload.TYPE, ClipReadyPayload.CODEC);
 	}
 }

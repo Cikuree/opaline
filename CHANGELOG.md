@@ -1,5 +1,11 @@
 # Changelog
 
+## Opaline 0.6.7 et mod 0.4.5
+- Mod : clip de mort. À la mort de l'équipe, chacun revoit la dernière minute autour du mort (caméra en orbite, timeline, vitesse x1/x0.5) ; la nouvelle run se prépare quand tout le monde a cliqué « Prêt » (au plus 3 min). Touche R pour rouvrir le clip.
+- Mod : le jour se lève à chaque nouvelle run.
+- Historique : morts par joueur ; le détail montre la mort qui a fini la run et suit le défilement.
+- JOUER ne rejoint plus le serveur et Opaline ne se réduit plus pendant le jeu, sauf si on l'active dans les Réglages.
+
 ## Opaline 0.6.6 et mod 0.4.4
 - Compte : carte « Mon temps de jeu » (une forme animée par modpack autour du total) ; clic sur sa photo de profil pour ouvrir Compte.
 - Connexion Microsoft validée par Mojang : la garde-robe invite à se connecter au lieu d'annoncer l'attente.

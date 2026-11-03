@@ -2,7 +2,7 @@
 	"required": true,
 	"package": "fr.classroomrun.client.mixin",
 	"compatibilityLevel": "JAVA_25",
-	"client": ["BossHealthOverlayAccessor"],
+	"client": ["BossHealthOverlayAccessor", "LevelExtractorMixin", "LivingEntityWalkMixin"],
 	"injectors": {
 		"defaultRequire": 1
 	},

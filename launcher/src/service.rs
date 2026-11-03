@@ -863,8 +863,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d.root);
         let c = Config { auto_tuned: true, ..Config::default() };
         c.save(&d).unwrap();
-        let v = settings_set(&d, serde_json::from_str(r#"{"discordPresence":false,"trayOnGame":false}"#).unwrap()).unwrap();
-        assert!(!v.discord_presence && !v.tray_on_game && v.auto_tuned && v.join_server);
+        let v = settings_set(&d, serde_json::from_str(r#"{"discordPresence":false,"trayOnGame":true}"#).unwrap()).unwrap();
+        assert!(!v.discord_presence && v.tray_on_game && v.auto_tuned && !v.join_server);
         let v = settings_set(&d, SettingsPatch { perf_mode: Some(perf::PerfMode::Low), ..Default::default() }).unwrap();
         assert!(!v.auto_tuned && v.perf_mode == perf::PerfMode::Low && !v.discord_presence);
         std::fs::remove_dir_all(&d.root).unwrap();

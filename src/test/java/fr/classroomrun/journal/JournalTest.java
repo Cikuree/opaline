@@ -100,7 +100,7 @@ class JournalTest {
 		List<String> lines = Files.readAllLines(file);
 		assertEquals(6, lines.size());
 		JournalReader.Parsed p = JournalReader.parse(20, lines);
-		assertEquals(new RunSummary(20, "2026-10-30T18:00:00Z", 60_000, 1, "DIAMOND", false), p.summary());
+		assertEquals(new RunSummary(20, "2026-10-30T18:00:00Z", 60_000, 1, "DIAMOND", false, List.of("Alex")), p.summary());
 	}
 
 	@Test
@@ -139,7 +139,7 @@ class JournalTest {
 	void indexIsCappedAndTruncatedFromTheOldestEnd() {
 		List<RunSummary> runs = new ArrayList<>();
 		for (int i = 300; i >= 1; i--) {
-			runs.add(new RunSummary(i, "2026-10-30T18:00:00Z", 1000, 1, i % 2 == 0 ? "ENDER_EYE" : null, false));
+			runs.add(new RunSummary(i, "2026-10-30T18:00:00Z", 1000, 1, i % 2 == 0 ? "ENDER_EYE" : null, false, List.of()));
 		}
 		JsonArray all = JsonParser.parseString(HistoryJson.index(runs, 262_144)).getAsJsonObject().getAsJsonArray("runs");
 		assertEquals(200, all.size());

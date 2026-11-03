@@ -41,7 +41,6 @@ function renderDetail() {
   if (!deaths.length) { box.innerHTML = `<h2>Run #${Number(sel)}</h2><p class="mute small" style="margin-top:8px">Aucune mort dans cette run.</p>`; return; }
   const d = deaths[di], c = causeInfo(d), pos = d.pos ? `X ${Number(d.pos[0])}, Y ${Number(d.pos[1])}, Z ${Number(d.pos[2])}` : '—', dim = d.dimension ? dimLabel(d.dimension) : '';
   box.innerHTML = `<h2>Détail de la mort · Run #${Number(sel)}</h2>
-   ${deaths.length > 1 ? `<div class="seg sm" role="radiogroup" aria-label="Morts de la run" style="margin-top:10px;flex-wrap:wrap">${deaths.map((x, i) => `<button role="radio" aria-checked="${i === di}" data-di="${i}">${esc(x.name)}</button>`).join('')}</div>` : ''}
    <ul class="list" style="gap:8px;margin:12px 0;font-size:14px">
     <li class="row"><span class="mute">Joueur</span><b style="display:flex;align-items:center;gap:8px"><span class="avatar" style="width:28px;height:28px">${headHtml(d.name, d.player, 28)}</span>${esc(d.name)}</b></li>
     <li class="row"><span class="mute">Cause</span><b>${esc(c.label)}</b></li>
@@ -50,10 +49,12 @@ function renderDetail() {
   hydrateHeads(box);
 }
 
-async function select(n, idx = 0) {
+// Une seule mort compte par run (l'équipe meurt ensemble) : par défaut la dernière, celle qui a fini la run.
+async function select(n, idx = -1) {
   sel = n; di = idx; deaths = [];
   $$('#runs tr').forEach((r) => r.classList.toggle('sel', +r.dataset.r === n));
   try { deaths = (await api.runHistory(current().id, n))?.deaths || []; } catch (e) { toast(api.errMsg(e)); }
+  if (di < 0 || di >= deaths.length) di = Math.max(0, deaths.length - 1);
   renderDetail();
 }
 
@@ -62,6 +63,11 @@ export async function renderHistory() {
   try { runs = (await api.runHistory(p.id, null))?.runs || []; } catch (e) { runs = []; toast(api.errMsg(e)); }
   $('#histSum').textContent = `${runs.length} run${runs.length > 1 ? 's' : ''} · ${hms(runs.reduce((a, r) => a + r.durationMs, 0))} jouées`;
   $('#runsEmpty').hidden = runs.length > 0;
+  // Morts par joueur sur toutes les runs de l'historique (« victims » : un nom par mort)
+  const per = new Map(); runs.forEach((r) => (r.victims || []).forEach((n) => per.set(n, (per.get(n) || 0) + 1)));
+  const top = [...per].sort((a, b) => b[1] - a[1]);
+  $('#histStats').hidden = !top.length;
+  $('#histStats').innerHTML = top.map(([n, c], i) => `<div class="hst${i === 0 ? ' hdeath' : ''}"><span class="hn">${esc(n)}</span><b>${c} <small>mort${c > 1 ? 's' : ''}</small></b></div>`).join('');
   $('#runs').innerHTML = runs.map((r) => { const b = r.bestSplit ? splitByKey(r.bestSplit) : null; return `<tr tabindex="0" data-r="${Number(r.run)}"><td>#${Number(r.run)}</td><td>${hms(r.durationMs)}</td><td>${Number(r.deaths)}</td><td><span style="display:flex;align-items:center;gap:8px">${b ? tex(b.tex, 16) + esc(b.label) : '—'}</span></td></tr>`; }).join('');
   if (!runs.length) { sel = null; renderDetail(); } else if (!runs.some((r) => r.run === sel)) await select(runs[0].run); else await select(sel, di);
 }
@@ -69,13 +75,12 @@ export async function renderHistory() {
 /** Ouvre le détail d'une mort (depuis l'accueil) ; appelé après renderHistory. */
 export async function openDeath(d) {
   await renderHistory();
-  await select(d.run, 0);
+  await select(d.run);
   const k = deaths.findIndex((x) => x.at === d.at && x.player === d.player);
-  if (k > 0) { di = k; renderDetail(); }
+  if (k >= 0 && k !== di) { di = k; renderDetail(); }
 }
 
 export function initHistory() {
   $('#runs').addEventListener('click', (e) => { const r = e.target.closest('tr'); if (r) select(+r.dataset.r); });
   $('#runs').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { const r = e.target.closest('tr'); if (r) { e.preventDefault(); select(+r.dataset.r); } } });
-  $('#dthDetail').addEventListener('click', (e) => { const b = e.target.closest('[data-di]'); if (b) { di = +b.dataset.di; renderDetail(); } });
 }

@@ -15,6 +15,8 @@ import net.minecraft.resources.Identifier;
 
 /** Entry points of the death history screen: key binding, {@code /crhistory}, request and answer. Main thread only. */
 public final class HistoryClient {
+	/** Key category of the mod, shared with the other key bindings. */
+	public static KeyMapping.Category category;
 	private static KeyMapping key;
 	private static boolean openRequested;
 
@@ -22,7 +24,7 @@ public final class HistoryClient {
 	}
 
 	public static void register() {
-		KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("classroomrun", "main"));
+		category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath("classroomrun", "main"));
 		key = KeyMappingHelper.registerKeyMapping(
 				new KeyMapping("key.classroomrun.history", InputConstants.KEY_H, category));
 		ClientPlayNetworking.registerGlobalReceiver(HistoryPayload.TYPE, (payload, context) -> onAnswer(payload));

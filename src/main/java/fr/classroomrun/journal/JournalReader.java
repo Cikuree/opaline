@@ -110,7 +110,8 @@ public final class JournalReader {
 			long duration = this.goT >= 0 ? Math.max(0, this.lastT - this.goT) : 0;
 			String best = this.bestSplit >= 0 ? Split.values()[this.bestSplit].name() : null;
 			return new Parsed(new RunSummary(this.run, this.startedAt == null ? "" : this.startedAt, duration,
-					this.deaths.size(), best, this.finished), List.copyOf(this.deaths));
+					this.deaths.size(), best, this.finished,
+					this.deaths.stream().map(d -> d.has("name") ? d.get("name").getAsString() : "?").toList()), List.copyOf(this.deaths));
 		}
 	}
 

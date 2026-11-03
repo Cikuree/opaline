@@ -45,6 +45,10 @@ pub struct Config {
     pub auto_tuned: bool,
     /// « Plein écran fenêtré » : Opaline installe Cubes Without Borders dans chaque pack et le configure.
     pub borderless: bool,
+    /// Rejoindre le serveur et se cacher pendant le jeu sont désactivés par défaut depuis 0.6.7 : absent d'une ancienne config,
+    /// ces deux réglages y sont remis à faux une fois (ils ne restent activés que si l'utilisateur les rallume).
+    #[serde(default)]
+    pub opt_in_launch: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -65,19 +69,29 @@ impl Default for Config {
             mc_name: String::new(),
             mc_uuid: String::new(),
             launch_via: LaunchVia::Opaline,
-            join_server: true,
+            join_server: false,
             notify_server: true,
             discord_presence: true,
-            tray_on_game: !cfg!(target_os = "linux"),
+            tray_on_game: false,
             auto_tuned: false,
             borderless: false,
+            opt_in_launch: true,
         }
     }
 }
 
 impl Config {
     pub fn load(dirs: &Dirs) -> Config {
-        std::fs::read_to_string(dirs.config_file()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+        std::fs::read_to_string(dirs.config_file()).ok().and_then(|s| Config::parse(&s)).unwrap_or_default()
+    }
+
+    /// Lit une config sauvegardée ; une config d'avant 0.6.7 perd « rejoindre le serveur » et « se cacher pendant le jeu ».
+    pub fn parse(json: &str) -> Option<Config> {
+        let mut c: Config = serde_json::from_str(json).ok()?;
+        if !c.opt_in_launch {
+            (c.join_server, c.tray_on_game, c.opt_in_launch) = (false, false, true);
+        }
+        Some(c)
     }
 
     pub fn save(&self, dirs: &Dirs) -> anyhow::Result<()> {
@@ -311,9 +325,15 @@ mod tests {
     }
 
     #[test]
-    fn extras_default_on_and_missing_keys_ok() {
-        let c: Config = serde_json::from_str(r#"{"nickname":"A"}"#).unwrap();
-        assert!(c.join_server && c.notify_server && c.discord_presence && c.tray_on_game == !cfg!(target_os = "linux") && !c.auto_tuned && !c.borderless);
+    fn extras_defaults_and_missing_keys_ok() {
+        let c = Config::parse(r#"{"nickname":"A"}"#).unwrap();
+        assert!(!c.join_server && c.notify_server && c.discord_presence && !c.tray_on_game && !c.auto_tuned && !c.borderless);
+        // ancienne config : les deux réglages repassent à faux une fois…
+        let old = Config::parse(r#"{"join_server":true,"tray_on_game":true}"#).unwrap();
+        assert!(!old.join_server && !old.tray_on_game && old.opt_in_launch);
+        // …puis un choix explicite de l'utilisateur est gardé
+        let kept = Config::parse(&serde_json::to_string(&Config { join_server: true, tray_on_game: true, ..old }).unwrap()).unwrap();
+        assert!(kept.join_server && kept.tray_on_game);
     }
 
     #[test]

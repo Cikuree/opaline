@@ -1,13 +1,19 @@
 package fr.classroomrun.game;
 
+import net.minecraft.world.clock.ClockTimeMarkers;
 import fr.classroomrun.ClassroomRun;
 import fr.classroomrun.command.RunCommand;
+import fr.classroomrun.clip.ClipRecorder;
+import fr.classroomrun.clip.ClipWait;
 import fr.classroomrun.config.ModConfig;
 import fr.classroomrun.http.StatsHttpServer;
 import fr.classroomrun.http.StatsSnapshot;
 import fr.classroomrun.journal.JournalService;
 import fr.classroomrun.mixin.EnderDragonFightAccessor;
+import fr.classroomrun.net.ClipReadyPayload;
+import fr.classroomrun.net.DeathClipPayload;
 import fr.classroomrun.net.DeathPayload;
+import fr.classroomrun.net.ReadyStatePayload;
 import fr.classroomrun.net.RunStatePayload;
 import fr.classroomrun.net.Split;
 import fr.classroomrun.stats.RunClock;
@@ -46,7 +52,10 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -60,13 +69,15 @@ import java.util.concurrent.ThreadLocalRandom;
  * <p>Collective death: {@code ALLOW_DEATH} returns false (vanilla death cancelled, justification: no death screen, no
  * dropped inventory, no respawn logic to bend) after the victim is restored to full health; the run enters the
  * "ending" state during which all damage is refused and the chrono is paused. Members become spectators with a
- * "Vous êtes morts" title so everybody sees the death, then {@code deathResetDelayTicks} later the reset happens at
- * the end of a server tick and puts them back in survival.
+ * "Vous êtes morts" title so everybody sees the death and a replay clip of the last minute (see {@link ClipRecorder}).
+ * The reset happens at the end of a server tick, when every online member clicked « Prêt » (short grace) or after
+ * {@code clipMaxWaitTicks}; without clip it is {@code deathResetDelayTicks} after the death. It puts them back in survival.
  */
 public final class RunManager {
 	private static final String TOKEN_PREFIX = "classroomrun:run_";
 	/** Member turned spectator by a collective death; persisted in player data so a reconnect after the reset restores survival. */
 	private static final String GHOST_TAG = "classroomrun:ghost";
+	private static final int CLIP_GRACE_TICKS = 40;
 	private static @Nullable RunManager instance;
 
 	private final MinecraftServer server;
@@ -86,7 +97,15 @@ public final class RunManager {
 	private int epoch;
 	/** Chrono running and splits probed: started and not finished. */
 	private boolean active;
-	private int resetCountdown = -1;
+	/** Death wait in progress (null outside the ending state). */
+	private @Nullable ClipWait deathWait;
+	/** Members who clicked « Prêt » on the clip. */
+	private final Set<UUID> clipReady = new HashSet<>();
+	private int lastReady = -1;
+	private int lastTotal = -1;
+	private final ClipRecorder clips = new ClipRecorder();
+	/** Clip built at the death, kept during the wait to resend it to ghosts joining late; null without clip. */
+	private @Nullable DeathClipPayload clipPayload;
 	private long tickCount;
 	private boolean dirty;
 
@@ -127,6 +146,11 @@ public final class RunManager {
 				instance.joined.add(handler.getPlayer());
 			}
 		});
+		ServerPlayNetworking.registerGlobalReceiver(ClipReadyPayload.TYPE, (payload, context) -> {
+			if (instance != null) {
+				instance.onClipReady(context.player()); // Fabric runs receivers on the server thread
+			}
+		});
 		CommandRegistrationCallback.EVENT.register((dispatcher, registry, environment) -> RunCommand.register(dispatcher));
 	}
 
@@ -161,7 +185,7 @@ public final class RunManager {
 
 	/** True between a collective death and the reset: damage refused, chrono paused. */
 	public boolean isEnding() {
-		return this.resetCountdown >= 0;
+		return this.deathWait != null;
 	}
 
 	// ---------------------------------------------------------------- life cycle
@@ -169,6 +193,7 @@ public final class RunManager {
 	private void start() {
 		this.stats.newRun();
 		this.team.resetVitals();
+		setDay();
 		this.worlds = RunWorlds.open(this.server, ThreadLocalRandom.current().nextLong());
 		this.classroom = Classroom.build(this.server, this.worlds.overworld());
 		refreshBoard();
@@ -225,9 +250,16 @@ public final class RunManager {
 				moveToClassroom(player);
 			}
 		}
+		setDay();
 		this.journal.onGo();
 		broadcastState();
 		return true;
+	}
+
+	/** Morning on the run worlds' clock (shared by the dimensions using it), like {@code /time set day}. */
+	private void setDay() {
+		this.worlds.overworld().dimensionType().defaultClock()
+				.ifPresent(clock -> this.server.clockManager().moveToTimeMarker(clock, ClockTimeMarkers.DAY));
 	}
 
 	/** Collective death entry point, called from {@code ALLOW_DEATH} (inside the hurt call: nothing is moved here). */
@@ -235,7 +267,6 @@ public final class RunManager {
 		if (isEnding()) {
 			return;
 		}
-		this.resetCountdown = Math.max(0, this.config.deathResetDelayTicks);
 		this.stats.recordDeath();
 		this.stats.totalTimeMs = this.clock.totalTimeMs();
 		// leave the dying state so vanilla death handling (hurtServer continues after the event) has nothing to do
@@ -249,23 +280,36 @@ public final class RunManager {
 				victim.level().dimension());
 		this.journal.onDeath(victim, source, payload);
 		sendAll(payload);
-		showDeath(payload.message());
+		DeathClipPayload clip = this.config.clipEnabled
+				? this.clips.build(victim, victim.position(), victim.level().dimension(), this.server.getPlayerList().getPlayers())
+				: null;
+		int min = Math.max(0, this.config.deathResetDelayTicks);
+		this.deathWait = new ClipWait(min, clip != null ? Math.max(min, this.config.clipMaxWaitTicks) : min, CLIP_GRACE_TICKS);
+		this.clipReady.clear();
+		this.lastReady = -1;
+		this.clipPayload = clip;
+		showDeath(payload.message(), clip != null); // tags the ghosts first: the clip only goes to them
+		if (clip != null) {
+			onlineGhosts().forEach(this::sendClip);
+		}
 		refreshBoard();
 		broadcastState();
 		save();
-		ClassroomRun.LOGGER.info("Collective death of the team ({}), reset in {} ticks", payload.message(), this.resetCountdown);
+		ClassroomRun.LOGGER.info("Collective death of the team ({}), reset in {} s at most", payload.message(), this.deathWait.secondsLeft());
 	}
 
 	/** Everybody sees the death: members become spectators until the reset, with a title over the death message. */
-	private void showDeath(String message) {
-		int seconds = Math.max(1, Math.round(this.resetCountdown / 20.0F));
+	private void showDeath(String message, boolean clip) {
+		int seconds = Math.max(1, this.deathWait.secondsLeft());
+		Component subtitle = Component.literal(message + (clip ? " · regardez le clip puis cliquez Prêt" : " · nouvelle run dans " + seconds + " s"))
+				.withStyle(ChatFormatting.GRAY);
 		for (ServerPlayer player : List.copyOf(this.server.getPlayerList().getPlayers())) {
 			if (TeamSync.isMember(player)) {
 				player.addTag(GHOST_TAG);
 				player.setGameMode(GameType.SPECTATOR);
 			}
-			player.connection.send(new ClientboundSetTitlesAnimationPacket(10, Math.max(20, this.resetCountdown - 10), 10));
-			player.connection.send(new ClientboundSetSubtitleTextPacket(Component.literal(message + " · nouvelle run dans " + seconds + " s").withStyle(ChatFormatting.GRAY)));
+			player.connection.send(new ClientboundSetTitlesAnimationPacket(10, clip ? 60 : Math.max(20, seconds * 20 - 10), 10));
+			player.connection.send(new ClientboundSetSubtitleTextPacket(subtitle));
 			player.connection.send(new ClientboundSetTitleTextPacket(Component.literal("Vous êtes morts").withStyle(ChatFormatting.RED)));
 		}
 	}
@@ -299,7 +343,11 @@ public final class RunManager {
 		this.journal.closeRun();
 		this.worlds = fresh;
 		this.classroom = placed;
-		this.resetCountdown = -1;
+		this.deathWait = null;
+		this.clipReady.clear();
+		this.clips.clear();
+		this.clipPayload = null;
+		sendAll(new ReadyStatePayload(0, 0, 0)); // "clip over" signal
 		this.epoch++;
 		if (!this.active) {
 			this.started = false; // a finished (or never started) run waits for /run start again
@@ -406,17 +454,21 @@ public final class RunManager {
 		this.clock.tick(System.nanoTime(), running);
 		this.stats.totalTimeMs = this.clock.totalTimeMs();
 
-		if (isEnding()) {
-			if (--this.resetCountdown < 0) {
-				this.resetCountdown = 0;
-				reset();
-			}
+		if (this.deathWait != null) {
+			tickDeathWait();
 		} else if (anyPlayer) {
 			this.team.tick(this.server);
 			this.journal.sample(players);
+			if (this.active && this.config.clipEnabled) {
+				this.clips.tick(players);
+			} else {
+				this.clips.clear(); // frames must be contiguous up to the death
+			}
 			if (this.active && this.tickCount % 10 == 0) {
 				probeSplits(players.stream().filter(TeamSync::isMember).toList());
 			}
+		} else {
+			this.clips.clear(); // nobody online: no sampling
 		}
 
 		if (running && this.tickCount % 100 == 0) {
@@ -427,6 +479,41 @@ public final class RunManager {
 		}
 		if ((this.dirty || running) && this.tickCount % 600 == 0) {
 			save();
+		}
+	}
+
+	/** Members of the dead team still online (they are spectators with the ghost tag until the reset). */
+	private List<ServerPlayer> onlineGhosts() {
+		return this.server.getPlayerList().getPlayers().stream().filter(p -> p.entityTags().contains(GHOST_TAG)).toList();
+	}
+
+	private void tickDeathWait() {
+		List<ServerPlayer> ghosts = onlineGhosts();
+		this.clipReady.retainAll(ghosts.stream().map(ServerPlayer::getUUID).collect(java.util.stream.Collectors.toSet()));
+		int ready = this.clipReady.size();
+		// vanilla clients cannot click « Prêt »: they do not count
+		int total = (int) ghosts.stream().filter(p -> ServerPlayNetworking.canSend(p, DeathClipPayload.TYPE)).count();
+		if (this.deathWait.tick(total, ready)) {
+			reset();
+			return;
+		}
+		if (this.clipPayload != null && (ready != this.lastReady || total != this.lastTotal || this.tickCount % 20 == 0)) {
+			this.lastReady = ready;
+			this.lastTotal = total;
+			sendAll(new ReadyStatePayload(ready, total, this.deathWait.secondsLeft()));
+		}
+	}
+
+	private void sendClip(ServerPlayer player) {
+		if (this.clipPayload != null && ServerPlayNetworking.canSend(player, DeathClipPayload.TYPE)) {
+			ServerPlayNetworking.send(player, this.clipPayload);
+		}
+	}
+
+	/** {@link ClipReadyPayload} receiver, on the server thread. */
+	private void onClipReady(ServerPlayer player) {
+		if (this.clipPayload != null && isEnding() && player.entityTags().contains(GHOST_TAG)) {
+			this.clipReady.add(player.getUUID());
 		}
 	}
 
@@ -445,6 +532,9 @@ public final class RunManager {
 		this.team.onJoin(this.server, player);
 		refreshBoard();
 		ServerPlayNetworking.send(player, statePayload());
+		if (isEnding() && player.entityTags().contains(GHOST_TAG)) {
+			sendClip(player); // joined during the wait: replay the clip
+		}
 	}
 
 	private void probeSplits(List<ServerPlayer> players) {

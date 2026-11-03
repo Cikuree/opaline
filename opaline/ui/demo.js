@@ -20,7 +20,7 @@ const packs = [
 const MODS = [['Fabric API', '0.131.0', 'both'], ['Classroom Run', '0.9.2', 'both'], ['Sodium', '0.7.2', 'client'], ['Lithium', '0.18.1', 'both'], ['Iris Shaders', '1.9.3', 'client', false], ['Sodium Extra', '0.7.0', 'client'], ['Mod Menu', '15.0.0', 'client'], ['Fantasy', '0.8.1', 'server'], ['ServerReplay', '1.4.0', 'server'], ['Replay Mod', '2.7.0', 'client'], ['Cloth Config', '21.0.1', 'both']]
   .map(([name, version, side, ok]) => ({ name, version, side, file: name.toLowerCase().replace(/\W+/g, '-') + '.jar', verified: ok !== false }));
 
-let settings = { perfMode: 'balanced', memoryMb: 6144, noRemember: false, launchVia: 'opaline', joinServer: true, notifyServer: true, discordPresence: true, trayOnGame: true, autoTuned: !q.has('noauto'), borderless: false, systemRamMb: 16384 };
+let settings = { perfMode: 'balanced', memoryMb: 6144, noRemember: false, launchVia: 'opaline', joinServer: false, notifyServer: true, discordPresence: true, trayOnGame: false, autoTuned: !q.has('noauto'), borderless: false, systemRamMb: 16384 };
 // ?signedout : écran de connexion ; ?official : mode officiel avec pseudo ; ?notapproved : la connexion échoue comme avec une app Azure non approuvée.
 const UUID = '3f9a21c4-7be0-4a11-9c3d-0b6e5f51e51d';
 let identity = q.has('official') ? { name: 'OddNode', uuid: UUID } : null, pending = false;
@@ -54,7 +54,7 @@ const DEATHS = [
   { name: 'Creeper_Kid', k: 2, cause: 'minecraft:fireball', attacker: 'minecraft:blaze', pos: [31, 74, -88], hp: [20, 19, 17, 14, 13, 10, 8, 5, 3, 0], dim: 'minecraft:the_nether' },
 ];
 const RUNS = [[12 * 3600 + 34 * 60 + 56, 19, 'ENDER_EYE'], [3 * 3600 + 2 * 60 + 11, 4, 'IRON_INGOT'], [2 * 3600 + 48 * 60 + 40, 3, 'NETHER_PORTAL'], [1 * 3600 + 55 * 60 + 7, 2, 'DIAMOND'], [4 * 3600 + 10 * 60 + 30, 6, 'BLAZE_ROD'], [59 * 60 + 14, 1, 'PICKAXE']]
-  .map(([s, d, b], i) => ({ run: 20 - i, startedAt: iso(60 * 24 * (i + 1)), durationMs: s * 1000, deaths: d, bestSplit: b, finished: false }));
+  .map(([s, d, b], i) => ({ run: 20 - i, startedAt: iso(60 * 24 * (i + 1)), durationMs: s * 1000, deaths: d, bestSplit: b, finished: false, victims: Array.from({ length: d }, (_, k) => ['Creeper_Kid', 'LunaFox', 'Maelle', 'OddNode'][(i + k * 3) % 4]) }));
 const detail = (n) => {
   const list = DEATHS.filter((_, i) => (i + (20 - n)) % 3 !== 2 || n === 20).slice(0, n === 20 ? 3 : 2);
   const mine = n === 20 ? DEATHS.slice(0, 3) : list;
