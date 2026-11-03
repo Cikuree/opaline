@@ -277,6 +277,14 @@ public final class RunManager {
 		}
 	}
 
+	/** {@link #reset()} after zeroing every stat (chrono, deaths, run number, splits): the next run is #1. Server thread only. */
+	public void wipe() {
+		this.clock.clear();
+		this.stats.wipe();
+		this.active = false; // the fresh run waits for /run start
+		reset();
+	}
+
 	/** Rebuilds the world trio and sends everybody back to the new classroom. Server thread only. */
 	public void reset() {
 		RunWorlds old = this.worlds;

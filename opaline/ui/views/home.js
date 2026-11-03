@@ -4,6 +4,7 @@ import { $, esc, toast, tex, hms, ago, headHtml, hydrateHeads } from '../util.js
 import { SPLITS, splitByKey, HELP, STAGE_ORDER, loaderName } from '../data.js';
 import { openMenu } from './packmenu.js';
 import { splitPacks, AVAIL_FOLD } from '../packs.js';
+import { renderPlaytime } from './playtime.js';
 import { causeInfo, loadRecent } from './history.js';
 
 const GR = ['linear-gradient(135deg,#e0574f,#f07a5a)', 'linear-gradient(135deg,#7b4bb7,#a66ad6)', 'linear-gradient(135deg,#f6dcc8,#f3b9b4)'];
@@ -83,14 +84,14 @@ function renderPacks() {
   more.textContent = showAvail ? 'Replier' : `Voir les ${avail.length} packs disponibles`;
 }
 
-const fmtPlay = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s / 60) % 60).padStart(2, '0')}` : `${Math.max(1, Math.round(s / 60))} min`);
+export const fmtPlay = (s) => (s >= 3600 ? `${Math.floor(s / 3600)} h ${String(Math.floor(s / 60) % 60).padStart(2, '0')}` : `${Math.max(1, Math.round(s / 60))} min`);
 /** Temps de jeu mesuré par Opaline ; mode officiel : non mesuré (le Launcher Minecraft possède le processus). */
 function playtimeText(id) {
   if (state.auth.mode !== 'direct') return 'Temps de jeu non mesuré avec le Launcher Minecraft.';
   const t = state.playtime[id];
   return t ? `Joué ${fmtPlay(t.totalSecs)} · dernière session ${ago(new Date(t.lastPlayed * 1000).toISOString())}` : 'Aucune session mesurée pour l’instant.';
 }
-export async function refreshPlaytime() { try { state.playtime = await api.playtime(); } catch { /* inchangé */ } renderHome(); }
+export async function refreshPlaytime() { try { state.playtime = await api.playtime(); } catch { /* inchangé */ } renderHome(); renderPlaytime(); }
 
 function renderHero(p, st, cr) {
   const s = state.stats, inst = state.install?.packId === p.id ? state.install : null;

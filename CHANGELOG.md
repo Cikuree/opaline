@@ -1,5 +1,12 @@
 # Changelog
 
+## Opaline 0.6.6 et mod 0.4.4
+- Compte : carte « Mon temps de jeu » (une forme animée par modpack autour du total) ; clic sur sa photo de profil pour ouvrir Compte.
+- Connexion Microsoft validée par Mojang : la garde-robe invite à se connecter au lieu d'annoncer l'attente.
+- Mod : dégâts et soins affichés à la demi-coeur près (plus de « 2.3 » ni « 0.3 »).
+- Mod : la salle de classe se pose au ras du sol, sur la terre ferme (jamais dans l'eau).
+- Mod : `/run wipe` remet tout à zéro (chrono, morts, numéro de run, splits) puis prépare une nouvelle run.
+
 ## Opaline 0.6.5 : shaders et Fichiers & mods
 - Shaders : installer Iris en un clic, chercher un shader sur Modrinth (téléchargé et activé), ou ajouter un .zip.
 - Fichiers & mods en onglets : Mods, Shaders & resource packs, Captures, Journal, Instance. Clic droit sur un onglet : ouvrir le dossier ou ajouter un fichier.

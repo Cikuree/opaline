@@ -21,6 +21,11 @@ public final class RunClock {
 		this.wasRunning = running;
 	}
 
+	/** Back to 0:00:00 (full wipe). */
+	public void clear() {
+		this.totalNanos = 0L;
+	}
+
 	public long totalTimeMs() {
 		return this.totalNanos / 1_000_000L;
 	}

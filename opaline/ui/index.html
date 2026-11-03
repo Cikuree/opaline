@@ -194,6 +194,7 @@
         <div role="radiogroup" aria-labelledby="capeT" style="margin-top:8px" id="capes"></div>
       </article>
     </div>
+    <article class="card" aria-labelledby="ptT"><h2 id="ptT">Mon temps de jeu</h2><div id="ptBox"></div></article>
   <section aria-labelledby="wrT">
       <h2 id="wrT" style="font-size:18px">Garde-robe</h2>
       <p class="mute small" id="wrOff" hidden></p>
@@ -330,7 +331,7 @@
 
   <aside class="col" id="col" aria-label="Joueurs du serveur">
     <article class="card meCard">
-      <div class="me" id="meBtn"><div class="avwrap"><div class="avatar" id="meAvatar"></div><span class="dot" id="meDot" role="img" aria-label="En ligne"></span></div><span class="ingame" id="meGame" hidden>En jeu</span><div class="mtx"><b id="meName"></b><div class="xs mute" id="meSt">En ligne</div></div></div>
+      <div class="me" id="meBtn" data-go="account" title="Mon compte"><div class="avwrap"><div class="avatar" id="meAvatar"></div><span class="dot" id="meDot" role="img" aria-label="En ligne"></span></div><span class="ingame" id="meGame" hidden>En jeu</span><div class="mtx"><b id="meName"></b><div class="xs mute" id="meSt">En ligne</div></div></div>
     </article>
     <button type="button" class="colx" id="colExpand" aria-expanded="true" aria-controls="col" aria-label="Réduire la liste des amis"><svg class="i"><use href="#i-users"/></svg><svg class="i chev" aria-hidden="true"><use href="#i-chev"/></svg><span class="lbl">Réduire</span></button>
     <article class="card onl"><h2 class="sr">Amis, <span id="onCount"></span> en ligne</h2><div id="online"></div><div id="offline"></div></article>

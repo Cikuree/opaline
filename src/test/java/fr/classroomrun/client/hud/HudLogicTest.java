@@ -19,6 +19,10 @@ class HudLogicTest {
 		assertEquals("0.5", HudFormat.hearts(0.5f));
 		assertEquals("1.5", HudFormat.hearts(1.5f));
 		assertEquals("3", HudFormat.hearts(2.96f));
+		assertEquals("2.5", HudFormat.hearts(2.3f)); // armure : 4.6 PV ne s'affiche plus "2.3"
+		assertEquals("2", HudFormat.hearts(2.2f));
+		assertEquals("0.5", HudFormat.hearts(0.25f)); // régénération naturelle (0.5 PV) : jamais "0" ni "0.3"
+		assertEquals("0.5", HudFormat.hearts(0.1f));
 	}
 
 	@Test

@@ -24,6 +24,15 @@ public final class RunStats {
 		this.reachedSplits = 0;
 	}
 
+	/** Forgets everything: chrono, deaths, run number, splits and best split. */
+	public void wipe() {
+		this.totalTimeMs = 0L;
+		this.deaths = 0;
+		this.runNumber = 0;
+		this.reachedSplits = 0;
+		this.bestSplit = -1;
+	}
+
 	public void recordDeath() {
 		this.deaths++;
 	}

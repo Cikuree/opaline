@@ -18,6 +18,7 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.level.storage.TagValueInput;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.block.Block;
@@ -49,6 +50,9 @@ public final class Classroom {
 	/** Spawn used when the template has no spawn marker, relative to the template origin. */
 	private static final Vec3 DEFAULT_SPAWN_OFFSET = new Vec3(7.5, 1.0, 6.5);
 	private static final int MAX_FOUNDATION_DEPTH = 48;
+	private static final int DRY_SEARCH_RADIUS = 1024;
+	/** Surface checks generate chunks: bounded so a reset never stalls the server for long. */
+	private static final int MAX_DRY_CHECKS = 24;
 
 	/**
 	 * @param spawn   spawn position of the players
@@ -67,25 +71,25 @@ public final class Classroom {
 	public static Placed build(MinecraftServer server, ServerLevel level) {
 		Loaded loaded = loadTemplate(server);
 		StructureTemplate template = loaded != null ? loaded.template() : null;
-		BlockPos spawnXZ = level.getRespawnData().pos();
 		Vec3i size = template != null ? template.getSize() : new Vec3i(FALLBACK_SIZE, 4, FALLBACK_SIZE);
-		int ox = spawnXZ.getX() - size.getX() / 2;
-		int oz = spawnXZ.getZ() - size.getZ() / 2;
-
-		// Generate the chunks under the footprint, keep them loaded (board), find the ground with the heightmap.
+		BlockPos center = dryCenter(level, level.getRespawnData().pos(), size);
+		int ox = center.getX() - size.getX() / 2;
+		int oz = center.getZ() - size.getZ() / 2;
 		for (int cx = ox >> 4; cx <= (ox + size.getX() - 1) >> 4; cx++) {
 			for (int cz = oz >> 4; cz <= (oz + size.getZ() - 1) >> 4; cz++) {
-				level.getChunk(cx, cz);
-				level.setChunkForced(cx, cz, true);
+				level.getChunk(cx, cz); // generated before reading the heightmap
+				level.setChunkForced(cx, cz, true); // board kept loaded
 			}
 		}
-		int oy = level.getMinY() + 1;
+		// Floor flush with the ground: median height of the footprint (the volume above is cleared, the gaps below are filled).
+		int[] heights = new int[size.getX() * size.getZ()];
+		int n = 0;
 		for (int x = ox; x < ox + size.getX(); x++) {
 			for (int z = oz; z < oz + size.getZ(); z++) {
-				oy = Math.max(oy, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z));
+				heights[n++] = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 			}
 		}
-		oy = Math.min(oy, level.getMaxY() - size.getY());
+		int oy = Math.clamp(medianGround(heights), level.getMinY() + 1, level.getMaxY() - size.getY());
 		BlockPos origin = new BlockPos(ox, oy, oz);
 
 		fillFoundation(level, ox, oy, oz, size);
@@ -234,6 +238,74 @@ public final class Classroom {
 				entry.remove("Properties");
 			}
 		}
+	}
+
+	/** Median of the ground heights, minus one so the floor replaces the top block instead of resting on it. */
+	static int medianGround(int[] heights) {
+		int[] h = heights.clone();
+		java.util.Arrays.sort(h);
+		return h[h.length / 2] - 1;
+	}
+
+	/**
+	 * Centre of a dry footprint near {@code start}: spirals outwards (16-block steps, up to {@link #DRY_SEARCH_RADIUS}),
+	 * skips ocean and river biomes cheaply, then checks the generated surface for fluids. Falls back to {@code start}.
+	 */
+	private static BlockPos dryCenter(ServerLevel level, BlockPos start, Vec3i size) {
+		int checks = 0;
+		for (int ring = 0; ring * 16 <= DRY_SEARCH_RADIUS && checks < MAX_DRY_CHECKS; ring++) {
+			for (int dx = -ring; dx <= ring; dx++) {
+				for (int dz = -ring; dz <= ring; dz++) {
+					if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) {
+						continue; // only the edge of the ring
+					}
+					BlockPos c = start.offset(dx * 16, 0, dz * 16);
+					if (!landBiomes(level, c, size)) {
+						continue;
+					}
+					if (checks++ >= MAX_DRY_CHECKS) {
+						break;
+					}
+					if (dry(level, c, size)) {
+						if (ring > 0) {
+							ClassroomRun.LOGGER.info("Classroom moved {} blocks from the world spawn to stay out of water", ring * 16);
+						}
+						return c;
+					}
+				}
+			}
+		}
+		ClassroomRun.LOGGER.warn("No dry ground found near {}, the classroom is placed there anyway", start);
+		return start;
+	}
+
+	private static int[][] footprintSamples(BlockPos c, Vec3i size) {
+		int hx = size.getX() / 2, hz = size.getZ() / 2;
+		return new int[][] { { 0, 0 }, { -hx, -hz }, { hx, -hz }, { -hx, hz }, { hx, hz } };
+	}
+
+	private static boolean landBiomes(ServerLevel level, BlockPos c, Vec3i size) {
+		int qy = level.getSeaLevel() >> 2;
+		for (int[] o : footprintSamples(c, size)) {
+			var biome = level.getUncachedNoiseBiome((c.getX() + o[0]) >> 2, qy, (c.getZ() + o[1]) >> 2);
+			if (biome.is(BiomeTags.IS_OCEAN) || biome.is(BiomeTags.IS_DEEP_OCEAN) || biome.is(BiomeTags.IS_RIVER)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Generated surface without fluid (water, lava) at the centre and the corners of the footprint. */
+	private static boolean dry(ServerLevel level, BlockPos c, Vec3i size) {
+		for (int[] o : footprintSamples(c, size)) {
+			int x = c.getX() + o[0], z = c.getZ() + o[1];
+			level.getChunk(x >> 4, z >> 4); // generated before reading the heightmap
+			int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+			if (!level.getFluidState(new BlockPos(x, y - 1, z)).isEmpty() || !level.getFluidState(new BlockPos(x, y, z)).isEmpty()) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/** Fills (stone) the gap between the ground and the room floor so the room does not hover on slopes or water. */

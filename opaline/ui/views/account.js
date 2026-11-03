@@ -1,6 +1,7 @@
 import * as api from '../api.js';
 import { state, emit, who, official } from '../state.js';
 import { MOJANG_PENDING, SKIN_LOCKED } from '../data.js';
+import { renderPlaytime } from './playtime.js';
 import { $, $$, esc, toast, copy, headHtml, hydrateHeads, LS } from '../util.js';
 
 export async function refreshAuth() {
@@ -61,7 +62,7 @@ async function renderOfficial(pr) {
   $('#accName').textContent = pr?.name || 'Pseudo non renseigné'; $('#accUuid').textContent = pr?.uuid || '—';
   $('#accAvatar').innerHTML = pr ? headHtml(pr.name, pr.uuid, 56) : ''; hydrateHeads($('#accAvatar'));
   $('#btnLogout').hidden = true; $('#btnLoginAcc').hidden = false; $('#accPseudo').hidden = false; $('#accMcName').value = pr?.name || '';
-  $('#capeCard').hidden = true; $('#wardrobe').hidden = true; $('#wrOff').hidden = false; $('#wrOff').textContent = SKIN_LOCKED;
+  $('#capeCard').hidden = true; $('#wardrobe').hidden = true; $('#wrOff').hidden = false; $('#wrOff').innerHTML = `${esc(SKIN_LOCKED)} <button class="btn sm primary" data-go="login" style="margin-left:8px">Se connecter</button>`;
   $('#sessionList').innerHTML = `<li class="row"><span class="mute">Compte Microsoft</span><span>Géré par le Launcher Minecraft</span></li>
    ${state.auth.mojangPending ? `<li class="row"><span class="mute">Mojang</span><span style="color:var(--warn);font-weight:700">${esc(MOJANG_PENDING)}</span></li>` : ''}`;
   let skin = null;
@@ -70,6 +71,7 @@ async function renderOfficial(pr) {
 }
 
 export async function renderAccount() {
+  renderPlaytime();
   const pr = who();
   if (official()) return renderOfficial(pr);
   if (!pr) return;

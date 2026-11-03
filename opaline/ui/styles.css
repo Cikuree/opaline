@@ -405,3 +405,14 @@ main{margin-bottom:calc(-1 * var(--pad));padding-bottom:calc(var(--pad) + 6px)}
 #v-files:has(#extraDrop.on) .files .ic{background:transparent;transform:none}
 #v-files:has(#extraDrop.on) .files .ic>*{display:none}
 #v-files:has(#extraDrop.on) .files .ic::after{content:"+";color:var(--coral);font-size:46px;font-weight:300;line-height:1}
+/* Mon temps de jeu : formes par pack autour du total */
+.pt{display:flex;gap:24px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.pt svg{width:240px;height:240px;flex:none;overflow:visible}
+.pt .ptl{fill:#f5d6d9;font-size:15px;font-weight:600}
+.pt .ptv{fill:#fff;font-size:38px;font-weight:800}
+.ptlist{list-style:none;display:flex;flex-direction:column;gap:10px;min-width:200px;flex:1;padding:0;margin:0;font-size:14px}
+.ptlist li{display:flex;gap:10px;align-items:center}
+.ptlist .mute{margin-left:auto}
+.ptd{width:12px;height:12px;border-radius:50%;flex:none}
+#meBtn{cursor:pointer}
+#meBtn:hover .avatar{box-shadow:0 0 0 2px var(--coral)}

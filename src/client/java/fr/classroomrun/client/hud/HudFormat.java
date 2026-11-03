@@ -5,10 +5,10 @@ public final class HudFormat {
 	private HudFormat() {
 	}
 
-	/** Hearts as "1", "2" or "0.5": integer when whole, otherwise one decimal. */
+	/** Hearts rounded to the nearest half heart, like the vanilla health bar: "1", "2.5"; never "0" for a real change. */
 	public static String hearts(float hearts) {
-		float rounded = Math.round(hearts * 10f) / 10f;
-		return rounded == (int) rounded ? Integer.toString((int) rounded) : Float.toString(rounded);
+		int halves = Math.max(1, Math.round(Math.abs(hearts) * 2f));
+		return halves % 2 == 0 ? Integer.toString(halves / 2) : (halves / 2) + ".5";
 	}
 
 	/** Total run time as h:mm:ss. */

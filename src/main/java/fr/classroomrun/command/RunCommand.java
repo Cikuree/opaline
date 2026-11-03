@@ -36,6 +36,15 @@ public final class RunCommand {
 					ctx.getSource().sendSuccess(() -> Component.literal("Run reinitialisee : " + run.describe()), true);
 					return 1;
 				}))
+				.then(Commands.literal("wipe").executes(ctx -> {
+					RunManager run = RunManager.get();
+					if (run == null) {
+						return 0;
+					}
+					run.wipe();
+					ctx.getSource().sendSuccess(() -> Component.literal("Tout est remis a zero (chrono, morts, splits) : " + run.describe()), true);
+					return 1;
+				}))
 				.then(Commands.literal("stats").executes(ctx -> {
 					RunManager run = RunManager.get();
 					if (run == null) {
