@@ -100,6 +100,8 @@ public final class RunManager {
 	/** Incremented at each reset and each /run start; with the run number it identifies the "clean slate" of a player. */
 	/** Longest death subtitle shown under « Vous êtes morts » (vanilla titles are one line and get cut by the screen). */
 	private static final int SUBTITLE_MAX = 48;
+	/** Ghosts farther than this from the death are brought to it so they can watch the clip (blocks). */
+	private static final int CLIP_GATHER_RADIUS = 48;
 	private int epoch;
 	/** Chrono running and splits probed: started and not finished. */
 	private boolean active;
@@ -518,7 +520,28 @@ public final class RunManager {
 			int min = Math.max(0, this.config.deathResetDelayTicks);
 			this.deathWait = new ClipWait(min, min, CLIP_GRACE_TICKS);
 		}
+		if (this.clipPayload != null) {
+			gatherGhosts(p);
+		}
 		onlineGhosts().forEach(this::sendClip);
+		onlineGhosts().forEach(RunManager::warnIfOutdated);
+	}
+
+	/**
+	 * The clip can only be replayed where it happened, with the terrain loaded: every ghost (spectator since the death) in
+	 * another dimension or more than {@link #CLIP_GATHER_RADIUS} blocks away is moved 3 blocks above the death position.
+	 */
+	private void gatherGhosts(PendingClip p) {
+		ServerLevel level = this.server.getLevel(p.dimension());
+		if (level == null) {
+			return;
+		}
+		Vec3 target = p.pos().add(0, 3, 0);
+		for (ServerPlayer ghost : onlineGhosts()) {
+			if (ghost.level() != level || ghost.position().distanceToSqr(p.pos()) > CLIP_GATHER_RADIUS * CLIP_GATHER_RADIUS) {
+				ghost.teleport(new TeleportTransition(level, target, Vec3.ZERO, ghost.getYRot(), ghost.getXRot(), TeleportTransition.DO_NOTHING));
+			}
+		}
 	}
 
 	private void tickDeathWait() {
@@ -571,6 +594,15 @@ public final class RunManager {
 		ServerPlayNetworking.send(player, statePayload());
 		if (isEnding() && player.entityTags().contains(GHOST_TAG)) {
 			sendClip(player); // joined during the wait: replay the clip
+		}
+		warnIfOutdated(player);
+	}
+
+	/** A client without the current mod can't receive the death clip (it is then not counted in « Prêts »): tell the player. */
+	private static void warnIfOutdated(ServerPlayer player) {
+		if (!ServerPlayNetworking.canSend(player, DeathClipPayload.TYPE)) {
+			player.sendSystemMessage(Component.literal("Ton mod Classroom Run n'est pas à jour : ferme le jeu, mets à jour le pack dans Opaline, puis relance. Sans ça, tu ne verras pas le clip de mort.")
+					.withStyle(ChatFormatting.YELLOW));
 		}
 	}
 

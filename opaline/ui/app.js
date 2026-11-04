@@ -55,7 +55,7 @@ function wireEvents() {
   api.listen('install://progress', (p) => { state.install = { ...p }; progressUi(); emit('install'); });
   api.listen('install://done', async (p) => {
     state.install = null; progressUi(); emit('install');
-    if (p.ok) { toast('Pack prêt'); await reloadTextures(); await loadPacks(); refreshServers(); refreshStats(); } else toast(p.error || 'L’installation a échoué.');
+    if (p.ok) { toast('Pack prêt'); await reloadTextures(); await loadPacks(); refreshServers(); refreshStats(); emit('installed', p.packId); } else toast(p.error || 'L’installation a échoué.');
   });
   api.listen('game://exited', (p) => {
     state.inGame = false; emit('game'); refreshPlaytime();

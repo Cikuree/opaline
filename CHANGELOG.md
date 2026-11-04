@@ -1,5 +1,10 @@
 # Changelog
 
+## Opaline 0.6.12 et mod 0.4.13
+- JOUER met d'abord le pack à jour quand une mise à jour existe, puis lance le jeu (fini les parties avec un vieux mod).
+- Mod : à la mort, toute l'équipe est ramenée près du mort pour voir le clip, et le clip s'ouvre dès que possible.
+- Mod : un joueur dont le mod est trop ancien est prévenu dans le chat.
+
 ## Opaline 0.6.11
 - Garde-robe : importer un skin en le choisissant fonctionne (l'aperçu de l'image était bloqué par la sécurité de l'application).
 

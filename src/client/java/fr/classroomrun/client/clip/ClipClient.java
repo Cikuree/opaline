@@ -97,15 +97,16 @@ public final class ClipClient {
 			return;
 		}
 		Screen current = client.gui.screen();
-		if (pendingOpen || pressed && current == null) {
+		if (current instanceof DeathClipScreen) {
 			pendingOpen = false;
-			// auto-open only when the clip belongs to this dimension; otherwise the hint stays and R opens the UI-only screen
-			if (current instanceof DeathClipScreen) {
-				return;
-			}
-			if (pressed || (client.player.isSpectator() || debugClip) && client.level.dimension().equals(clip.dimension())) {
-				client.gui.setScreen(new DeathClipScreen(clip));
-			}
+			return;
+		}
+		// Auto-open as soon as the player is a spectator in the clip's dimension (the server brings ghosts there; the game mode
+		// and the dimension change may land a few ticks after the clip), retried every tick until then. R opens it anyway.
+		boolean here = (client.player.isSpectator() || debugClip) && client.level.dimension().equals(clip.dimension());
+		if (pressed && current == null || pendingOpen && here) {
+			pendingOpen = false;
+			client.gui.setScreen(new DeathClipScreen(clip));
 		}
 	}
 }

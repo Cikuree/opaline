@@ -227,8 +227,12 @@ export function initHome() {
     doPlay(p, true);
   });
   $('#launcherDlg').addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#lcNo').click(); });
+  // Mise à jour disponible : JOUER met d'abord le pack à jour (mod du serveur compris), puis lance le jeu
+  let playAfter = null;
+  on('installed', (id) => { const q = state.packs.find((x) => x.id === id); if (id === playAfter && q) { playAfter = null; doPlay(q); } });
   async function doPlay(p, retried = false) {
     if ($('#btnPlay').dataset.st === 'no') return startInstall(p.id);
+    if ($('#btnPlay').dataset.st === 'upd') { playAfter = p.id; toast('Mise à jour du pack avant de jouer…'); return startInstall(p.id); }
     try {
       const r = await api.play(p.id);
       if (!r.started && r.reason === 'officialLauncherOpen' && !retried) { $('#launcherDlg').hidden = false; $('#lcNo').focus(); return; }
