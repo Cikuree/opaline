@@ -307,6 +307,8 @@ fn place(dirs: &Dirs, name: &str, write: impl FnOnce(&Path) -> Result<u64>) -> R
     });
     if r.is_err() {
         let _ = fs::remove_file(&tmp);
+    } else {
+        let _ = sync_for_launch(dirs); // visible dans mods/ tout de suite (sinon au prochain lancement)
     }
     r.map(|()| name)
 }
@@ -499,6 +501,7 @@ pub fn install_plan(dirs: &Dirs, plan: Plan, fetch: &dyn Fn(&Resolved, &Path) ->
         created.iter().for_each(|p| drop(fs::remove_file(p)));
         return Err(e);
     }
+    let _ = sync_for_launch(dirs); // visible dans mods/ tout de suite (sinon au prochain lancement)
     Ok(AddResult { added: root, deps: plan.deps, provided: plan.provided })
 }
 
