@@ -134,12 +134,12 @@ public final class Classroom {
 	}
 
 	/** Sets the board text (several lines, wrapped by the display's line_width). */
-	public static void updateBoard(@Nullable Placed placed, String text) {
+	public static void updateBoard(@Nullable Placed placed, Component text) {
 		if (placed == null || placed.board() == null || placed.board().isRemoved()) {
 			return;
 		}
-		placed.board().setText(Component.literal(text));
-		ClassroomRun.LOGGER.debug("Board updated: {}", text);
+		placed.board().setText(text);
+		ClassroomRun.LOGGER.debug("Board updated: {}", text.getString());
 	}
 
 	/** Creates the board ourselves: entities placed by the template are not reliably reachable right after placement. */

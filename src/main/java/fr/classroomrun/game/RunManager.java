@@ -32,6 +32,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
@@ -623,16 +624,18 @@ public final class RunManager {
 
 	private void refreshBoard() {
 		int bestIndex = Math.max(-1, Math.min(Split.values().length - 1, this.stats.bestSplit));
-		String best = bestIndex >= 0 ? SPLIT_LABELS[bestIndex] : "aucun";
+		String best = bestIndex >= 0 ? SPLIT_LABELS[bestIndex] : "—";
 		int deaths = this.stats.deaths;
 		long minutes = this.clock.totalTimeMs() / 60_000;
-		StringBuilder top = new StringBuilder();
+		String chrono = minutes >= 60 ? minutes / 60 + " h " + String.format("%02d", minutes % 60) : minutes + " min";
+		// short lines (the panel is 5 blocks wide, nothing may wrap), one idea per line, colour = kind of info
+		MutableComponent text = Component.literal("Run #" + this.stats.runNumber).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD)
+				.append(Component.literal("\n" + chrono + " · " + deaths + (deaths > 1 ? " morts" : " mort")).withStyle(ChatFormatting.WHITE))
+				.append(Component.literal("\nRecord : " + best).withStyle(ChatFormatting.AQUA));
 		for (Map.Entry<String, Integer> e : this.stats.topDeaths(3)) {
-			top.append(top.isEmpty() ? "\nTop morts : " : " · ").append(e.getKey()).append(' ').append(e.getValue());
+			text.append(Component.literal("\n☠ " + e.getKey() + "  " + e.getValue()).withStyle(ChatFormatting.RED));
 		}
-		Classroom.updateBoard(this.classroom, "Run #" + this.stats.runNumber
-				+ "\nChrono : " + (minutes >= 60 ? minutes / 60 + " h " + String.format("%02d", minutes % 60) : minutes + " min")
-				+ "\n" + deaths + (deaths > 1 ? " morts" : " mort") + "\nMeilleur split : " + best + top);
+		Classroom.updateBoard(this.classroom, text);
 	}
 
 	private void publishSnapshot() {

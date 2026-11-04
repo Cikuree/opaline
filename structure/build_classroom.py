@@ -300,13 +300,13 @@ def entities():
         "text": Compound({"text": String("Classroom Run"), "color": String("white"), "bold": Byte(1)}),
         "billboard": String("fixed"),
         "alignment": String("center"),
-        "line_width": Int(100),  # px de texte ; x scale 1.8 x 0.025 = 4.5 blocs de large max
+        "line_width": Int(170),  # px de texte ; x scale 1.15 x 0.025 = 4.9 blocs de large max (panneau : 5)
         "background": Int(0),    # transparent : le dos sombre est le panneau en dark_oak_planks
         "Rotation": List[Float]([Float(0.0), Float(0.0)]),
         "transformation": Compound({
             "translation": List[Float]([Float(0), Float(0), Float(0)]),
             "left_rotation": List[Float]([Float(0), Float(0), Float(0), Float(1)]),
-            "scale": List[Float]([Float(1.8), Float(1.8), Float(1.8)]),
+            "scale": List[Float]([Float(1.15), Float(1.15), Float(1.15)]),
             "right_rotation": List[Float]([Float(0), Float(0), Float(0), Float(1)]),
         }),
     })
