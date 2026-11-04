@@ -16,8 +16,18 @@ hash = "cb2e20a2792a2f96a7cc9603a50278fabe50877a886a7dd589e3dbec44589c4d"
 metafile = true
 
 [[files]]
+file = "mods/ferrite-core.pw.toml"
+hash = "069d81cab53c0141459ad4d70bcf3e10f17652f24cc62d3b4a0fc2cd2b700871"
+metafile = true
+
+[[files]]
 file = "mods/iris.pw.toml"
 hash = "3af2426b8d83a5fcda1ff6de2035d53bcff532653c196f2ea6d7647995e45131"
+metafile = true
+
+[[files]]
+file = "mods/mouse-tweaks.pw.toml"
+hash = "d9f809b321cdd117600e45f92215c8e750ed0b65641c18d394bb4c111019581d"
 metafile = true
 
 [[files]]

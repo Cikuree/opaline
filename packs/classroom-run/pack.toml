@@ -1,12 +1,12 @@
 name = "Classroom Run"
 version = "0.1.0"
-description = "Modpack Classroom Run (jar classroomrun ajoute par la CI, hors manifeste)"
+description = "Hardcore coopératif : vie partagée, mort collective."
 pack-format = "packwiz:1.1.0"
 
 [index]
 file = "index.toml"
 hash-format = "sha256"
-hash = "096026e22ce82bbc2ea93e42a79caf562f9306059b2a4e5f0ac21d531a64f5f5"
+hash = "76509e7632e0d5784b2958d1d844ecc83076831c917e41312da2323a66c9c4b7"
 
 [versions]
 fabric = "0.20.1"
