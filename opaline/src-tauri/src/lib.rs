@@ -898,6 +898,22 @@ async fn skins_list(state: State<'_, S>) -> CmdResult<Vec<skins::SkinView>> {
     state.blocking(|r| Ok(skins::Wardrobe::new(r.skins()).list())).await
 }
 
+/// Glisser-déposer d'un skin : contenu du PNG déposé sur la fenêtre, en base64 (l'interface le vérifie puis appelle `skin_import`).
+#[tauri::command]
+async fn skin_read(state: State<'_, S>, path: String) -> CmdResult<String> {
+    if !state.0.dropped.lock().unwrap().remove(std::path::Path::new(&path)) {
+        return Err("Fichier non reconnu : dépose-le sur la fenêtre d'Opaline".into());
+    }
+    state
+        .blocking(move |_| {
+            let p = std::path::Path::new(&path);
+            anyhow::ensure!(p.extension().is_some_and(|e| e.eq_ignore_ascii_case("png")), "seuls les PNG sont acceptés");
+            anyhow::ensure!(std::fs::metadata(p)?.len() as usize <= skins::MAX_SKIN_BYTES, "image trop lourde (256 Ko maximum)");
+            Ok(base64::engine::general_purpose::STANDARD.encode(std::fs::read(p)?))
+        })
+        .await
+}
+
 #[tauri::command]
 async fn skin_import(state: State<'_, S>, name: String, model: String, png_base64: String) -> CmdResult<skins::SkinView> {
     state
@@ -1106,6 +1122,7 @@ pub fn run_with(svc: Services) {
             textures_dir,
             skins_list,
             skin_import,
+            skin_read,
             skin_apply,
             skin_rename,
             skin_delete,

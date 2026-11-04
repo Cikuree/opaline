@@ -189,6 +189,20 @@ export function initAccount() {
   ['dragenter', 'dragover'].forEach((n) => dz.addEventListener(n, (e) => { e.preventDefault(); dz.classList.add('over'); }));
   ['dragleave', 'drop'].forEach((n) => dz.addEventListener(n, (e) => { e.preventDefault(); dz.classList.remove('over'); }));
   dz.addEventListener('drop', (e) => skinFile(e.dataTransfer.files[0]));
+  // Application Tauri : la fenêtre intercepte le glisser-déposer et ne fournit que des chemins (HTML5 ne reçoit rien)
+  const onAccount = () => $('#v-account').classList.contains('on') && !$('#wardrobe').hidden;
+  api.listen('tauri://drag-enter', () => { if (onAccount()) dz.classList.add('over'); });
+  api.listen('tauri://drag-leave', () => dz.classList.remove('over'));
+  api.listen('tauri://drag-drop', async (d) => {
+    dz.classList.remove('over');
+    if (!onAccount() || !d?.paths?.length) return;
+    const path = d.paths.find((p) => /\.png$/i.test(p));
+    if (!path) { $('#dropMsg').textContent = 'Format refusé : PNG uniquement.'; return toast('Fichier refusé : PNG requis'); }
+    try {
+      const bin = Uint8Array.from(atob(await api.skinRead(path)), (c) => c.charCodeAt(0));
+      skinFile(new File([bin], path.split(/[\\/]/).pop(), { type: 'image/png' }));
+    } catch (er) { toast(api.errMsg(er)); }
+  });
   $('#importSkin').addEventListener('click', async () => {
     if (!pending) return toast('Choisis d’abord un PNG 64×64 valide');
     try {

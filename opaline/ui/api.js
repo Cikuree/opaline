@@ -60,6 +60,7 @@ export const extraPackRemove = (id, kind, file) => call('extra_pack_remove', { i
 export const modrinthSearch = (id, query) => call('modrinth_search', { id, query });
 export const modrinthAdd = (id, projectId) => call('modrinth_add', { id, projectId });
 export const skinsList = () => call('skins_list');
+export const skinRead = (path) => call('skin_read', { path });
 export const skinImport = (name, model, pngBase64) => call('skin_import', { name, model, pngBase64 });
 export const skinApply = (id) => call('skin_apply', { id });
 export const skinRename = (id, name) => call('skin_rename', { id, name });

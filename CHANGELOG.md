@@ -1,5 +1,8 @@
 # Changelog
 
+## Opaline 0.6.10
+- Garde-robe : glisser un skin PNG sur la fenêtre fonctionne (l'application ne recevait pas le fichier).
+
 ## Opaline 0.6.9 et mod 0.4.9
 - Mod : nouvelle salle d'attente (murs verts à poutres, cheminée, salle à manger, verdure) avec un panneau de stats face au spawn : run, chrono, morts, meilleur split, top 3 des morts par joueur.
 - Mod : le clip de mort rejoue aussi les blocs (cratère d'explosion, blocs posés ou cassés) ; sous-titre de mort raccourci.
