@@ -3,6 +3,10 @@ package fr.classroomrun.game;
 import fr.classroomrun.ClassroomRun;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
@@ -51,8 +55,11 @@ public final class Classroom {
 	private static final Vec3 DEFAULT_SPAWN_OFFSET = new Vec3(7.5, 1.0, 6.5);
 	private static final int MAX_FOUNDATION_DEPTH = 48;
 	private static final int DRY_SEARCH_RADIUS = 1024;
+	private static final int DOORWAY_DEPTH = 4;
 	/** Surface checks generate chunks: bounded so a reset never stalls the server for long. */
-	private static final int MAX_DRY_CHECKS = 24;
+	private static final int MAX_DRY_CHECKS = 40;
+	/** Max height difference accepted under the room and around it, in blocks. */
+	private static final int MAX_SLOPE = 3;
 
 	/**
 	 * @param spawn   spawn position of the players
@@ -110,6 +117,7 @@ public final class Classroom {
 			}
 		}
 		ClassroomRun.LOGGER.info("Classroom blocks: placeInWorld={}, {} non-air blocks in the volume", ok, solid);
+		clearDoorways(level, origin, size);
 		if (!ok || solid == 0) {
 			ClassroomRun.LOGGER.error("Classroom placement produced no block (placeInWorld={})", ok);
 		}
@@ -240,6 +248,46 @@ public final class Classroom {
 		}
 	}
 
+	/**
+	 * Frees the way out of every door of the room: removes the terrain in front of it (3 wide, {@link #DOORWAY_DEPTH} deep,
+	 * door height) and fills holes at floor level, so a door never opens onto a slope or into the ground.
+	 */
+	private static void clearDoorways(ServerLevel level, BlockPos origin, Vec3i size) {
+		BlockPos max = origin.offset(size.getX() - 1, size.getY() - 1, size.getZ() - 1);
+		for (BlockPos p : BlockPos.betweenClosed(origin, max)) {
+			BlockState state = level.getBlockState(p);
+			if (!(state.getBlock() instanceof DoorBlock) || state.getValue(DoorBlock.HALF) != DoubleBlockHalf.LOWER) {
+				continue;
+			}
+			BlockPos door = p.immutable();
+			Direction out = state.getValue(DoorBlock.FACING);
+			if (inside(door.relative(out), origin, max)) {
+				out = out.getOpposite(); // the facing points into the room: the way out is behind
+			}
+			Direction side = out.getClockWise();
+			for (int d = 1; d <= DOORWAY_DEPTH; d++) {
+				for (int l = -1; l <= 1; l++) {
+					BlockPos column = door.relative(out, d).relative(side, l);
+					if (inside(column, origin, max)) {
+						continue;
+					}
+					for (int h = 0; h < 3; h++) {
+						level.setBlock(column.above(h), Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
+					}
+					BlockPos ground = column.below();
+					if (!level.getBlockState(ground).isSolid()) {
+						level.setBlock(ground, Blocks.GRASS_BLOCK.defaultBlockState(), Block.UPDATE_CLIENTS);
+					}
+				}
+			}
+		}
+	}
+
+	private static boolean inside(BlockPos p, BlockPos min, BlockPos max) {
+		return p.getX() >= min.getX() && p.getX() <= max.getX() && p.getY() >= min.getY() && p.getY() <= max.getY()
+				&& p.getZ() >= min.getZ() && p.getZ() <= max.getZ();
+	}
+
 	/** Median of the ground heights, minus one so the floor replaces the top block instead of resting on it. */
 	static int medianGround(int[] heights) {
 		int[] h = heights.clone();
@@ -248,14 +296,17 @@ public final class Classroom {
 	}
 
 	/**
-	 * Centre of a dry footprint near {@code start}: spirals outwards (16-block steps, up to {@link #DRY_SEARCH_RADIUS}),
-	 * skips ocean and river biomes cheaply, then checks the generated surface for fluids. Falls back to {@code start}.
+	 * Centre of a flat, dry footprint near {@code start}: spirals outwards (16-block steps, up to {@link #DRY_SEARCH_RADIUS}),
+	 * skips ocean and river biomes cheaply, then reads the generated surface. The first spot whose height varies by at most
+	 * {@link #MAX_SLOPE} blocks (room and a 2-block margin) wins; otherwise the flattest dry spot seen; otherwise {@code start}.
 	 */
 	private static BlockPos dryCenter(ServerLevel level, BlockPos start, Vec3i size) {
 		int checks = 0;
+		BlockPos best = null;
+		int bestSlope = Integer.MAX_VALUE;
 		for (int ring = 0; ring * 16 <= DRY_SEARCH_RADIUS && checks < MAX_DRY_CHECKS; ring++) {
-			for (int dx = -ring; dx <= ring; dx++) {
-				for (int dz = -ring; dz <= ring; dz++) {
+			for (int dx = -ring; dx <= ring && checks < MAX_DRY_CHECKS; dx++) {
+				for (int dz = -ring; dz <= ring && checks < MAX_DRY_CHECKS; dz++) {
 					if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) {
 						continue; // only the edge of the ring
 					}
@@ -263,17 +314,24 @@ public final class Classroom {
 					if (!landBiomes(level, c, size)) {
 						continue;
 					}
-					if (checks++ >= MAX_DRY_CHECKS) {
-						break;
+					checks++;
+					int slope = slope(level, c, size);
+					if (slope >= 0 && slope < bestSlope) {
+						best = c;
+						bestSlope = slope;
 					}
-					if (dry(level, c, size)) {
+					if (slope >= 0 && slope <= MAX_SLOPE) {
 						if (ring > 0) {
-							ClassroomRun.LOGGER.info("Classroom moved {} blocks from the world spawn to stay out of water", ring * 16);
+							ClassroomRun.LOGGER.info("Classroom moved {} blocks from the world spawn to find flat dry ground", ring * 16);
 						}
 						return c;
 					}
 				}
 			}
+		}
+		if (best != null) {
+			ClassroomRun.LOGGER.warn("No flat ground found near {}, using the flattest dry spot {} (height varies by {})", start, best, bestSlope);
+			return best;
 		}
 		ClassroomRun.LOGGER.warn("No dry ground found near {}, the classroom is placed there anyway", start);
 		return start;
@@ -295,17 +353,26 @@ public final class Classroom {
 		return true;
 	}
 
-	/** Generated surface without fluid (water, lava) at the centre and the corners of the footprint. */
-	private static boolean dry(ServerLevel level, BlockPos c, Vec3i size) {
-		for (int[] o : footprintSamples(c, size)) {
-			int x = c.getX() + o[0], z = c.getZ() + o[1];
-			level.getChunk(x >> 4, z >> 4); // generated before reading the heightmap
-			int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
-			if (!level.getFluidState(new BlockPos(x, y - 1, z)).isEmpty() || !level.getFluidState(new BlockPos(x, y, z)).isEmpty()) {
-				return false;
+	/**
+	 * Height difference (max - min) of the surface on a 5×5 grid covering the room plus a 2-block margin, or -1 when a sample
+	 * is water or lava. Generates the chunks it reads.
+	 */
+	private static int slope(ServerLevel level, BlockPos c, Vec3i size) {
+		int hx = size.getX() / 2 + 2, hz = size.getZ() / 2 + 2;
+		int min = Integer.MAX_VALUE, max = Integer.MIN_VALUE;
+		for (int i = 0; i <= 4; i++) {
+			for (int j = 0; j <= 4; j++) {
+				int x = c.getX() - hx + i * hx / 2, z = c.getZ() - hz + j * hz / 2;
+				level.getChunk(x >> 4, z >> 4); // generated before reading the heightmap
+				int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
+				if (!level.getFluidState(new BlockPos(x, y - 1, z)).isEmpty() || !level.getFluidState(new BlockPos(x, y, z)).isEmpty()) {
+					return -1;
+				}
+				min = Math.min(min, y);
+				max = Math.max(max, y);
 			}
 		}
-		return true;
+		return max - min;
 	}
 
 	/** Fills (stone) the gap between the ground and the room floor so the room does not hover on slopes or water. */
