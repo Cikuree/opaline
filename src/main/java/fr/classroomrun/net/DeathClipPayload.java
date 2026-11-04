@@ -24,16 +24,34 @@ import net.minecraft.world.level.Level;
  * @param sampleTicks game ticks between two frames (2 = 10 frames per second)
  * @param frameCount  number of frames of the clip
  * @param actors      recorded entities, the victim included
+ * @param blocks      block changes around the anchor, ordered by time (see {@link BlockChange})
  */
 public record DeathClipPayload(UUID victim, ResourceKey<Level> dimension, double anchorX, double anchorY, double anchorZ,
-		int sampleTicks, int frameCount, List<Actor> actors) implements CustomPacketPayload {
+		int sampleTicks, int frameCount, List<Actor> actors, List<BlockChange> blocks) implements CustomPacketPayload {
 	public static final Type<DeathClipPayload> TYPE = new Type<>(ClassroomRunNetworking.id("death_clip"));
 
 	/** Per-frame flag bits of {@link Actor#flags()}. */
 	public static final int ON_GROUND = 1, CROUCHING = 1 << 1, SPRINTING = 1 << 2, SWING = 1 << 3, HURT = 1 << 4,
 			FALL_FLYING = 1 << 5;
-	/** Hard caps so the payload stays far below the 1 MiB custom payload limit. */
-	public static final int MAX_ACTORS = 32, MAX_FRAMES = 600;
+	/**
+	 * Hard caps so the payload stays far below the 1 MiB custom payload limit. Worst case: 32 actors * 600 frames * 16 bytes
+	 * (3 floats + 3 angle bytes + flags) = 307 KB, + 4096 block changes * 11 bytes (frame 2, dx/dy/dz 3, two 3-byte state ids)
+	 * = 45 KB, + strings (32 * ~250 B) = about 360 KB.
+	 */
+	public static final int MAX_ACTORS = 32, MAX_FRAMES = 600, MAX_BLOCK_CHANGES = 4096;
+	/** Block changes are kept within this many blocks of the anchor on each axis (fits a signed byte). */
+	public static final int BLOCK_RADIUS = 48;
+
+	/**
+	 * One block change.
+	 *
+	 * @param frame    first clip frame that shows the new state, in {@code [0, frameCount]}
+	 * @param dx       position relative to the anchor block (floor of the anchor)
+	 * @param oldState block state id before ({@code Block.BLOCK_STATE_REGISTRY} id; unknown ids decode to air on the client)
+	 * @param newState block state id after
+	 */
+	public record BlockChange(int frame, int dx, int dy, int dz, int oldState, int newState) {
+	}
 
 	/**
 	 * One recorded entity, present during frames {@code [firstFrame, firstFrame + frames)}.
@@ -105,6 +123,15 @@ public record DeathClipPayload(UUID victim, ResourceKey<Level> dimension, double
 		for (Actor a : p.actors()) {
 			encodeActor(buf, a);
 		}
+		ByteBufCodecs.VAR_INT.encode(buf, p.blocks().size());
+		for (BlockChange b : p.blocks()) {
+			ByteBufCodecs.VAR_INT.encode(buf, b.frame());
+			buf.writeByte(b.dx());
+			buf.writeByte(b.dy());
+			buf.writeByte(b.dz());
+			ByteBufCodecs.VAR_INT.encode(buf, b.oldState());
+			ByteBufCodecs.VAR_INT.encode(buf, b.newState());
+		}
 	}, buf -> {
 		UUID victim = UUIDUtil.STREAM_CODEC.decode(buf);
 		ResourceKey<Level> dim = ResourceKey.streamCodec(Registries.DIMENSION).decode(buf);
@@ -119,7 +146,24 @@ public record DeathClipPayload(UUID victim, ResourceKey<Level> dimension, double
 		for (int i = 0; i < count; i++) {
 			actors.add(decodeActor(buf, frames));
 		}
-		return new DeathClipPayload(victim, dim, x, y, z, sample, frames, List.copyOf(actors));
+		int blockCount = ByteBufCodecs.VAR_INT.decode(buf);
+		if (blockCount < 0 || blockCount > MAX_BLOCK_CHANGES) {
+			throw new IllegalArgumentException("bad clip block count " + blockCount);
+		}
+		List<BlockChange> blocks = new ArrayList<>(blockCount);
+		for (int i = 0; i < blockCount; i++) {
+			int frame = ByteBufCodecs.VAR_INT.decode(buf);
+			if (frame < 0 || frame > frames) {
+				throw new IllegalArgumentException("bad clip block frame " + frame);
+			}
+			int dx = buf.readByte(), dy = buf.readByte(), dz = buf.readByte();
+			int oldState = ByteBufCodecs.VAR_INT.decode(buf), newState = ByteBufCodecs.VAR_INT.decode(buf);
+			if (oldState < 0 || newState < 0) {
+				throw new IllegalArgumentException("bad clip block state");
+			}
+			blocks.add(new BlockChange(frame, dx, dy, dz, oldState, newState));
+		}
+		return new DeathClipPayload(victim, dim, x, y, z, sample, frames, List.copyOf(actors), List.copyOf(blocks));
 	});
 
 	@Override

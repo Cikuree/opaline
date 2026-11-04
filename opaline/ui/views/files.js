@@ -31,7 +31,7 @@ export function syncBusy() {
   $('#btnUninst').disabled = !p.installed || busy();
   $('#fileBurger').disabled = !p.installed;
   $$('#backupsBox [data-bk]').forEach((b) => (b.disabled = busy()));
-  $('#shSel').disabled = busy(); $$('#shaderCard button').forEach((b) => { b.disabled = busy(); });
+  $('#shSel').disabled = busy(); $$('#shaderCard button').forEach((b) => { b.disabled = busy() && b.id !== 'shGo'; }); // chercher reste possible en jeu
   syncExtrasBusy();
   const a = $('#packCard [data-act]'); if (a) a.disabled = busy();
 }

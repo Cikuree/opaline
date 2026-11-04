@@ -135,7 +135,12 @@ public final class DebugCommand {
 				new DeathClipPayload.Actor(1, "minecraft:zombie", Optional.empty(), "", "minecraft:stone_axe", 0, zp, zr, zf),
 				new DeathClipPayload.Actor(2, "minecraft:skeleton", Optional.empty(), "", "minecraft:bow", 0, sp, sr, sf));
 		ClientHandlers.onDeathClip(new DeathClipPayload(player.getUUID(), player.level().dimension(), player.getX(),
-				player.getY(), player.getZ(), 2, n, actors));
+				player.getY(), player.getZ(), 2, n, actors,
+				List.of( // a TNT block beside the player that vanishes with a hole under it at mid-clip
+						new DeathClipPayload.BlockChange(n / 2, 2, 0, 0, net.minecraft.world.level.block.Block
+								.getId(net.minecraft.world.level.block.Blocks.TNT.defaultBlockState()), 0),
+						new DeathClipPayload.BlockChange(n / 2, 2, -1, 0, net.minecraft.world.level.block.Block
+								.getId(net.minecraft.world.level.block.Blocks.GOLD_BLOCK.defaultBlockState()), 0))));
 		fr.classroomrun.client.clip.ClipClient.markDebug();
 		ClientHandlers.onReadyState(new ReadyStatePayload(1, 3, 45));
 		return reply(c, "clip simule");

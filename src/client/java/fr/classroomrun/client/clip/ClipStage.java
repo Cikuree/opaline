@@ -43,6 +43,7 @@ final class ClipStage {
 	private final Fake[] fakes;
 	private final Fake victim;
 	private final OrbitCamera orbit;
+	private final ClipTerrain terrain;
 	private final Entity camera;
 	private final float[] tmp = new float[ClipMath.OUT];
 	private final CameraType savedCameraType;
@@ -87,6 +88,7 @@ final class ClipStage {
 			startYaw = ClipMath.unpackAngle(v.actor.rot()[3 * (v.actor.frames() - 1)]);
 		}
 		this.orbit = new OrbitCamera(startYaw);
+		this.terrain = new ClipTerrain(level, clip);
 		this.targetX = clip.anchorX();
 		this.targetY = clip.anchorY();
 		this.targetZ = clip.anchorZ();
@@ -130,6 +132,7 @@ final class ClipStage {
 				this.targetZ = this.clip.anchorZ() + this.tmp[2];
 			}
 		}
+		this.terrain.update(frame);
 		this.orbit.update(this.targetX, this.targetY, this.targetZ);
 		this.camera.snapTo(this.orbit.x, this.orbit.y, this.orbit.z, this.orbit.yRot, this.orbit.xRot);
 		// a ClientboundSetCameraPacket may have replaced the camera
@@ -260,6 +263,7 @@ final class ClipStage {
 
 	/** Removes the fakes and gives the camera back to the player. */
 	void close(Minecraft mc) {
+		this.terrain.restore();
 		for (Fake f : this.fakes) {
 			despawn(f);
 		}

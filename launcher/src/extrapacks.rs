@@ -362,3 +362,28 @@ mod tests {
         assert!(d.instance().join("shaderpacks").join("BSL.zip").is_file());
     }
 }
+
+#[cfg(test)]
+mod network_tests {
+    /// Vrai Modrinth : recherche « derivative » puis ajout du premier shader pour Minecraft 26.3. `cargo test -- --ignored shader_real`.
+    #[test]
+    #[ignore]
+    fn shader_real_search_and_add() {
+        use crate::modrinth::Api;
+        let api = crate::modrinth::Http::default_api().unwrap();
+        for q in ["dercode", "complementary"] {
+            let hits = api.search(q, "26.3", crate::modrinth::SHADERS).unwrap();
+            println!("{q}: {:?}", hits.iter().map(|h| &h.title).collect::<Vec<_>>());
+            let Some(h) = hits.first() else { continue };
+            let base = std::env::temp_dir().join(format!("opaline-shader-real-{}-{q}", std::process::id()));
+            let dirs = crate::config::Dirs::new(&base).for_pack("p").unwrap();
+            std::fs::create_dir_all(dirs.instance()).unwrap();
+            let client = crate::download::http_client().unwrap();
+            let file = super::add_modrinth_shader(&dirs, &api, &h.project_id, "26.3", &|r, dest| crate::extramods::download_job(&client, r, dest)).unwrap();
+            let path = dirs.instance().join("shaderpacks").join(&file);
+            println!("{q}: ajouté {file} ({} octets), actif : {:?}", std::fs::metadata(&path).unwrap().len(), crate::prefs::shaders_get(&dirs).active);
+            assert_eq!(crate::prefs::shaders_get(&dirs).active.as_deref(), Some(file.as_str()));
+            let _ = std::fs::remove_dir_all(&base);
+        }
+    }
+}

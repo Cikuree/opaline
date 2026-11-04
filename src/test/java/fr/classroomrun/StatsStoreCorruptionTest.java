@@ -95,7 +95,7 @@ class StatsStoreCorruptionTest {
 		Path file = dir.resolve("stats.json");
 		Files.writeString(file, "garbage");
 		RunStats s = StatsStore.load(file, recording(new ArrayList<>()));
-		s.recordDeath();
+		s.recordDeath("Alex");
 		StatsStore.save(file, s);
 		assertEquals(1, StatsStore.load(file, recording(new ArrayList<>())).deaths);
 	}

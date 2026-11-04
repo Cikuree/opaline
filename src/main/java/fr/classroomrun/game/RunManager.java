@@ -45,6 +45,8 @@ import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.dimension.end.EnderDragonFight;
 import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.level.storage.LevelData;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.Nullable;
 
@@ -52,6 +54,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
@@ -94,6 +97,8 @@ public final class RunManager {
 	/** False before /run start (waiting in the classroom: no damage, no split probing). */
 	private boolean started;
 	/** Incremented at each reset and each /run start; with the run number it identifies the "clean slate" of a player. */
+	/** Longest death subtitle shown under « Vous êtes morts » (vanilla titles are one line and get cut by the screen). */
+	private static final int SUBTITLE_MAX = 48;
 	private int epoch;
 	/** Chrono running and splits probed: started and not finished. */
 	private boolean active;
@@ -106,6 +111,11 @@ public final class RunManager {
 	private final ClipRecorder clips = new ClipRecorder();
 	/** Clip built at the death, kept during the wait to resend it to ghosts joining late; null without clip. */
 	private @Nullable DeathClipPayload clipPayload;
+	/** Death whose clip is built on the next tick, so the block changes of the fatal tick (crater) are recorded too. */
+	private record PendingClip(ServerPlayer victim, Vec3 pos, ResourceKey<Level> dimension) {
+	}
+
+	private @Nullable PendingClip pendingClip;
 	private long tickCount;
 	private boolean dirty;
 
@@ -160,6 +170,10 @@ public final class RunManager {
 
 	public TeamSync team() {
 		return this.team;
+	}
+
+	public ClipRecorder clips() {
+		return this.clips;
 	}
 
 	public @Nullable RunWorlds worlds() {
@@ -270,7 +284,7 @@ public final class RunManager {
 		if (isEnding()) {
 			return;
 		}
-		this.stats.recordDeath();
+		this.stats.recordDeath(victim.getGameProfile().name());
 		this.stats.totalTimeMs = this.clock.totalTimeMs();
 		// leave the dying state so vanilla death handling (hurtServer continues after the event) has nothing to do
 		victim.setHealth(victim.getMaxHealth());
@@ -283,18 +297,16 @@ public final class RunManager {
 				victim.level().dimension());
 		this.journal.onDeath(victim, source, payload);
 		sendAll(payload);
-		DeathClipPayload clip = this.config.clipEnabled
-				? this.clips.build(victim, victim.position(), victim.level().dimension(), this.server.getPlayerList().getPlayers())
-				: null;
+		boolean clip = this.config.clipEnabled;
+		if (clip) {
+			this.pendingClip = new PendingClip(victim, victim.position(), victim.level().dimension());
+		}
 		int min = Math.max(0, this.config.deathResetDelayTicks);
-		this.deathWait = new ClipWait(min, clip != null ? Math.max(min, this.config.clipMaxWaitTicks) : min, CLIP_GRACE_TICKS);
+		this.deathWait = new ClipWait(min, clip ? Math.max(min, this.config.clipMaxWaitTicks) : min, CLIP_GRACE_TICKS);
 		this.clipReady.clear();
 		this.lastReady = -1;
-		this.clipPayload = clip;
-		showDeath(payload.message(), clip != null); // tags the ghosts first: the clip only goes to them
-		if (clip != null) {
-			onlineGhosts().forEach(this::sendClip);
-		}
+		this.clipPayload = null;
+		showDeath(payload.message(), clip); // tags the ghosts first: the clip only goes to them
 		refreshBoard();
 		broadcastState();
 		save();
@@ -304,8 +316,9 @@ public final class RunManager {
 	/** Everybody sees the death: members become spectators until the reset, with a title over the death message. */
 	private void showDeath(String message, boolean clip) {
 		int seconds = Math.max(1, this.deathWait.secondsLeft());
-		Component subtitle = Component.literal(message + (clip ? " · regardez le clip puis cliquez Prêt" : " · nouvelle run dans " + seconds + " s"))
-				.withStyle(ChatFormatting.GRAY);
+		// Titles never wrap: the subtitle is the death message alone, cut to fit a small window (the clip screen explains « Prêt »)
+		String text = message.length() > SUBTITLE_MAX ? message.substring(0, SUBTITLE_MAX - 1).stripTrailing() + "…" : message;
+		Component subtitle = Component.literal(text).withStyle(ChatFormatting.GRAY);
 		for (ServerPlayer player : List.copyOf(this.server.getPlayerList().getPlayers())) {
 			if (TeamSync.isMember(player)) {
 				player.addTag(GHOST_TAG);
@@ -350,6 +363,7 @@ public final class RunManager {
 		this.clipReady.clear();
 		this.clips.clear();
 		this.clipPayload = null;
+		this.pendingClip = null;
 		sendAll(new ReadyStatePayload(0, 0, 0)); // "clip over" signal
 		this.epoch++;
 		if (!this.active) {
@@ -478,6 +492,9 @@ public final class RunManager {
 		if (running && this.tickCount % 100 == 0) {
 			broadcastState();
 		}
+		if (this.tickCount % 1200 == 0) {
+			refreshBoard(); // the chrono line moves once a minute
+		}
 		if (this.tickCount % 20 == 0) {
 			publishSnapshot();
 		}
@@ -491,7 +508,22 @@ public final class RunManager {
 		return this.server.getPlayerList().getPlayers().stream().filter(p -> p.entityTags().contains(GHOST_TAG)).toList();
 	}
 
+	/** Builds and sends the clip one tick after the death (see {@link PendingClip}); the victim may be gone by then. */
+	private void finishClip() {
+		PendingClip p = this.pendingClip;
+		this.pendingClip = null;
+		this.clipPayload = this.clips.build(p.victim(), p.pos(), p.dimension(), this.server.getPlayerList().getPlayers());
+		if (this.clipPayload == null) { // nothing to watch: plain delay
+			int min = Math.max(0, this.config.deathResetDelayTicks);
+			this.deathWait = new ClipWait(min, min, CLIP_GRACE_TICKS);
+		}
+		onlineGhosts().forEach(this::sendClip);
+	}
+
 	private void tickDeathWait() {
+		if (this.pendingClip != null) {
+			finishClip();
+		}
 		List<ServerPlayer> ghosts = onlineGhosts();
 		this.clipReady.retainAll(ghosts.stream().map(ServerPlayer::getUUID).collect(java.util.stream.Collectors.toSet()));
 		int ready = this.clipReady.size();
@@ -593,8 +625,14 @@ public final class RunManager {
 		int bestIndex = Math.max(-1, Math.min(Split.values().length - 1, this.stats.bestSplit));
 		String best = bestIndex >= 0 ? SPLIT_LABELS[bestIndex] : "aucun";
 		int deaths = this.stats.deaths;
-		Classroom.updateBoard(this.classroom, "Run #" + this.stats.runNumber + "\n" + deaths + (deaths > 1 ? " morts" : " mort")
-				+ "\nMeilleur split : " + best);
+		long minutes = this.clock.totalTimeMs() / 60_000;
+		StringBuilder top = new StringBuilder();
+		for (Map.Entry<String, Integer> e : this.stats.topDeaths(3)) {
+			top.append(top.isEmpty() ? "\nTop morts : " : " · ").append(e.getKey()).append(' ').append(e.getValue());
+		}
+		Classroom.updateBoard(this.classroom, "Run #" + this.stats.runNumber
+				+ "\nChrono : " + (minutes >= 60 ? minutes / 60 + " h " + String.format("%02d", minutes % 60) : minutes + " min")
+				+ "\n" + deaths + (deaths > 1 ? " morts" : " mort") + "\nMeilleur split : " + best + top);
 	}
 
 	private void publishSnapshot() {
@@ -603,7 +641,7 @@ public final class RunManager {
 			h.publish(new StatsSnapshot(this.stats.runNumber, this.clock.totalTimeMs(), this.stats.deaths,
 					this.stats.currentSplit(), this.stats.reachedSplits, this.stats.bestSplit,
 					this.server.getPlayerList().getPlayers().stream().map(p -> p.getGameProfile().name()).toList(),
-					this.active && !isEnding()));
+					this.active && !isEnding() && !this.server.getPlayerList().getPlayers().isEmpty())); // same rule as the clock: paused with nobody online
 		}
 	}
 

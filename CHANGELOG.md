@@ -1,5 +1,12 @@
 # Changelog
 
+## Opaline 0.6.9 et mod 0.4.9
+- Mod : nouvelle salle d'attente (murs verts à poutres, cheminée, salle à manger, verdure) avec un panneau de stats face au spawn : run, chrono, morts, meilleur split, top 3 des morts par joueur.
+- Mod : le clip de mort rejoue aussi les blocs (cratère d'explosion, blocs posés ou cassés) ; sous-titre de mort raccourci.
+- Mod : le chrono ne semble plus avancer quand personne n'est connecté.
+- Accueil : « Mon temps de jeu » (temps personnel) sur tous les packs ; chrono total sans secondes.
+- Shaders : recherche sans filtre de version et possible jeu ouvert ; Mes mods : « Ajouter » revient après « Retirer ».
+
 ## Opaline 0.6.8
 - Accueil : le temps total s'affiche en heures et minutes (« 12 h 34 »).
 - Accueil : la ligne de temps de jeu ne colle plus aux boutons en fenêtre réduite.

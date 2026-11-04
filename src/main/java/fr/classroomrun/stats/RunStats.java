@@ -1,6 +1,10 @@
 package fr.classroomrun.stats;
 
 import fr.classroomrun.net.Split;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Persistent run statistics (no Minecraft dependency). Serialised as JSON by {@link StatsStore}.
@@ -17,6 +21,8 @@ public final class RunStats {
 	public int reachedSplits;
 	/** Highest split ordinal ever reached over all runs, -1 if none. */
 	public int bestSplit = -1;
+	/** Deaths per player name (the player whose death ended the run). */
+	public Map<String, Integer> deathsByPlayer = new LinkedHashMap<>();
 
 	/** Starts a new run: increments the number and forgets the splits of the previous one. */
 	public void newRun() {
@@ -31,9 +37,11 @@ public final class RunStats {
 		this.runNumber = 0;
 		this.reachedSplits = 0;
 		this.bestSplit = -1;
+		this.deathsByPlayer.clear();
 	}
 
-	public void recordDeath() {
+	public void recordDeath(String player) {
+		this.deathsByPlayer.merge(player, 1, Integer::sum);
 		this.deaths++;
 	}
 
@@ -55,6 +63,10 @@ public final class RunStats {
 		this.runNumber = Math.max(0, this.runNumber);
 		this.reachedSplits &= (1 << n) - 1;
 		this.bestSplit = Math.max(-1, Math.min(n - 1, this.bestSplit));
+		if (this.deathsByPlayer == null) {
+			this.deathsByPlayer = new LinkedHashMap<>(); // stats saved before this field existed
+		}
+		this.deathsByPlayer.values().removeIf(v -> v == null || v <= 0);
 	}
 
 	/**
@@ -71,6 +83,11 @@ public final class RunStats {
 			}
 		}
 		return Split.values().length;
+	}
+
+	/** The {@code n} players with the most deaths, most first (ties: first recorded first). */
+	public List<Map.Entry<String, Integer>> topDeaths(int n) {
+		return this.deathsByPlayer.entrySet().stream().sorted(Map.Entry.<String, Integer>comparingByValue(Comparator.reverseOrder())).limit(n).toList();
 	}
 
 	public boolean finished() {

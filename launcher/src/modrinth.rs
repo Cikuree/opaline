@@ -116,7 +116,9 @@ pub fn loaders_for(loader: &str) -> Vec<&str> {
 pub fn search_url(base: &str, query: &str, mc: &str, loader: &str) -> Result<String> {
     let cats = loaders_for(loader).iter().map(|l| format!("\"categories:{l}\"")).collect::<Vec<_>>().join(",");
     let kind = if loader == SHADERS { "shader" } else { "mod" };
-    let facets = format!("[[\"project_type:{kind}\"],[\"versions:{mc}\"],[{cats}],[\"client_side:required\",\"client_side:optional\"]]");
+    // Shaders: no game version filter. Most packs work on any recent version through Iris but are slow to list the newest one.
+    let versions = if loader == SHADERS { String::new() } else { format!("[\"versions:{mc}\"],") };
+    let facets = format!("[[\"project_type:{kind}\"],{versions}[{cats}],[\"client_side:required\",\"client_side:optional\"]]");
     Ok(reqwest::Url::parse_with_params(&format!("{base}/search"), [("query", query), ("facets", facets.as_str()), ("limit", "20")])?.to_string())
 }
 
@@ -131,8 +133,11 @@ pub fn versions_url(base: &str, project: &str, mc: &str, loader: &str) -> Result
     check_project(project)?;
     let loaders = format!("[{}]", loaders_for(loader).iter().map(|l| format!("\"{l}\"")).collect::<Vec<_>>().join(","));
     let games = format!("[\"{mc}\"]");
-    Ok(reqwest::Url::parse_with_params(&format!("{base}/project/{project}/version"), [("loaders", loaders.as_str()), ("game_versions", games.as_str())])?
-        .to_string())
+    let mut params = vec![("loaders", loaders.as_str())];
+    if loader != SHADERS {
+        params.push(("game_versions", games.as_str())); // shaders: newest release, whatever versions it lists
+    }
+    Ok(reqwest::Url::parse_with_params(&format!("{base}/project/{project}/version"), params)?.to_string())
 }
 
 pub trait Api {
@@ -248,10 +253,11 @@ mod tests {
             .unwrap()
             .1
             .into_owned();
-        assert!(dec.starts_with(r#"[["project_type:shader"],["versions:1.21.1"],["categories:iris","categories:optifine"]"#));
+        assert!(dec.starts_with(r#"[["project_type:shader"],["categories:iris","categories:optifine"]"#)); // no version filter
         let q: std::collections::HashMap<_, _> =
             reqwest::Url::parse(&versions_url(API, "bsl", "1.21.1", SHADERS).unwrap()).unwrap().query_pairs().into_owned().collect();
         assert_eq!(q["loaders"], r#"["iris","optifine"]"#);
+        assert!(!q.contains_key("game_versions"));
     }
 
     #[test]

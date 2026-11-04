@@ -13,7 +13,7 @@ const KIND = { resourcepack: 'Resource pack', shader: 'Shader' };
 let showAllPacks = false;
 
 export function syncExtrasBusy() {
-  $$('#extraCard button, #packsCard button').forEach((b) => { if (b.id !== 'mrGo' || busy()) b.disabled = busy(); });
+  $$('#extraCard button, #packsCard button').forEach((b) => { b.disabled = busy() && b.id !== 'mrGo'; }); // chercher reste possible en jeu
 }
 
 export async function renderExtras() {
@@ -106,7 +106,14 @@ export function initExtras(refreshShaders = () => {}) {
     if (e.target.closest('#extraMore')) { showAll = !showAll; return renderExtras(); }
     const b = e.target.closest('[data-rm]'); if (!b) return;
     b.disabled = true;
-    try { const gone = await api.extraModRemove(current().id, b.dataset.rm); toast(gone.length > 1 ? `Retiré : ${gone.join(', ')} (dépendances comprises)` : 'Mod retiré'); } catch (er) { toast(api.errMsg(er)); }
+    try {
+      const gone = await api.extraModRemove(current().id, b.dataset.rm); toast(gone.length > 1 ? `Retiré : ${gone.join(', ')} (dépendances comprises)` : 'Mod retiré');
+      // le résultat de recherche du mod retiré redevient « Ajouter »
+      const key = (t) => t.toLowerCase().replace(/[^a-z0-9]/g, ''); // « FerriteCore » ↔ « ferritecore-9.0.0-fabric.jar »
+      const names = gone.map(key);
+      $$('#mrBox [data-add]').forEach((x) => { const t = key(x.dataset.t); if (t && names.some((n) => n.startsWith(t))) { x.disabled = false; x.textContent = 'Ajouter'; } });
+      $('#extraMsg').textContent = '';
+    } catch (er) { toast(api.errMsg(er)); }
     renderExtras();
   });
 }

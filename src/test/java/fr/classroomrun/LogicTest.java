@@ -105,7 +105,7 @@ class LogicTest {
 		Path file = dir.resolve("stats.json");
 		RunStats s = new RunStats();
 		s.newRun();
-		s.recordDeath();
+		s.recordDeath("Alex");
 		s.totalTimeMs = 4242;
 		StatsStore.save(file, s);
 		RunStats read = StatsStore.load(file, LoggerFactory.getLogger("test"));

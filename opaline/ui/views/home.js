@@ -44,8 +44,8 @@ export async function refreshStats() {
 }
 
 function areas(cr, srv, news) {
-  const n = ['"hero"', srv && '"server"', cr && '"splits" "stat" "deaths"', news && '"news"'].filter(Boolean).join(' ');
-  const w = [srv ? '"hero server"' : '"hero hero"', cr && '"splits splits" "stat deaths"', news && '"news news"'].filter(Boolean).join(' ');
+  const n = ['"hero"', srv && '"server"', cr ? '"splits" "stat" "deaths"' : '"stat"', news && '"news"'].filter(Boolean).join(' ');
+  const w = [srv ? '"hero server"' : '"hero hero"', cr ? '"splits splits" "stat deaths"' : '"stat stat"', news && '"news news"'].filter(Boolean).join(' ');
   return [n, w];
 }
 
@@ -58,7 +58,7 @@ function blob() {
    <linearGradient id="gc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f6dcc8"/><stop offset="1" stop-color="#f3b9c8"/></linearGradient></defs>
    <g aria-hidden="true">${L('b', -3, b(98, 6.5, 5, 2.4, 2, 9), 'url(#gc)', .85)}${L('d', -2, b(104, 7, 5, 0, -7, 4), 'url(#gv)', .85)}${L('', -5, b(101, 7, 6, 1.3, 8, -4), 'url(#go)', .8)}${L('c', -7, b(107, 6, 7, .8, -3, -7), '#fff', .14)}
     <circle cx="150" cy="150" r="84" fill="#1d0b11"/>
-    <g text-anchor="middle"><text x="150" y="138" font-size="12" font-weight="600" fill="#f3cfd2">Temps total</text><text id="statVal" x="150" y="172" font-size="34" font-weight="800" fill="#fff" letter-spacing="-1">—</text></g></g>`;
+    <g text-anchor="middle"><text x="150" y="138" font-size="12" font-weight="600" fill="#f3cfd2">Mon temps de jeu</text><text id="statVal" x="150" y="172" font-size="34" font-weight="800" fill="#fff" letter-spacing="-1">—</text></g></g>`;
 }
 // Heures et minutes (« 1 h 05 ») ; moins d'une heure : minutes seules
 const fmtHours = (ms) => { const m = Math.floor(ms / 60e3); return m >= 60 ? Math.floor(m / 60).toLocaleString('fr-FR').replace(/\s/g, ' ') + ' h ' + String(m % 60).padStart(2, '0') : m + ' min'; };
@@ -100,7 +100,7 @@ function renderHero(p, st, cr) {
   $('#runState').innerHTML = cr ? (s ? `<span class="dot ${s.running ? '' : 'idle'}"></span>${s.running ? 'En cours' : 'En pause'}` : '<span class="dot idle"></span>En attente du serveur') : `<span class="dot ${st === 'ok' || st === 'upd' ? '' : 'idle'}"></span>${STATUS[st]}`;
   const best = s?.bestSplit ? splitByKey(s.bestSplit) : null;
   $('#heroStats').innerHTML = cr
-    ? `<div><b id="chrono">${s ? hms(s.totalTimeMs) : '—'}</b><span>Chrono total</span></div><div><b>${s ? Number(s.deaths) : '—'}</b><span>Morts cumulées</span></div><div><b style="font-size:clamp(14px,4cqi,18px);line-height:1.4">${best ? esc(best.label) : '—'}</b><span>Meilleur split</span></div>`
+    ? `<div><b id="chrono">${s ? fmtHours(s.totalTimeMs) : '—'}</b><span>Chrono total</span></div><div><b>${s ? Number(s.deaths) : '—'}</b><span>Morts cumulées</span></div><div><b style="font-size:clamp(14px,4cqi,18px);line-height:1.4">${best ? esc(best.label) : '—'}</b><span>Meilleur split</span></div>`
     : `<div><b>${Number(p.modsCount)}</b><span>Mods</span></div><div><b>${esc(p.mc)}</b><span>Minecraft</span></div><div><b style="font-size:18px;line-height:1.4">${esc(loaderName(p.loader))}</b><span>Chargeur</span></div>`;
   const art = cr
     ? tex('ender_eye', 96, 'dragon sm') + tex('blaze_rod', 48, 'eye') + tex('diamond', 48, 'dia') + tex('ender_pearl', 32, 'p3') + tex('end_stone', 32, 'p4')
@@ -142,14 +142,18 @@ function renderServer(p) {
 }
 const motdBad = (s) => s.online && !s.motdOk && !s.help;
 
+/** Temps de jeu personnel sur ce pack (mesuré par Opaline), indépendant du chrono de la run. */
+function renderPlay(p) {
+  const secs = state.playtime?.[p.id]?.totalSecs, v = secs ? fmtHours(secs * 1000) : '—';
+  $('#statVal').textContent = v;
+  $('#statVal').setAttribute('font-size', v.length > 8 ? 26 : 34); // « 1 234 h 05 » tient dans le disque
+  $('#statSvg').setAttribute('aria-label', secs ? `Mon temps de jeu : ${v}` : 'Aucun temps de jeu mesuré');
+}
+
 function renderSplits(s) {
   const done = new Set(s?.reachedSplits || []), cur = s ? s.currentSplit : -1;
   $('#splCount').textContent = s ? `${done.size} sur ${SPLITS.length} atteints` : '';
   $('#splits').innerHTML = SPLITS.map((x, i) => { const c = done.has(x.k) ? 'done' : i === cur ? 'cur' : 'next'; return `<li class="split ${c}" ${c === 'cur' ? 'aria-current="step"' : ''}>${tex(x.tex, 48)}<b>${x.label}</b><span>${c === 'cur' ? 'en cours' : c === 'done' ? 'atteint' : '—'}</span></li>`; }).join('');
-  const ms = s ? s.totalTimeMs : 0;
-  $('#statVal').textContent = s ? fmtHours(ms) : '—';
-  $('#statVal').setAttribute('font-size', $('#statVal').textContent.length > 8 ? 26 : 34); // « 1 234 h 05 » tient dans le disque
-  $('#statSvg').setAttribute('aria-label', s ? `Temps total : ${fmtHours(ms).replace(' ', ' ')}` : 'Temps total indisponible');
 }
 
 function renderDeaths() {
@@ -186,10 +190,11 @@ export function renderHome() {
   renderPacks();
   const [an, aw] = areas(cr, srv, news);
   $('#home').style.setProperty('--areas-n', an); $('#home').style.setProperty('--areas-w', aw);
-  $('#cardServer').hidden = !srv; ['cardSplits', 'cardStat', 'cardDeaths'].forEach((i) => ($('#' + i).hidden = !cr)); $('#cardNews').hidden = !news;
+  $('#cardServer').hidden = !srv; ['cardSplits', 'cardDeaths'].forEach((i) => ($('#' + i).hidden = !cr)); $('#cardNews').hidden = !news;
   renderHero(p, st, cr);
   if (srv) renderServer(p);
   $('#srvList').hidden = !listed.has(p.id);
+  renderPlay(p);
   if (cr) { renderSplits(s); renderDeaths(); hydrateHeads($('#deaths')); }
   if (news) renderNews(p);
   $('#btnPlay').dataset.st = st;
@@ -238,6 +243,6 @@ export function initHome() {
   $('#demoTsL').hidden = !api.demoControls;
   on('install', renderHome); on('game', renderHome); on('packs', renderHome);
   setInterval(() => { // chrono extrapolé entre deux relevés
-    const s = state.stats, el = $('#chrono'); if (s?.running && el) el.textContent = hms(s.totalTimeMs + Date.now() - statsAt);
+    const s = state.stats, el = $('#chrono'); if (s?.running && el) el.textContent = fmtHours(s.totalTimeMs + Date.now() - statsAt);
   }, 1000);
 }
