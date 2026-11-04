@@ -119,4 +119,41 @@ class ClipLogicTest {
 		assertEquals(OrbitCamera.MAX_DISTANCE, d, 1e-4);
 		assertTrue(o.y > 2); // positive pitch: camera above the target
 	}
+
+	@Test
+	void usageRunCountsConsecutiveFramesUpToTheCurrentOne() {
+		byte[] flags = {0, 64, 64, 64, 0, 64}; // actor frames 10..15, USING_ITEM = 64
+		assertEquals(3, ClipMath.runLength(flags, 10, 6, 13, 64));
+		assertEquals(1, ClipMath.runLength(flags, 10, 6, 11, 64));
+		assertEquals(0, ClipMath.runLength(flags, 10, 6, 14, 64));
+		assertEquals(1, ClipMath.runLength(flags, 10, 6, 15, 64));
+		assertEquals(0, ClipMath.runLength(flags, 10, 6, 9, 64)); // before the actor
+		assertEquals(1, ClipMath.runLength(flags, 10, 6, 99, 64)); // clamped to its last frame
+	}
+
+	@Test
+	void eventsFireOnlyOnForwardPlayback() {
+		assertTrue(ClipMath.crossed(4, 5, 5, 12)); // lands on the event frame
+		assertTrue(ClipMath.crossed(4, 8, 6, 12)); // skipped over it in one slow frame
+		assertFalse(ClipMath.crossed(5, 5, 5, 12)); // paused on it: already fired
+		assertFalse(ClipMath.crossed(8, 4, 6, 12)); // backwards
+		assertFalse(ClipMath.crossed(0, 40, 20, 12)); // seek
+		assertFalse(ClipMath.crossed(-1, 5, 5, 12)); // first update
+		assertFalse(ClipMath.crossed(1, 3, 5, 12)); // not reached
+	}
+
+	@Test
+	void deathAnimationRunsOnlyWhileRestingOnTheLastFrame() {
+		ClipTimeline t = new ClipTimeline(11, 2);
+		t.advance(2000);
+		assertTrue(t.atEnd());
+		assertEquals(0, t.deathTicks());
+		t.advance(500);
+		assertEquals(10, t.deathTicks());
+		t.advance(5000);
+		assertEquals(20, t.deathTicks()); // capped: lying down
+		t.seekFraction(0.5);
+		t.advance(16);
+		assertEquals(0, t.deathTicks());
+	}
 }

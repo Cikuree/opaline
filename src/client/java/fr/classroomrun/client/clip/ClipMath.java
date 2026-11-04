@@ -44,6 +44,25 @@ public final class ClipMath {
 		return true;
 	}
 
+	/** Number of consecutive frames ending at {@code frame} (clip frame, inclusive) that have {@code mask} set; 0 outside the actor. */
+	public static int runLength(byte[] flags, int first, int frames, int frame, int mask) {
+		int i = Math.min(frame - first, frames - 1);
+		int n = 0;
+		while (i >= 0 && (flags[i] & mask) != 0) {
+			n++;
+			i--;
+		}
+		return n;
+	}
+
+	/**
+	 * True when an event stamped {@code eventFrame} is crossed by forward playback from {@code prev} to {@code now}. A first
+	 * update ({@code prev < 0}), going backwards and jumps over {@code maxStep} frames (seeks) never count.
+	 */
+	public static boolean crossed(int prev, int now, int eventFrame, int maxStep) {
+		return prev >= 0 && now > prev && now - prev <= maxStep && eventFrame > prev && eventFrame <= now;
+	}
+
 	/** True when {@code mask} is set on any actor frame in {@code (fromExclusive, toInclusive]}. */
 	public static boolean anyFlag(byte[] flags, int first, int frames, int fromExclusive, int toInclusive, int mask) {
 		int from = Math.max(fromExclusive + 1, first);

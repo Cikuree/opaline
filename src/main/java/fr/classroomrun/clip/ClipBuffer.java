@@ -17,12 +17,12 @@ import java.util.UUID;
  */
 public final class ClipBuffer {
 	/** Stable state of an entity, shared by all its entries. */
-	public record Info(String typeId, Optional<UUID> profile, String name, String mainHand) {
+	public record Info(String typeId, Optional<UUID> profile, String name, String mainHand, String offHand) {
 	}
 
-	/** One entity at one sample; {@code flags} are the {@link DeathClipPayload} bits. */
+	/** One entity at one sample; {@code flags} are the {@link DeathClipPayload} bits, {@code extra} the {@link ClipExtra} byte. */
 	public record Entry(String dimension, Info info, double x, double y, double z, float yaw, float pitch, float headYaw,
-			int flags) {
+			int flags, int extra) {
 	}
 
 	/** The extracted clip: {@code frameCount} frames and the actors (victim first). */
@@ -107,6 +107,7 @@ public final class ClipBuffer {
 			float[] pos = new float[3 * len];
 			byte[] rot = new byte[3 * len];
 			byte[] flags = new byte[len];
+			byte[] extra = new byte[len];
 			for (int i = 0; i < len; i++) {
 				Entry en = list.get(c.first() + i).get(c.id());
 				pos[3 * i] = (float) (en.x() - ax);
@@ -116,10 +117,11 @@ public final class ClipBuffer {
 				rot[3 * i + 1] = packAngle(en.pitch());
 				rot[3 * i + 2] = packAngle(en.headYaw());
 				flags[i] = (byte) en.flags();
+				extra[i] = (byte) en.extra();
 			}
 			Info info = list.get(c.last()).get(c.id()).info();
 			actors.add(new DeathClipPayload.Actor(actors.size(), info.typeId(), info.profile(), info.name(),
-					info.mainHand(), c.first(), pos, rot, flags));
+					info.mainHand(), info.offHand(), c.first(), pos, rot, flags, extra));
 		}
 		return new Clip(n, actors);
 	}

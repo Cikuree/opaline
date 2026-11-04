@@ -11,6 +11,7 @@
 		"LivingEntityMixin",
 		"NetherPortalBlockMixin",
 		"PlayerMixin",
+		"ServerLevelExplodeMixin",
 		"ServerPlayerMixin"
 	],
 	"injectors": {

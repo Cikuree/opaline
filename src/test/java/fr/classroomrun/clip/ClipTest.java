@@ -14,10 +14,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ClipTest {
 	private static final UUID VICTIM = new UUID(0, 1);
-	private static final Info INFO = new Info("minecraft:zombie", Optional.empty(), "", "");
+	private static final Info INFO = new Info("minecraft:zombie", Optional.empty(), "", "", "");
 
 	private static Entry at(double x, double y, double z) {
-		return new Entry("minecraft:overworld", INFO, x, y, z, 90.0F, -45.0F, 180.0F, DeathClipPayload.ON_GROUND);
+		return new Entry("minecraft:overworld", INFO, x, y, z, 90.0F, -45.0F, 180.0F, DeathClipPayload.ON_GROUND, 0x85);
 	}
 
 	private static Map<UUID, Entry> frame(Object... idAndEntry) {
@@ -51,6 +51,7 @@ class ClipTest {
 		assertArrayEquals(new float[] {1, 1, -1}, a.pos());
 		assertArrayEquals(new byte[] {64, -32, -128}, a.rot()); // 90 deg, -45 deg, 180 deg
 		assertEquals(DeathClipPayload.ON_GROUND, a.flags()[0]);
+		assertEquals((byte) 0x85, a.extra()[0]);
 		assertEquals(0, a.id());
 	}
 
@@ -59,16 +60,16 @@ class ClipTest {
 		ClipBuffer b = new ClipBuffer(10);
 		Map<UUID, Entry> f = new HashMap<>();
 		f.put(VICTIM, at(0, 0, 0));
-		for (int i = 0; i < 40; i++) {
-			f.put(new UUID(1, i), at(40 - i, 0, 0)); // i = 39 is the nearest (x = 1)
+		for (int i = 0; i < DeathClipPayload.MAX_ACTORS + 8; i++) {
+			f.put(new UUID(1, i), at((DeathClipPayload.MAX_ACTORS + 8 - i) * 0.5, 0, 0)); // the last i is the nearest (x = 0.5), all within the radius
 		}
 		f.put(new UUID(2, 0), at(100, 0, 0)); // too far
 		b.add(f);
 		var actors = b.build(VICTIM, "minecraft:overworld", 0, 0, 0, 48).actors();
 		assertEquals(DeathClipPayload.MAX_ACTORS, actors.size());
 		assertArrayEquals(new float[] {0, 0, 0}, actors.get(0).pos());
-		assertEquals(1.0F, actors.get(1).pos()[0]);
-		assertEquals(2.0F, actors.get(2).pos()[0]);
+		assertEquals(0.5F, actors.get(1).pos()[0]);
+		assertEquals(1.0F, actors.get(2).pos()[0]);
 	}
 
 	@Test

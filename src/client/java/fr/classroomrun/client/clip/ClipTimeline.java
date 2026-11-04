@@ -5,6 +5,8 @@ public final class ClipTimeline {
 	private final long frameMs;
 	private final long durationMs;
 	private double posMs;
+	/** Real time spent on the last frame (the death), for the death animation. */
+	private double endMs;
 	private boolean playing = true;
 	private float speed = 1f;
 
@@ -15,6 +17,7 @@ public final class ClipTimeline {
 
 	/** Moves forward by real elapsed time; stops on the last (death) frame. */
 	public void advance(long deltaMs) {
+		this.endMs = atEnd() ? this.endMs + deltaMs : 0;
 		if (!this.playing) {
 			return;
 		}
@@ -68,6 +71,11 @@ public final class ClipTimeline {
 	/** Position in {@code [0, 1]} (1 when the clip is a single frame). */
 	public double fraction() {
 		return this.durationMs == 0 ? 1.0 : this.posMs / this.durationMs;
+	}
+
+	/** Game ticks (0..20) the clip has been resting on its last frame: progress of the victim's death animation. */
+	public int deathTicks() {
+		return (int) Math.min(20, this.endMs / 50);
 	}
 
 	public int elapsedSeconds() {

@@ -13,6 +13,11 @@ public final class ClipHooks {
 		return ClipStage.active != null && !ClipStage.isFake(entity);
 	}
 
+	/** True when {@code entity} is a clip fake that must not tick: projectiles and TNT (living fakes keep ticking for animations). */
+	public static boolean frozen(Entity entity) {
+		return ClipStage.isFake(entity) && !(entity instanceof LivingEntity);
+	}
+
 	/** True when {@code living} is a clip fake whose walk animation was handled. */
 	public static boolean walk(LivingEntity living) {
 		return ClipStage.animateWalk(living);

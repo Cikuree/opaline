@@ -16,6 +16,7 @@ import net.minecraft.world.entity.player.PlayerSkin;
  */
 final class FakePlayer extends RemotePlayer {
 	private static final int FALL_FLYING_FLAG = 7;
+	private static final int GLOWING_FLAG = 6;
 
 	private final UUID skinOwner;
 
@@ -29,6 +30,11 @@ final class FakePlayer extends RemotePlayer {
 		ClientPacketListener connection = Minecraft.getInstance().getConnection();
 		PlayerInfo info = connection == null ? null : connection.getPlayerInfo(this.skinOwner);
 		return info == null ? DefaultPlayerSkin.get(this.skinOwner) : info.getSkin();
+	}
+
+	/** Client-side glowing outline: the flag is what {@code isCurrentlyGlowing} reads on the client, no mixin needed. */
+	void setClipGlowing() {
+		setSharedFlag(GLOWING_FLAG, true);
 	}
 
 	void setClipFallFlying(boolean fallFlying) {

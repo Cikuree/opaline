@@ -1,16 +1,23 @@
 package fr.classroomrun.client.clip;
 
 import com.mojang.authlib.GameProfile;
+import fr.classroomrun.client.mixin.CreeperAccess;
+import fr.classroomrun.client.mixin.LivingEntityAccess;
+import fr.classroomrun.clip.ClipExtra;
 import fr.classroomrun.net.DeathClipPayload;
 import fr.classroomrun.net.DeathClipPayload.Actor;
+import fr.classroomrun.net.DeathClipPayload.Explosion;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntitySpawnReason;
@@ -18,7 +25,10 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.Pose;
+import net.minecraft.world.entity.item.PrimedTnt;
+import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.SwingAnimation;
@@ -32,6 +42,8 @@ final class ClipStage {
 	private static final int ID_RANGE = 10_000;
 	/** Distance (frames) under which a flag edge is treated as normal forward playback, not a seek. */
 	private static final int MAX_STEP = 4;
+	/** Same for explosions: larger because a slow frame at x2 can jump several frames, still far below a seek. */
+	private static final int MAX_EVENT_STEP = 12;
 
 	/** The stage being shown, read by the mixins that hide the real entities. */
 	static ClipStage active;
@@ -49,6 +61,8 @@ final class ClipStage {
 	private final CameraType savedCameraType;
 	private final Entity savedCamera;
 	private double targetX, targetY, targetZ;
+	/** Frame of the previous {@link #update}, -1 before the first one: explosions fire when it is crossed forwards. */
+	private int lastFrame = -1;
 
 	private static final class Fake {
 		final Actor actor;
@@ -116,6 +130,7 @@ final class ClipStage {
 	void update(ClipTimeline timeline) {
 		double framePos = timeline.framePos();
 		int frame = (int) Math.floor(framePos);
+		int deathTicks = timeline.deathTicks();
 		for (Fake f : this.fakes) {
 			Actor a = f.actor;
 			if (!ClipMath.sample(a.pos(), a.rot(), a.firstFrame(), a.frames(), framePos, this.tmp)) {
@@ -125,7 +140,7 @@ final class ClipStage {
 			if (f.entity == null && !spawn(f)) {
 				continue;
 			}
-			apply(f, frame);
+			apply(f, frame, deathTicks);
 			if (f == this.victim) {
 				this.targetX = this.clip.anchorX() + this.tmp[0];
 				this.targetY = this.clip.anchorY() + this.tmp[1] + 1.0;
@@ -133,6 +148,13 @@ final class ClipStage {
 			}
 		}
 		this.terrain.update(frame);
+		for (int i = 0; i < this.clip.explosions().size(); i++) {
+			Explosion x = this.clip.explosions().get(i);
+			if (ClipMath.crossed(this.lastFrame, frame, x.frame(), MAX_EVENT_STEP)) {
+				explode(x);
+			}
+		}
+		this.lastFrame = frame;
 		this.orbit.update(this.targetX, this.targetY, this.targetZ);
 		this.camera.snapTo(this.orbit.x, this.orbit.y, this.orbit.z, this.orbit.yRot, this.orbit.xRot);
 		// a ClientboundSetCameraPacket may have replaced the camera
@@ -142,12 +164,22 @@ final class ClipStage {
 		}
 	}
 
-	private void apply(Fake f, int frame) {
+	/** Vanilla client explosion effect (see {@code ClientPacketListener.handleExplosion}), volume follows the BLOCKS slider. */
+	private void explode(Explosion x) {
+		double px = this.clip.anchorX() + x.dx(), py = this.clip.anchorY() + x.dy(), pz = this.clip.anchorZ() + x.dz();
+		this.level.addParticle(x.radius() >= 2f ? ParticleTypes.EXPLOSION_EMITTER : ParticleTypes.EXPLOSION, px, py, pz, 1.0,
+				0.0, 0.0);
+		float pitch = (1.0f + (this.level.getRandom().nextFloat() - this.level.getRandom().nextFloat()) * 0.2f) * 0.7f;
+		this.level.playLocalSound(px, py, pz, SoundEvents.GENERIC_EXPLODE.value(), SoundSource.BLOCKS, 4.0f, pitch, false);
+	}
+
+	private void apply(Fake f, int frame, int deathTicks) {
 		Entity e = f.entity;
 		Actor a = f.actor;
 		e.snapTo(this.clip.anchorX() + this.tmp[0], this.clip.anchorY() + this.tmp[1], this.clip.anchorZ() + this.tmp[2],
 				this.tmp[3], this.tmp[4]);
 		int flags = a.flags()[frame - a.firstFrame()];
+		int extra = a.extra()[frame - a.firstFrame()];
 		boolean crouching = (flags & DeathClipPayload.CROUCHING) != 0;
 		e.setOnGround((flags & DeathClipPayload.ON_GROUND) != 0);
 		if (e instanceof LivingEntity living) {
@@ -171,8 +203,51 @@ final class ClipStage {
 					living.animateHurt(0f);
 				}
 			}
+			if (living instanceof Mob mob) {
+				mob.setAggressive((flags & DeathClipPayload.AGGRESSIVE) != 0);
+			}
+			applyUse(living, a, frame);
+			if (living instanceof Creeper creeper) {
+				int swell = ClipExtra.swellTicks(ClipExtra.level(extra));
+				CreeperAccess access = (CreeperAccess) creeper;
+				access.classroomrun$setSwell(swell);
+				access.classroomrun$setOldSwell(swell);
+				creeper.setSwellDir(0); // the client tick must not move it between two updates
+			}
+			if (f == this.victim) {
+				living.deathTime = deathTicks; // the vanilla death animation (tilt + red tint) is driven by deathTime alone
+			}
+		} else if (e instanceof PrimedTnt tnt) {
+			tnt.setFuse(ClipExtra.level(extra));
 		}
 		f.lastFrame = frame;
+	}
+
+	/**
+	 * Bow drawing, eating, blocking: the client never sets the "using item" flag by itself (server only), so it is set here
+	 * and the remaining use time is derived from how many frames the use has lasted, which keeps seeking and pausing right.
+	 */
+	private void applyUse(LivingEntity living, Actor a, int frame) {
+		int i = frame - a.firstFrame();
+		LivingEntityAccess access = (LivingEntityAccess) living;
+		boolean off = ClipExtra.offHand(a.extra()[i]);
+		InteractionHand hand = off ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
+		ItemStack held = living.getItemInHand(hand);
+		if ((a.flags()[i] & DeathClipPayload.USING_ITEM) == 0 || held.isEmpty()) {
+			if (living.isUsingItem()) {
+				access.classroomrun$setLivingEntityFlag(1, false);
+			}
+			return;
+		}
+		if (!living.isUsingItem() || living.getUsedItemHand() != hand) {
+			if (living.isUsingItem()) {
+				access.classroomrun$setLivingEntityFlag(1, false);
+			}
+			access.classroomrun$setLivingEntityFlag(2, off);
+			access.classroomrun$setLivingEntityFlag(1, true); // onSyncedDataUpdated picks the item of that hand
+		}
+		int run = ClipMath.runLength(a.flags(), a.firstFrame(), a.frames(), frame, DeathClipPayload.USING_ITEM);
+		access.classroomrun$setUseItemRemaining(Math.max(1, held.getUseDuration(living) - run * this.clip.sampleTicks()));
 	}
 
 	private boolean spawn(Fake f) {
@@ -192,20 +267,19 @@ final class ClipStage {
 		if (e == null) {
 			return false;
 		}
-		e.setId(nextId);
-		nextId -= 16; // an ender_dragon assigns its parts to id+1..id+n
-		if (nextId <= ID_BASE - ID_RANGE) {
-			nextId = ID_BASE;
-		}
+		e.setId(freeId());
 		e.noPhysics = true;
 		e.setNoGravity(true);
 		e.setSilent(true);
-		if (e instanceof LivingEntity living && !a.mainHand().isEmpty()) {
-			Identifier item = Identifier.tryParse(a.mainHand());
-			Item held = item == null ? null : BuiltInRegistries.ITEM.getOptional(item).orElse(null);
-			if (held != null) {
-				living.setItemSlot(EquipmentSlot.MAINHAND, new ItemStack(held));
+		if (e instanceof LivingEntity living) {
+			hold(living, EquipmentSlot.MAINHAND, a.mainHand());
+			hold(living, EquipmentSlot.OFFHAND, a.offHand());
+		}
+		if (f == this.victim) { // marked for the whole clip: outline (the name tag of a player is always shown)
+			if (e instanceof FakePlayer player) {
+				player.setClipGlowing();
 			}
+			e.setCustomNameVisible(true);
 		}
 		f.entity = e;
 		f.lastFrame = -1;
@@ -214,6 +288,29 @@ final class ClipStage {
 		e.snapTo(this.clip.anchorX() + this.tmp[0], this.clip.anchorY() + this.tmp[1], this.clip.anchorZ() + this.tmp[2]);
 		this.level.addEntity(e);
 		return true;
+	}
+
+	private static void hold(LivingEntity living, EquipmentSlot slot, String itemId) {
+		Identifier item = itemId.isEmpty() ? null : Identifier.tryParse(itemId);
+		Item held = item == null ? null : BuiltInRegistries.ITEM.getOptional(item).orElse(null);
+		if (held != null) {
+			living.setItemSlot(slot, new ItemStack(held));
+		}
+	}
+
+	/** Next fake id, skipping the ones still used (the id range wraps after enough spawns while seeking back and forth). */
+	private int freeId() {
+		for (int tries = 0; tries <= ID_RANGE / 16; tries++) {
+			int id = nextId;
+			nextId -= 16; // an ender_dragon assigns its parts to id+1..id+n
+			if (nextId <= ID_BASE - ID_RANGE) {
+				nextId = ID_BASE;
+			}
+			if (this.level.getEntity(id) == null) {
+				return id;
+			}
+		}
+		return nextId;
 	}
 
 	private static GameProfile profile(Actor a) {
