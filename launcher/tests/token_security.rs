@@ -143,6 +143,7 @@ fn successful_login_then_config_json_has_no_secret() {
             "nickname",
             "no_remember",
             "notify_server",
+            "opt_in_launch",
             "perf_mode",
             "tray_on_game"
         ]
