@@ -89,13 +89,15 @@ export async function renderAccount() {
 function skinFile(f) {
   if (!f) return;
   if (f.type !== 'image/png') { $('#dropMsg').textContent = 'Format refusé : PNG uniquement.'; return toast('Fichier refusé : PNG requis'); }
-  const u = URL.createObjectURL(f), im = new Image();
+  // data: et pas blob: : la CSP de l'application n'autorise pas blob: pour les images (le chargement échouait en silence)
+  const im = new Image();
   im.onload = () => {
     const ok = im.width === 64 && (im.height === 64 || im.height === 32);
     $('#dropMsg').textContent = ok ? `${f.name} · ${im.width}×${im.height} valide` : `${f.name} : ${im.width}×${im.height}, 64×64 requis`;
-    pending = ok ? f : null; toast(ok ? 'Skin prêt à importer' : 'Dimensions invalides'); URL.revokeObjectURL(u);
+    pending = ok ? f : null; toast(ok ? 'Skin prêt à importer' : 'Dimensions invalides');
   };
-  im.src = u;
+  im.onerror = () => { pending = null; $('#dropMsg').textContent = 'Image illisible.'; toast('Image illisible'); };
+  b64(f).then((d) => { im.src = 'data:image/png;base64,' + d; }, im.onerror);
 }
 const b64 = (f) => new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1]); r.onerror = ko; r.readAsDataURL(f); });
 

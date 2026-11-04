@@ -1,5 +1,8 @@
 # Changelog
 
+## Opaline 0.6.11
+- Garde-robe : importer un skin en le choisissant fonctionne (l'aperçu de l'image était bloqué par la sécurité de l'application).
+
 ## Opaline 0.6.10
 - Garde-robe : glisser un skin PNG sur la fenêtre fonctionne (l'application ne recevait pas le fichier).
 
