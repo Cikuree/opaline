@@ -1406,5 +1406,13 @@ file = "config/zipline.json"
 hash = "91ed15c2784fe68d2758ab21cf769fd4ff52c0c823e098b38464adce6362ae6b"
 
 [[files]]
+file = "mods/diegesis-neoforge-1.21.1-1.0.0-beta.4.jar"
+hash = "c2b0019cfbd4e4ca2d0128ad0f64fdecf145d1061af6036f259df4b53279a695"
+
+[[files]]
+file = "mods/handson_delight-neoforge-1.21.1-1.0.0.jar"
+hash = "ad398234594194a20303b936d500975ed9625a784bf8daea9965d940194c1366"
+
+[[files]]
 file = "shaderpacks/ComplementaryReimagined_r5.9.3.zip.txt"
 hash = "888f036736d566d13d0b6a2f231910d0ddd38af837e71c560a71dee527e2a346"
