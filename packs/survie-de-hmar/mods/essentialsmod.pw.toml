@@ -1,0 +1,13 @@
+name = "Essentials"
+filename = "essentials-1.21.1-2.17.6.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/M09T0qPI/versions/JBj75QBi/essentials-1.21.1-2.17.6.jar"
+hash-format = "sha512"
+hash = "07cdc1a90ae83ce677f6a35f5edd3b445d5387c47f538a5dba0041c50d918b8915dd0b780c3c7ea7cd8752bbc1df61a83fdafef944f4f2693dbd3846056468a5"
+
+[update]
+[update.modrinth]
+mod-id = "M09T0qPI"
+version = "JBj75QBi"
