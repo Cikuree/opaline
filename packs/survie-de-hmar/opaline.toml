@@ -1,0 +1,10 @@
+name = "SURVIE DE HMAR"
+description = "survie de hmar frr"
+thumbnail = "totem_of_undying"
+widgets = ["server"]
+
+[server]
+host = "home-server"
+port = 25565
+motd = "survie_hmar"
+statsPort = 0

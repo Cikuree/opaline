@@ -1,0 +1,13 @@
+name = "Mo' Enchantments"
+filename = "mo_enchantments-2.0.1-neoforge-1.21.1.jar"
+side = "both"
+
+[download]
+url = "https://cdn.modrinth.com/data/bpMzCz0W/versions/QhHoDLUI/mo_enchantments-2.0.1-neoforge-1.21.1.jar"
+hash-format = "sha512"
+hash = "d95b90eef656d9b1fe85e7bdde1416febfd0e3593e00911176c79c8bda2f7e0ad10020e735f0167a3772efe2e379688903474a596a986d918bd4e3c4e43c5531"
+
+[update]
+[update.modrinth]
+mod-id = "bpMzCz0W"
+version = "QhHoDLUI"

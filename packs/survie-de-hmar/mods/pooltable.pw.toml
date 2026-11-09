@@ -1,0 +1,13 @@
+name = "pooltable"
+filename = "pooltable-1.6.0.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/9425/968/pooltable-1.6.0.jar"
+hash-format = "sha512"
+hash = "e80cb1cfd2ab0ebefcc4464f98ae47e945ad193cd10a75ad91f5b804e33af7e0139a2ab0fc65e65bf8b3ddf64243f6637f8457c52a98e270194f6c5f1458d941"
+
+[update]
+[update.curseforge]
+file-id = 9425968
+project-id = 1752268

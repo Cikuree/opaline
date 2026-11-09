@@ -1,0 +1,13 @@
+name = "SURVIE DE HMAR"
+version = "0.1.0"
+description = "survie de hmar frr"
+pack-format = "packwiz:1.1.0"
+
+[index]
+file = "index.toml"
+hash-format = "sha256"
+hash = "1adae5475ef9c5ea5c457564275338823a8689154a91c51b392068d02336c477"
+
+[versions]
+minecraft = "1.21.1"
+neoforge = "21.1.265"

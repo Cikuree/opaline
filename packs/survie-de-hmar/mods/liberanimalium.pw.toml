@@ -1,0 +1,13 @@
+name = "liberanimalium"
+filename = "liberanimalium-1.0+1.21.1-neoforge.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/9327/835/liberanimalium-1.0%2B1.21.1-neoforge.jar"
+hash-format = "sha512"
+hash = "463fa83ca7f63ab697f4b859cc50f083b2d040318c62e5a0823da49d867cc444e6da71e3ed07cb683d4b0b05ed8579bc8a33b2f617145d6b1be5f15326a9f5eb"
+
+[update]
+[update.curseforge]
+file-id = 9327835
+project-id = 1766276

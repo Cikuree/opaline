@@ -1,0 +1,13 @@
+name = "connector"
+filename = "connector-2.0.0-beta.17+1.21.1-full.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/8654/89/connector-2.0.0-beta.17%2B1.21.1-full.jar"
+hash-format = "sha512"
+hash = "02ceb56a39916902d2505d6dd4edfe2e0b5fd1434d46b5d73ff7f2e0e8a2313a854c0f58cad04595a5a8c3ff133c07c894c1812ae4ad2122c731d29a0a867a78"
+
+[update]
+[update.curseforge]
+file-id = 8654089
+project-id = 890127

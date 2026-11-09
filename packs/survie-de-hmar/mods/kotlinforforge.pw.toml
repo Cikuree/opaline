@@ -1,0 +1,13 @@
+name = "kotlinforforge"
+filename = "kotlinforforge-5.12.0-all.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/8335/665/kotlinforforge-5.12.0-all.jar"
+hash-format = "sha512"
+hash = "a72aac9116f556a33494951fa30f6465da37fb58b2fffa1860feb6d5760bce8e636c32a7350c2eae50651c16405740cca0d94ba1b3a1ba5f87fe014dd941a3f8"
+
+[update]
+[update.curseforge]
+file-id = 8335665
+project-id = 351264

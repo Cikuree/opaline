@@ -1,0 +1,13 @@
+name = "TerraBlender-neoforge"
+filename = "TerraBlender-neoforge-1.21.1-4.1.0.8.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/6054/947/TerraBlender-neoforge-1.21.1-4.1.0.8.jar"
+hash-format = "sha512"
+hash = "d51720b21b4cdaeaf962416575f27209219941b8a0067b0bccab478227f32ad9d91a2b94469925bb7b810ffb446d15b02a5381a5425b3f54739f2f174034870e"
+
+[update]
+[update.curseforge]
+file-id = 6054947
+project-id = 940057

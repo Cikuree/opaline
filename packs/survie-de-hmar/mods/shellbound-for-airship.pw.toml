@@ -1,0 +1,13 @@
+name = "shellbound_for_airship"
+filename = "shellbound_for_airship-1.0.0-neoforge.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/7689/536/shellbound_for_airship-1.0.0-neoforge.jar"
+hash-format = "sha512"
+hash = "88733154645262db1cedda078ce3152ad29d8bce6a4967cabb98c3076d9f764b72f8fc51e011e03bb7da54b928272f64ac8f9990859cbe9719dc825ea2fa35a8"
+
+[update]
+[update.curseforge]
+file-id = 7689536
+project-id = 1470681

@@ -1,0 +1,13 @@
+name = "createaeronauticscurios-neoforge"
+filename = "createaeronauticscurios-neoforge-1.21.1-2.3.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/9076/258/createaeronauticscurios-neoforge-1.21.1-2.3.jar"
+hash-format = "sha512"
+hash = "8a95c0fb08e85b9e0696765fcb9c18991bede5567a314711a166ee85f55d9f70e3c66374566cc74de658cf526f1468f3fe6e878033069cf5656a9ff066dbc8e1"
+
+[update]
+[update.curseforge]
+file-id = 9076258
+project-id = 1532334

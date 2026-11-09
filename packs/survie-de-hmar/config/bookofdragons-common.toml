@@ -1,0 +1,26 @@
+#Book of Dragons Common Settings
+[common]
+	#Accessibility: holding a direction in tap-driven QTEs auto-taps at a fixed
+	#cadence instead of requiring rapid key drumming
+	qteTapAssist = false
+
+#What dragons may do to the terrain. Each breath attack authors its own
+#sets_fire / breaks_blocks; these switches take precedence and can only forbid.
+[griefing]
+	#Dragon attacks and abilities may set fire to blocks. The mobGriefing game rule also applies
+	dragonsSetFire = false
+	#Dragon attacks may break blocks (explosive impacts). The mobGriefing game rule also applies
+	dragonsBreakBlocks = false
+
+#What a dragon's grip may take. Players are taken only where the server allows PvP.
+[grabbing]
+	#A dragon's grip may take players
+	grabPlayers = true
+
+#How dragons treat creatures from other mods.
+[creatures]
+	#How strongly a dragon fears, dislikes or attacks a creature from another mod that is not
+	#after it, as a share of its normal reaction. 1.0 is the full reaction, 0.0 ignores it
+	# Default: 1.0
+	# Range: 0.0 ~ 1.0
+	strangerReaction = 1.0

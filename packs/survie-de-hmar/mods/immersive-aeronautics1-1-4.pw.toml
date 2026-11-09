@@ -1,0 +1,13 @@
+name = "Immersive-Aeronautics1.1.4"
+filename = "Immersive-Aeronautics1.1.4-1.21.1-NeoForge.jar"
+side = "both"
+
+[download]
+url = "https://mediafilez.forgecdn.net/files/8586/854/Immersive-Aeronautics1.1.4-1.21.1-NeoForge.jar"
+hash-format = "sha512"
+hash = "e8ab1ff8575fdcdd11dabf6f1384be4ed2b915694ea1ce097ed717df999f77b60abda96cbb1e3dab352a26bc46d6ccfea990c19a908a270f7ec0fa6f98f46387"
+
+[update]
+[update.curseforge]
+file-id = 8586854
+project-id = 1629108

@@ -1,0 +1,93 @@
+#Book of Dragons Client Settings
+[client]
+	#Sprint mode while riding dragons
+	#HOLD: Sprint while holding the sprint key (like vanilla)
+	#TOGGLE: Press to start sprinting, press again to stop
+	#Allowed Values: HOLD, TOGGLE
+	sprintMode = "TOGGLE"
+	#Enable camera roll while riding dragons
+	#Set to false to disable for motion sickness accessibility
+	cameraRollEnabled = true
+	#Third person camera distance when riding dragons
+	# Default: 8.0
+	# Range: 4.0 ~ 100.0
+	thirdPersonDistance = 8.0
+	#FOV offset for first-person view while riding
+	# Default: 0.0
+	# Range: -50.0 ~ 50.0
+	firstPersonFovOffset = 0.0
+	#Enable barrel roll with A/D keys while flying
+	#When true: A/D causes the dragon to roll left/right
+	#When false: A/D applies yaw (turn left/right) with natural banking
+	barrelRollEnabled = true
+	#Enable speed-based FOV effects while flying
+	speedFovEffectEnabled = true
+	#Multiplier for the speed-based FOV effect
+	# Default: 1.0
+	# Range: 0.0 ~ 10.0
+	speedFovEffectStrength = 1.0
+	#Dragon flight mouse sensitivity multiplier
+	#Applied on top of vanilla camera sensitivity after normalisation.
+	#Increase if dragon controls feel too heavy (e.g. Raw Input disabled,
+	#remote desktop, or low-DPI mouse with non-default pointer speed).
+	#Default 1.0 = same feel as before for players with Raw Input enabled.
+	# Default: 1.0
+	# Range: 0.1 ~ 10.0
+	dragonMouseSensitivity = 1.0
+	#Preferred camera perspective when mounting a dragon
+	#FIRST_PERSON: First-person view
+	#THIRD_PERSON: Third-person view (behind the dragon)
+	#Allowed Values: FIRST_PERSON, THIRD_PERSON
+	ridingCameraPerspective = "THIRD_PERSON"
+	#When true, remembers the last camera perspective used while riding
+	#and restores it on the next mount instead of always switching to the preferred one
+	rememberLastCameraPerspective = false
+	#Enable loose-follow camera for 3D barrel-roll flight (third-person only).
+	#When true, the third-person camera lags slightly behind the dragon's rotation
+	#with a small overshoot on settle, giving a cinematic feel.
+	#Has no effect in first-person or 2D flight mode.
+	dragonCameraLooseFollow = true
+	#Cinematic Camera: Rotation Stiffness
+	# Default: 30.0
+	# Range: 0.0 ~ 100.0
+	cinematicRotStiffness = 30.0
+	#Cinematic Camera: Rotation Damping
+	# Default: 15.0
+	# Range: 0.0 ~ 100.0
+	cinematicRotDamping = 15.0
+	#Cinematic Camera: Position Stiffness
+	# Default: 30.0
+	# Range: 0.0 ~ 100.0
+	cinematicPosStiffness = 30.0
+	#Cinematic Camera: Position Damping
+	# Default: 15.0
+	# Range: 0.0 ~ 100.0
+	cinematicPosDamping = 15.0
+	#Cinematic Camera: Rotation Looseness
+	# Default: 0.5
+	# Range: 0.0 ~ 1.0
+	cinematicRotLooseness = 0.5
+	#Cinematic Camera: Position Looseness (Lateral)
+	# Default: 0.5
+	# Range: 0.0 ~ 1.0
+	cinematicPosLoosenessLateral = 0.5
+	#Cinematic Camera: Position Looseness (Forward)
+	# Default: 0.125
+	# Range: 0.0 ~ 1.0
+	cinematicPosLoosenessForward = 0.125
+	#Write the Book of Dragons in upright letters instead of the slanted hand
+	readableBookFont = false
+	#Procedural animation on dragons: tail and neck physics, the body tilting to
+	#the ground and the legs reaching for it. Off, dragons play their animations
+	#as a distant dragon does
+	proceduralRigEnabled = true
+	#Shake the camera in the buffeting of fast flight and dives
+	turbulenceEnabled = true
+	#Multiplier for the turbulence shake
+	# Default: 1.0
+	# Range: 0.0 ~ 3.0
+	turbulenceStrength = 1.0
+	#Draw streaks of air rushing past the rider at speed
+	speedLinesEnabled = true
+	#Stuffed toys squeak when squeezed, hit or bounced
+	plushSoundsEnabled = true
