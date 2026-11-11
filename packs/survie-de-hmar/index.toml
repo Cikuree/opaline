@@ -171,6 +171,11 @@ hash = "53d553e071d675475849d8cbe67a2395882e21932ba0492d038863df585c204e"
 metafile = true
 
 [[files]]
+file = "mods/creativecore.pw.toml"
+hash = "37aa8d7a4fc96de58a912a57708a341b6c1822aa9c1d2c713a2166c76c27d73d"
+metafile = true
+
+[[files]]
 file = "mods/cubes-without-borders.pw.toml"
 hash = "8f4c02cfc96b9d4e3a6c009b415e4f2050252046bc050215659a1ae282e94403"
 metafile = true
@@ -403,6 +408,21 @@ metafile = true
 [[files]]
 file = "mods/terrablender-neoforge.pw.toml"
 hash = "991a5d39b8baa7e990722a08923c5b38674bb8598c00aad8a89aacbe635bcd66"
+metafile = true
+
+[[files]]
+file = "mods/waterframes.pw.toml"
+hash = "59e15d108b41b10145596a3ef899ad20ef8c8885504eef10cd89225aef87daef"
+metafile = true
+
+[[files]]
+file = "mods/watermedia.pw.toml"
+hash = "9c14d2011a343872dfa72aee64ef7beb2f9f9e47867807b4b03726cfa8e429b7"
+metafile = true
+
+[[files]]
+file = "mods/watervision.pw.toml"
+hash = "393310e8c75c51eb3143c8ddcdac51917a5d759d428e5b962e4c2b4c8e87bc0e"
 metafile = true
 
 [[files]]
